@@ -1,0 +1,78 @@
+
+using Apache.Arrow;
+using MZPeak.Metadata;
+using MZPeak.Storage;
+
+namespace MZPeak.Reader;
+
+
+public class MzPeakReader
+{
+    IMZPeakArchiveStorage storage;
+
+    SpectrumMetadataReader? spectrumMetadata;
+    ChromatogramMetadataReader? chromatogramMetadata;
+
+    DataArraysReaderMeta? spectrumArraysMeta = null;
+    DataArraysReaderMeta? chromatogramArraysMeta = null;
+
+    public MzPeakReader(string path) : this(new LocalZipArchive(path))
+    {}
+
+    public MzPeakReader(IMZPeakArchiveStorage storage)
+    {
+        this.storage = storage;
+        var stream = storage.SpectrumMetadata();
+        spectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
+        stream = storage.ChromatogramMetadata();
+        chromatogramMetadata = stream == null ? null : new ChromatogramMetadataReader(stream);
+    }
+
+    public int Length => spectrumMetadata?.Length ?? 0;
+    public int SpectrumCount => spectrumMetadata?.Length ?? 0;
+    public int ChromatogramCount => chromatogramMetadata?.Length ?? 0;
+    public FileDescription FileDescription => spectrumMetadata?.FileDescription ?? chromatogramMetadata?.FileDescription ?? FileDescription.Empty();
+    public List<InstrumentConfiguration> InstrumentConfigurations => spectrumMetadata?.InstrumentConfigurations ?? chromatogramMetadata?.InstrumentConfigurations ?? new();
+    public List<Software> Softwares => spectrumMetadata?.Softwares ?? chromatogramMetadata?.Softwares ?? new();
+    public List<Sample> Samples => spectrumMetadata?.Samples ?? chromatogramMetadata?.Samples ?? new();
+    public List<DataProcessingMethod> DataProcessingMethods => spectrumMetadata?.DataProcessingMethods ?? chromatogramMetadata?.DataProcessingMethods ?? new();
+    public async Task<ChunkedArray?> GetChromatogramData(ulong index)
+    {
+        var dataFacet = storage.ChromatogramData();
+        DataArraysReader reader;
+        if (dataFacet == null)
+        {
+            return null;
+        }
+        if (chromatogramArraysMeta == null)
+        {
+            reader = new DataArraysReader(dataFacet, BufferContext.Chromatogram);
+            chromatogramArraysMeta = reader.Metadata;
+        }
+        else
+        {
+            reader = new DataArraysReader(dataFacet, chromatogramArraysMeta);
+        }
+        return await reader.ReadForIndex(index);
+    }
+
+    public async Task<ChunkedArray?> GetSpectrumData(ulong index)
+    {
+        var dataFacet = storage.SpectrumData();
+        DataArraysReader reader;
+        if (dataFacet == null)
+        {
+            return null;
+        }
+        if (spectrumArraysMeta == null)
+        {
+            reader = new DataArraysReader(dataFacet, BufferContext.Spectrum);
+            spectrumArraysMeta = reader.Metadata;
+        }
+        else
+        {
+            reader = new DataArraysReader(dataFacet, spectrumArraysMeta);
+        }
+        return await reader.ReadForIndex(index);
+    }
+}
