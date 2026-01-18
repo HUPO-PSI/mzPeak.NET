@@ -4,8 +4,10 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Reader;
+using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 
 public class ArchiveTest
@@ -130,6 +132,16 @@ public class ArchiveTest
         var idxArray = (UInt64Array)col;
         Assert.NotNull(idxArray.GetValue(0));
         Assert.Equal(0ul, idxArray.GetValue(0));
+
+        col = meta.ScanMetadata?.Column("parameters");
+        Assert.NotNull(col);
+        var builder = new ParamListVisitor();
+        builder.Visit(col);
+        var paramsList = builder.ParamsLists;
+        foreach(var pars in paramsList) {
+            if (pars.Count > 0)
+                Console.WriteLine("{0}", pars[0]);
+        }
     }
 }
 

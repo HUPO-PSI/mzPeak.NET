@@ -394,4 +394,18 @@ public static class Compute
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }
     }
+
+    public static IArrowArray Take(Array array, IList<int> indices)
+    {
+        if(indices.Count == 0)
+        {
+            return array.Slice(0, 0);
+        }
+        List<IArrowArray> chunks = new();
+        for(var i = 0; i < indices.Count; i++)
+        {
+            chunks.Add(array.Slice(i, 1));
+        }
+        return ArrowArrayConcatenator.Concatenate(chunks);
+    }
 }

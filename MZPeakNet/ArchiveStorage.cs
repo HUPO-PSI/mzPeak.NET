@@ -303,3 +303,74 @@ public class LocalZipArchive : IMZPeakArchiveStorage
         this.fileIndex = fileIndex;
     }
 }
+
+
+public class DirectoryArchive : IMZPeakArchiveStorage
+{
+    public string Path;
+    List<string> fileNames;
+    FileIndex fileIndex;
+
+    public DirectoryArchive(string path)
+    {
+        Path = path;
+        fileNames = new List<string>();
+        fileIndex = new FileIndex();
+        extractInitialMetadata();
+    }
+
+    public FileIndex FileIndex()
+    {
+        return fileIndex;
+    }
+
+    public List<string> FileNames()
+    {
+        return fileNames;
+    }
+
+    public Stream OpenStream(string name)
+    {
+        var pathOf = System.IO.Path.Join(Path, name);
+        if (!File.Exists(pathOf))
+        {
+            throw new FileNotFoundException(name);
+        }
+        return new FileStream(pathOf, FileMode.Open);
+    }
+
+    void extractInitialMetadata()
+    {
+        List<string> fileNames = [];
+        FileIndex? fileIndex = null;
+
+        foreach (var entry in Directory.EnumerateFileSystemEntries(Path))
+        {
+            if(!File.Exists(entry)) continue;
+
+            fileNames.Add(entry);
+            var fName = System.IO.Path.GetFileName(entry);
+            if (fName == "mzpeak_index.json")
+            {
+
+                using (var stream = new StreamReader(File.Open(entry, FileMode.Open)))
+                {
+                    var indexJson = stream.ReadToEnd();
+                    fileIndex = JsonSerializer.Deserialize<FileIndex>(indexJson);
+
+                    if (fileIndex == null)
+                    {
+                        throw new InvalidDataException("Index JSON file did not deserialize successfully");
+                    }
+                }
+            }
+        }
+
+        this.fileNames = fileNames;
+        if (fileIndex == null)
+        {
+            throw new FileNotFoundException("Index JSON file not found");
+        }
+        this.fileIndex = fileIndex;
+    }
+}

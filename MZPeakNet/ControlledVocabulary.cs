@@ -1,3 +1,8 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Apache.Arrow;
+
 namespace MZPeak.ControlledVocabulary;
 
 public enum ArrayType
@@ -1042,3 +1047,299 @@ public static class SpectrumPropertiesMethods
     }
 }
 
+
+public record ColumnParam
+{
+    public string Name;
+    public string? CURIE;
+    public string? UnitCURIE;
+    public int Index;
+    public string OriginalName;
+    public bool IsUnitOnly = false;
+
+    public static ColumnParam FromFieldIndex(Field field, int index)
+    {
+        var tokens_ = field.Name.Split("_");
+        if (tokens_.Length < 3)
+        {
+            return new ColumnParam(field.Name, null, null, index, field.Name);
+        }
+        var tokens = tokens_.ToList();
+        var cvPrefix = tokens[0];
+        if (cvPrefix != "MS" && cvPrefix != "UO")
+        {
+            return new ColumnParam(field.Name, null, null, index, field.Name);
+        }
+        var accession = tokens[1];
+        var curie = string.Format("{0}:{1}", cvPrefix, accession);
+        var indexOfUnit = tokens.FindIndex((v) => v == "unit");
+        if (indexOfUnit == -1)
+        {
+            var name = string.Join('_', tokens.Slice(2, tokens.Count - 2));
+            return new ColumnParam(name, curie, null, index, field.Name, false);
+        }
+        else if (indexOfUnit < tokens.Count - 1)
+        {
+            var name = string.Join('_', tokens.Slice(2, indexOfUnit - 2));
+            var unit = string.Join(':', tokens.Slice(indexOfUnit + 1, tokens.Count - indexOfUnit - 1));
+            return new ColumnParam(name, curie, unit, index, field.Name, false);
+        }
+        else
+        {
+            var name = string.Join('_', tokens.Slice(2, tokens.Count));
+            return new ColumnParam(name, curie, null, index, field.Name, true);
+        }
+    }
+
+    public static List<ColumnParam> FromFields(IEnumerable<Field> fields)
+    {
+        List<ColumnParam> cols = new();
+
+        int i = 0;
+        foreach(var f in fields)
+        {
+            cols.Add(FromFieldIndex(f, i));
+            Console.WriteLine("{0}", cols.Last());
+            i += 1;
+        }
+
+        return cols;
+    }
+
+    public ColumnParam(string name, string? curie, string? unit, int index, string originalName, bool isUnitOnly=false)
+    {
+        Name = name;
+        CURIE = curie;
+        UnitCURIE = unit;
+        Index = index;
+        OriginalName = originalName;
+        IsUnitOnly = isUnitOnly;
+    }
+}
+
+
+
+
+[JsonConverter(typeof(ParamJsonConverter))]
+public class Param
+{
+    public string Name { get; set; }
+    public string? AccessionCURIE { get; set; }
+    internal object? rawValue;
+    public string? UnitCURIE { get; set; }
+
+    public bool IsDouble()
+    {
+        return rawValue is double;
+    }
+
+    public bool IsLong()
+    {
+
+        return rawValue is long;
+    }
+
+    public bool IsString()
+    {
+        return rawValue is string;
+    }
+
+    public bool IsBoolean()
+    {
+        return rawValue is bool;
+    }
+
+    public bool IsNull()
+    {
+        return rawValue == null;
+    }
+
+    public Param(string name, object? rawValue)
+    {
+        Name = name;
+        this.rawValue = rawValue;
+    }
+
+    public Param(string name, string accession, object? rawValue)
+    {
+        Name = name;
+        AccessionCURIE = accession;
+        this.rawValue = rawValue;
+    }
+
+    public Param(string name, string? accession, object? rawValue, string? unit)
+    {
+        Name = name;
+        AccessionCURIE = accession;
+        this.rawValue = rawValue;
+        UnitCURIE = unit;
+    }
+
+    public string AsString()
+    {
+        var s = Convert.ToString(rawValue);
+        return s == null ? "" : s;
+    }
+
+    public long AsLong()
+    {
+        return Convert.ToInt64(rawValue);
+    }
+
+    public double AsDouble()
+    {
+        return Convert.ToDouble(rawValue);
+    }
+
+    public bool AsBoolean()
+    {
+        return Convert.ToBoolean(rawValue);
+    }
+
+    public override string ToString()
+    {
+        var builder = new StringBuilder();
+        builder.Append("Param {\n");
+        builder.Append("\tName = ");
+        builder.Append(Name);
+        builder.Append(",\n\tAccessionCURIE = ");
+        builder.Append(AccessionCURIE);
+        builder.Append(",\n\trawValue = ");
+        builder.Append(rawValue);
+        builder.Append(",\n\tUnitCURIE = ");
+        builder.Append(UnitCURIE);
+        builder.Append("\n}");
+        return builder.ToString();
+    }
+}
+
+
+public class ParamJsonConverter : JsonConverter<Param>
+{
+    public override Param? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException();
+        }
+        string? name = null;
+        object? value = null;
+        string? accession = null;
+        string? unit = null;
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+            {
+                if (name == null)
+                {
+                    throw new JsonException("parameter name cannot be null");
+                }
+                return new Param(name, accession, value, unit);
+            }
+
+            // Get the key.
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                throw new JsonException();
+            }
+
+            string? propertyName = reader.GetString();
+            reader.Read();
+            switch (propertyName)
+            {
+                case null:
+                    {
+                        throw new JsonException("property name cannot be null");
+                    }
+                case "name":
+                    {
+                        name = reader.GetString();
+                        if (name == null)
+                        {
+                            throw new JsonException("parameter name cannot be null");
+                        }
+                        break;
+                    }
+                case "value":
+                    {
+                        if (reader.TokenType == JsonTokenType.Number)
+                        {
+                            double vdouble;
+                            long vlong;
+                            if (reader.TryGetDouble(out vdouble))
+                            {
+                                value = vdouble;
+                            }
+                            else if (reader.TryGetInt64(out vlong))
+                            {
+                                value = vlong;
+                            }
+                        }
+                        else if ((reader.TokenType == JsonTokenType.True) || reader.TokenType == JsonTokenType.False)
+                        {
+                            value = reader.GetBoolean();
+                        }
+                        else if (reader.TokenType == JsonTokenType.String)
+                        {
+                            value = reader.GetString();
+                        }
+                        else if (reader.TokenType == JsonTokenType.Null)
+                        {
+                            value = null;
+                            reader.Skip();
+                        }
+
+                        break;
+                    }
+
+                case "accession":
+                    {
+                        accession = reader.GetString();
+                        break;
+                    }
+                case "unit":
+                    {
+                        unit = reader.GetString();
+                        break;
+                    }
+                default:
+                    {
+                        break;
+                    }
+            }
+        }
+        throw new JsonException("Unclosed parameter object");
+    }
+
+    public override void Write(Utf8JsonWriter writer, Param value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+
+        writer.WriteString("name", value.Name);
+        writer.WriteString("accession", value.AccessionCURIE);
+
+        if (value.IsBoolean())
+        {
+            writer.WriteBoolean("value", value.AsBoolean());
+        }
+        else if (value.IsDouble())
+        {
+            writer.WriteNumber("value", value.AsDouble());
+        }
+        else if (value.IsLong())
+        {
+            writer.WriteNumber("value", value.AsLong());
+        }
+        else if (value.IsString())
+        {
+            writer.WriteString("value", value.AsString());
+        }
+        else if (value.IsNull())
+        {
+            writer.WriteNull("value");
+        }
+
+        writer.WriteString("unit", value.UnitCURIE);
+        writer.WriteEndObject();
+    }
+}

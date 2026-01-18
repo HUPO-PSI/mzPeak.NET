@@ -2,6 +2,7 @@ namespace MZPeak.Metadata;
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MZPeak.ControlledVocabulary;
 using ParquetSharp;
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

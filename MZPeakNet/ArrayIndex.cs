@@ -3,6 +3,7 @@ namespace MZPeak.Metadata;
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Apache.Arrow.Types;
+using MZPeak.ControlledVocabulary;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BufferFormat
@@ -59,6 +60,22 @@ static class BufferContexteMethods
                 {
                     throw new InvalidOperationException("Cannot create index column name for `Other`");
                 }
+        }
+    }
+
+    public static ArrayType DefaultPrimaryAxis(this BufferContext entityType)
+    {
+        switch(entityType)
+        {
+            case BufferContext.Spectrum:
+                {
+                    return ArrayType.MZArray;
+                }
+            case BufferContext.Chromatogram:
+                {
+                    return ArrayType.TimeArray;
+                }
+            default: throw new InvalidOperationException("Unknown axis type for `Other`");
         }
     }
 }

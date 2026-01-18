@@ -67,6 +67,7 @@ public class MzPeakReader
         if (spectrumArraysMeta == null)
         {
             reader = new DataArraysReader(dataFacet, BufferContext.Spectrum);
+            reader.SpacingModels = spectrumMetadata?.GetSpacingModelIndex();
             spectrumArraysMeta = reader.Metadata;
         }
         else
