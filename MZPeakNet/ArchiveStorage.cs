@@ -7,6 +7,7 @@ using System.IO.Compression;
 
 using ParquetSharp.IO;
 using MZPeak.Metadata;
+using System.Text;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EntityType
@@ -48,6 +49,60 @@ public class FileIndexEntry
     [JsonPropertyName("data_kind")]
     public DataKind DataKind { get; set; }
 
+    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind)
+    {
+        string entityTypeTag = "";
+        switch (entityType)
+        {
+            case EntityType.Chromatogram:
+                {
+                    entityTypeTag = "chromatograms";
+                    break;
+                }
+            case EntityType.Spectrum:
+                {
+                    entityTypeTag = "spectra";
+                    break;
+                }
+            case EntityType.Other:
+                {
+                    throw new NotImplementedException(entityType.ToString());
+                }
+        }
+        string dataKindTag = "";
+        switch (dataKind)
+        {
+            case DataKind.DataArrays:
+                {
+                    dataKindTag = "data";
+                    break;
+                }
+            case DataKind.Metadata:
+                {
+                    dataKindTag = "metadata";
+                    break;
+                }
+            case DataKind.Peaks:
+                {
+                    dataKindTag = "peaks";
+                    break;
+                }
+            case DataKind.Proprietary:
+                {
+                    throw new NotImplementedException(dataKind.ToString());
+                }
+            case DataKind.Other:
+                {
+                    throw new NotImplementedException(dataKind.ToString());
+                }
+        }
+        return new FileIndexEntry(
+            string.Format("{0}_{1}.parquet", entityTypeTag, dataKindTag),
+            entityType,
+            dataKind
+        );
+    }
+
     public FileIndexEntry(string name, EntityType entityType, DataKind dataKind)
     {
         Name = name;
@@ -60,6 +115,8 @@ public class FileIndexEntry
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class FileIndex
 {
+    public const string FILE_NAME = "mzpeak_index.json";
+
     [JsonPropertyName("files")]
     public List<FileIndexEntry> Files { get; set; }
 
@@ -280,7 +337,7 @@ public class LocalZipArchive : IMZPeakArchiveStorage
         foreach (var entry in archive.Entries)
         {
             fileNames.Add(entry.Name);
-            if (entry.Name == "mzpeak_index.json")
+            if (entry.Name == Storage.FileIndex.FILE_NAME)
             {
                 using (var stream = new StreamReader(entry.Open()))
                 {
@@ -350,7 +407,7 @@ public class DirectoryArchive : IMZPeakArchiveStorage
 
             fileNames.Add(entry);
             var fName = System.IO.Path.GetFileName(entry);
-            if (fName == "mzpeak_index.json")
+            if (fName == Storage.FileIndex.FILE_NAME)
             {
 
                 using (var stream = new StreamReader(File.Open(entry, FileMode.Open)))
@@ -372,5 +429,49 @@ public class DirectoryArchive : IMZPeakArchiveStorage
             throw new FileNotFoundException("Index JSON file not found");
         }
         this.fileIndex = fileIndex;
+    }
+}
+
+
+public interface IMZPeakArchiveWriter : IDisposable
+{
+    public Stream OpenStream(FileIndexEntry indexEntry);
+
+    public FileIndex FileIndex();
+}
+
+
+public class DirectoryArchiveWriter : IMZPeakArchiveWriter
+{
+    public string Path;
+    public FileIndex FileIndex;
+
+    public DirectoryArchiveWriter(string path)
+    {
+        Path = path;
+        FileIndex = new();
+    }
+
+    public void Dispose()
+    {
+        var path = System.IO.Path.Join(Path, Storage.FileIndex.FILE_NAME);
+        using (var stream = File.OpenWrite(path))
+        {
+            var payload = JsonSerializer.Serialize(FileIndex);
+            var bytesOf = new UTF8Encoding().GetBytes(payload);
+            stream.Write(bytesOf);
+        }
+    }
+
+    public Stream OpenStream(FileIndexEntry indexEntry)
+    {
+        var path = System.IO.Path.Join(Path, indexEntry.Name);
+        FileIndex.Files.Add(indexEntry);
+        return File.OpenWrite(path);
+    }
+
+    FileIndex IMZPeakArchiveWriter.FileIndex()
+    {
+        return FileIndex;
     }
 }

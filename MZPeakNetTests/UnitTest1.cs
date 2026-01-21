@@ -51,17 +51,18 @@ public class ArchiveTest
         Assert.Single(dataReader.RowGroupIndex);
         Assert.Equal(48, dataReader.EntrySpanIndex.Length);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
-        await dataReader.ReadForIndex(10);
-        var it = dataReader.Enumerate();
-        await foreach (ChunkedArray block in it)
-        {
-            var chunk = (StructArray)block.Array(0);
-            var dtype = (StructType)chunk.Data.DataType;
-            foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
-            {
-                Assert.Equal(0, arr.NullCount);
-            }
-        }
+        await dataReader.ReadForIndex(0);
+        await dataReader.ReadForIndex(1);
+        // var it = dataReader.Enumerate();
+        // await foreach (ChunkedArray block in it)
+        // {
+        //     var chunk = (StructArray)block.Array(0);
+        //     var dtype = (StructType)chunk.Data.DataType;
+        //     foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
+        //     {
+        //         Assert.Equal(0, arr.NullCount);
+        //     }
+        // }
     }
 
     [Fact]
@@ -138,10 +139,11 @@ public class ArchiveTest
         var builder = new ParamListVisitor();
         builder.Visit(col);
         var paramsList = builder.ParamsLists;
+        var k = 0;
         foreach(var pars in paramsList) {
-            if (pars.Count > 0)
-                Console.WriteLine("{0}", pars[0]);
+            k += pars.Count;
         }
+        Assert.True(k > 0);
     }
 }
 

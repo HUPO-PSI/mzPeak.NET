@@ -1091,6 +1091,18 @@ public record ColumnParam
         }
     }
 
+    public static string Inflect(string accessionCURIE, string name, string? unit=null)
+    {
+        var tokens = accessionCURIE.Split(":").ToList();
+        tokens.AddRange(name.Split(" ").Select((v) => v.Replace("m/z", "mz")));
+        if (unit != null)
+        {
+            tokens.Add("unit");
+            tokens.AddRange(unit.Split(":"));
+        }
+        return string.Join("_", tokens);
+    }
+
     public static List<ColumnParam> FromFields(IEnumerable<Field> fields)
     {
         List<ColumnParam> cols = new();
@@ -1099,7 +1111,6 @@ public record ColumnParam
         foreach(var f in fields)
         {
             cols.Add(FromFieldIndex(f, i));
-            Console.WriteLine("{0}", cols.Last());
             i += 1;
         }
 

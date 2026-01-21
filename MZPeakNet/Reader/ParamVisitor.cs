@@ -1,7 +1,6 @@
 using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
-using MZPeak.Metadata;
 
 namespace MZPeak.Reader.Visitors;
 

@@ -107,47 +107,6 @@ public class RangeIndex : IEnumerable<GroupTagBounds<ulong>>
 }
 
 
-public class SpacingInterpolationModel<T> where T: struct, INumber<T>
-{
-    List<T> coefficients;
-
-    public SpacingInterpolationModel(List<T> coefficients)
-    {
-        this.coefficients = new();
-        Coefficients = coefficients;
-    }
-
-    public List<T> Coefficients
-    {
-        get => coefficients;
-        set
-        {
-            coefficients = value;
-            if (value.Count < 1)
-            {
-
-                throw new ArgumentOutOfRangeException(message: "Spacing Interpolation Model's coefficients must not be empty!", paramName: "value");
-            }
-        }
-    }
-
-    public T Predict(T value)
-    {
-        var acc = T.One * Coefficients[0];
-        for (int i = 1; i < Coefficients.Count; i++)
-        {
-            var x = value;
-            for (int j = 1; j < i; j++)
-            {
-                x *= value;
-            }
-            acc += x * Coefficients[i];
-        }
-        return acc;
-    }
-}
-
-
 public class DataArraysReaderMeta
 {
     public BufferContext Context;
@@ -416,22 +375,9 @@ public class BaseLayoutReader
 
     protected virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
-        var skipAhead = startFrom - rowCountRead;
-
-        var rowsToTake = (int)(endAt - startFrom);
-        bool continuesInNextBatch = (rowsToTake + (int)skipAhead) > rootStruct.Length;
-
-        if (continuesInNextBatch)
-        {
-            var rowsToTakeHere = (int)((ulong)rootStruct.Length - skipAhead);
-            rootStruct = (StructArray)rootStruct.Slice((int)skipAhead, rowsToTakeHere);
-            startFrom += (ulong)rowsToTakeHere;
-        }
-        else
-        {
-            rootStruct = (StructArray)rootStruct.Slice((int)skipAhead, rowsToTake);
-        }
-
+        var indexArr = (UInt64Array)rootStruct.Fields[0];
+        var mask = (BooleanArray)Compute.Equal(indexArr, entryIndex);
+        rootStruct = (StructArray)Compute.Filter(rootStruct, mask);
         rowCountRead += (ulong)rootStruct.Length;
         return rootStruct;
     }
@@ -520,10 +466,12 @@ public class BaseLayoutReader
                 rowCountRead += (ulong)batch.Length;
                 continue;
             }
-            if (rowCountRead > endAt)
+
+            if (rowCountRead >= endAt)
             {
                 break;
             }
+
             // Console.WriteLine("{0}-{1} out of {2}-{3}", rowCountRead, rowCountReadPlusBatch, startFrom, endAt);
             var chunk = ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
             chunks.Add(chunk);
@@ -540,6 +488,7 @@ public class PointLayoutReader : BaseLayoutReader
     protected override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
         var rows = base.ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
+        // Console.WriteLine("Processing {0}", rowCountRead);
         var fields = ((StructType)rows.Data.DataType).Fields;
         var columnsAfter = new List<IArrowArray?>(fields.Count);
         Dictionary<int, IArrowArray> converted = new();
@@ -556,6 +505,7 @@ public class PointLayoutReader : BaseLayoutReader
                     column = rows.Fields[i];
                 }
             }
+
             if(column == null)
             {
                 continue;
@@ -654,7 +604,7 @@ public class PointLayoutReader : BaseLayoutReader
             else
                 columnsAfter.Add(rows.Fields[i]);
         }
-        return new StructArray(rows.Data.DataType, rows.Length, columnsAfter, rows.NullBitmapBuffer); ;
+        return new StructArray(rows.Data.DataType, rows.Length, columnsAfter, default); ;
     }
 }
 

@@ -24,9 +24,9 @@ public record FileDescription
     }
 
     [JsonPropertyName("contents")]
-    public required List<Param> Contents {get; set;}
+    public List<Param> Contents {get; set;}
     [JsonPropertyName("source_files")]
-    public required List<SourceFile> SourceFiles {get; set;}
+    public List<SourceFile> SourceFiles {get; set;}
 }
 
 
@@ -163,31 +163,41 @@ public class MzPeakMetadata
 
     public static MzPeakMetadata FromParquet(ParquetFileReader reader)
     {
-        var fileDescription = JsonSerializer.Deserialize<FileDescription>(reader.FileMetaData.KeyValueMetadata["file_description"]);
-        if (fileDescription == null)
+        var meta = reader.FileMetaData.KeyValueMetadata;
+        string? buf = "";
+        FileDescription? fileDescription = new FileDescription();
+        if (meta.TryGetValue("file_description", out buf))
         {
-            throw new InvalidDataException("file_description failed to deserialize");
-        }
-        var instrumentConfigurations = JsonSerializer.Deserialize<List<InstrumentConfiguration>>(reader.FileMetaData.KeyValueMetadata["instrument_configuration_list"]);
-        if (instrumentConfigurations == null)
-        {
-            throw new InvalidDataException("instrument_configuration_list failed to deserialize");
-        }
-        var softwares = JsonSerializer.Deserialize<List<Software>>(reader.FileMetaData.KeyValueMetadata["software_list"]);
-        if (softwares == null)
-        {
-            throw new InvalidDataException("software_list failed to deserialize");
+            fileDescription = JsonSerializer.Deserialize<FileDescription>(buf);
+            if (fileDescription == null) throw new InvalidDataException("file_description failed to deserialize");
         }
 
-        var samples = JsonSerializer.Deserialize<List<Sample>>(reader.FileMetaData.KeyValueMetadata["sample_list"]);
-        if (samples == null)
+        List<InstrumentConfiguration>? instrumentConfigurations = new();
+        if (meta.TryGetValue("instrument_configuration_list", out buf))
         {
-            throw new InvalidDataException("sample_list failed to deserialize");
+            instrumentConfigurations = JsonSerializer.Deserialize<List<InstrumentConfiguration>>(buf);
+            if(instrumentConfigurations == null) throw new InvalidDataException("instrument_configuration_list failed to deserialize");
         }
-        var dataProcessingMethods = JsonSerializer.Deserialize<List<DataProcessingMethod>>(reader.FileMetaData.KeyValueMetadata["data_processing_method_list"]);
-        if (dataProcessingMethods == null)
+
+        List<Software>? softwares = new();
+        if (meta.TryGetValue("software_list", out buf))
         {
-            throw new InvalidDataException("data_processing_method_list failed to deserialize");
+            softwares = JsonSerializer.Deserialize<List<Software>>(buf);
+            if (softwares == null) throw new InvalidDataException("software_list failed to deserialize");
+        }
+
+        List<Sample>? samples = new();
+        if (meta.TryGetValue("sample_list", out buf))
+        {
+            samples = JsonSerializer.Deserialize<List<Sample>>(buf) ?? new();
+            if (samples == null) throw new InvalidDataException("sample_list failed to deserialize");
+        }
+
+        List<DataProcessingMethod> dataProcessingMethods = new();
+        if (meta.TryGetValue("data_processing_method_list", out buf))
+        {
+            dataProcessingMethods = JsonSerializer.Deserialize<List<DataProcessingMethod>>(buf) ?? new();
+            if (dataProcessingMethods == null) throw new InvalidDataException("data_processing_method_list failed to deserialize");
         }
 
         return new MzPeakMetadata(fileDescription, instrumentConfigurations, softwares, samples, dataProcessingMethods);
