@@ -320,7 +320,7 @@ public static class NullInterpolation
         }
     }
 
-    public static List<(int, int)> FindNullBounds(IArrowArray arrayValues)
+    public static List<(int, int)> FindNullBounds(Array arrayValues)
     {
         List<(int, int)> bounds = new();
         if (arrayValues.Length == 0) return bounds;
@@ -607,7 +607,7 @@ public static class Compute
         }
     }
 
-    public static IArrowArray IndicesToMask(IList<int> indices, int n)
+    public static Array IndicesToMask(IList<int> indices, int n)
     {
         BooleanArray.Builder acc = new();
         int j = 0;
@@ -635,11 +635,11 @@ public static class Compute
         return acc.Build();
     }
 
-    public static List<(int, int)> IndicesToSpans(IList<int> indices)
+    public static List<(T, T)> IndicesToSpans<T>(IList<T> indices) where T: struct, INumber<T>
     {
-        List<(int, int)> acc = new();
-        int? start = null;
-        int? last = null;
+        List<(T, T)> acc = new();
+        T? start = null;
+        T? last = null;
         foreach(var i in indices)
         {
             if (last == null)
@@ -649,13 +649,13 @@ public static class Compute
             }
             else
             {
-                if (i - last == 1)
+                if (i - last == T.One)
                 {
                     last = i;
                 }
                 else if (start != null)
                 {
-                    acc.Add(((int)start, (int)last));
+                    acc.Add(((T)start, (T)last));
                     start = i;
                     last = i;
                 }
@@ -663,11 +663,11 @@ public static class Compute
         }
         if (start != null && last != null)
         {
-            acc.Add(((int)start, indices.Last()));
+            acc.Add(((T)start, indices.Last()));
         }
         return acc;
     }
-    public static IArrowArray NullToZero<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    public static Array NullToZero<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
     {
         switch (array.Data.DataType.TypeId)
         {
@@ -736,7 +736,7 @@ public static class Compute
         }
     }
 
-    public static IArrowArray Equal<T>(PrimitiveArray<T> lhs, T rhs) where T: struct, INumber<T>
+    public static Array Equal<T>(PrimitiveArray<T> lhs, T rhs) where T: struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         for (int i = 0; i < lhs.Length; i++)
@@ -748,7 +748,7 @@ public static class Compute
         return cmp.Build();
     }
 
-    public static IArrowArray Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T: struct, INumber<T>
+    public static Array Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T: struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         if(lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
@@ -762,7 +762,7 @@ public static class Compute
         return cmp.Build();
     }
 
-    public static IArrowArray Filter(Array array, BooleanArray mask)
+    public static Array Filter(Array array, BooleanArray mask)
     {
         if (array.Length != mask.Length) throw new InvalidOperationException("Array and mask must have the same length");
         List<(int, int)> spans = new();
@@ -792,32 +792,94 @@ public static class Compute
         return Take(array, spans);
     }
 
-    public static IArrowArray Take(Array array, IList<(int, int)> spans)
+    public static Array Take(Array array, IList<(int, int)> spans)
     {
         if (spans.Count == 0)
         {
             return array.Slice(0, 0);
         }
-        List<IArrowArray> chunks = new();
+        List<Array> chunks = new();
         foreach(var (start, end) in spans)
         {
             if (end < start || end < 0 || start < 0) throw new InvalidOperationException(string.Format("Invalid span: {0} {1}", start, end));
             chunks.Add(array.Slice(start, end - start + 1));
         }
-        return ArrowArrayConcatenator.Concatenate(chunks);
+        return (Array)ArrowArrayConcatenator.Concatenate(chunks);
     }
 
-    public static IArrowArray Take(Array array, IList<int> indices)
+    public static Array Take(Array array, IList<int> indices)
     {
         if (indices.Count == 0)
         {
             return array.Slice(0, 0);
         }
-        List<IArrowArray> chunks = new();
+        List<Array> chunks = new();
         for (var i = 0; i < indices.Count; i++)
         {
             chunks.Add(array.Slice(i, 1));
         }
-        return ArrowArrayConcatenator.Concatenate(chunks);
+        return (Array)ArrowArrayConcatenator.Concatenate(chunks);
+    }
+
+    public static List<Array> Take(List<Array> batch, IList<int> indices)
+    {
+        return batch.Select(arr => Take(arr, indices)).ToList();
+    }
+
+    public static List<Array> Filter(List<Array> batch, BooleanArray mask)
+    {
+        return batch.Select(arr => Filter(arr, mask)).ToList();
+    }
+
+    public static RecordBatch Filter(RecordBatch batch, BooleanArray mask)
+    {
+        if (batch.Length != mask.Length) throw new InvalidOperationException("Array and mask must have the same length");
+        List<(int, int)> spans = new();
+        int? start = null;
+        for (int i = 0; i < mask.Length; i++)
+        {
+            var v = mask.GetValue(i);
+            if (v != null && (bool)v)
+            {
+                if (start != null) { }
+                else start = i;
+            }
+            else if (v != null && !(bool)v)
+            {
+                if (start != null)
+                {
+                    // Slices in Take include the trailing index
+                    spans.Add(((int)start, i - 1));
+                    start = null;
+                }
+                else { }
+            }
+        }
+        if (start != null)
+        {
+            spans.Add(((int)start, mask.Length - 1));
+        }
+        return Take(batch, spans);
+    }
+
+    public static RecordBatch Take(RecordBatch batch, IList<(int, int)> spans)
+    {
+        if (spans.Count == 0)
+        {
+            return batch.Slice(0, 0);
+        }
+        var builder = new RecordBatch.Builder();
+        foreach (var (start, end) in spans)
+        {
+            if (end < start || end < 0 || start < 0) throw new InvalidOperationException(string.Format("Invalid span: {0} {1}", start, end));
+            builder.Append(batch.Slice(start, end - start + 1));
+        }
+        return builder.Build();
+    }
+
+    public static RecordBatch Take(RecordBatch batch, IList<int> indices)
+    {
+        var spans = IndicesToSpans(indices);
+        return Take(batch, spans);
     }
 }

@@ -3,11 +3,12 @@ using Apache.Arrow.Types;
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using Array = Apache.Arrow.Array;
 
 namespace MZPeak.Writer.Data;
 
 
-public class BaseLayoutBuilder
+public abstract class BaseLayoutBuilder
 {
     public BufferContext BufferContext { get; protected set; }
 
@@ -17,6 +18,8 @@ public class BaseLayoutBuilder
     protected List<IArrowArrayBuilder> Arrays;
     protected List<IArrowType> DataTypes;
     public ArrayIndex ArrayIndex { get; protected set; }
+
+    public abstract string LayoutName();
 
     public BaseLayoutBuilder(ArrayIndex arrayIndex)
     {
@@ -63,6 +66,21 @@ public class BaseLayoutBuilder
             }
         }
     }
+
+    public abstract RecordBatch GetRecordBatch();
+
+    public Schema ArrowSchema()
+    {
+        List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
+
+        foreach(var entry in ArrayIndex.Entries)
+        {
+            var name = entry.CreateColumnName();
+            fields.Add(new Field(name, entry.GetArrowType(), true));
+        }
+        var root = new Field(LayoutName(), new StructType(fields), true);
+        return new Schema([root], []);
+    }
 }
 
 
@@ -73,9 +91,14 @@ public class PointLayoutBuilder : BaseLayoutBuilder
     public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex)
     {}
 
-    public void Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, IArrowArray> arrays)
+    public override string LayoutName()
     {
-        List<(ArrayIndexEntry, IArrowArray)> notCoveredArrays = new();
+        return "point";
+    }
+
+    public void Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    {
+        List<(ArrayIndexEntry, Array)> notCoveredArrays = new();
         ArrayIndexEntry? nullInterpolate = null;
         ArrayIndexEntry? nullZero = null;
         ArrayIndexEntry? intensityArray = null;
@@ -90,6 +113,8 @@ public class PointLayoutBuilder : BaseLayoutBuilder
             if (col.Key.Transform == NullInterpolation.NullInterpolateCURIE) nullInterpolate = col.Key;
             else if (col.Key.Transform == NullInterpolation.NullZeroCURIE) nullZero = col.Key;
         }
+
+        // TODO: Construct Auxiliary Array here
         foreach(var (k, v) in notCoveredArrays) arrays.Remove(k);
 
         if (intensityArray != null)
@@ -100,26 +125,31 @@ public class PointLayoutBuilder : BaseLayoutBuilder
                 case ArrowTypeId.Float:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((FloatArray)intensityArrayVal);
+                        intensityArrayVal = Compute.Compute.Take((FloatArray)intensityArrayVal, indices);
                         break;
                     }
                 case ArrowTypeId.Double:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((DoubleArray)intensityArrayVal);
+                        intensityArrayVal = Compute.Compute.Take((DoubleArray)intensityArrayVal, indices);
                         break;
                     }
                 case ArrowTypeId.Int32:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((Int32Array)intensityArrayVal);
+                        intensityArrayVal = Compute.Compute.Take((Int32Array)intensityArrayVal, indices);
                         break;
                     }
                 case ArrowTypeId.Int64:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((Int64Array)intensityArrayVal);
+                        intensityArrayVal = Compute.Compute.Take((Int64Array)intensityArrayVal, indices);
                         break;
                     }
                 default:
                     throw new NotImplementedException();
             }
+            arrays[intensityArray] = intensityArrayVal;
         }
 
         if (nullInterpolate != null && nullZero != null)
@@ -128,7 +158,7 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         } else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
     }
 
-    public int AddPoints(ulong entryIndex, Dictionary<ArrayIndexEntry, IArrowArray> arrays)
+    public int AddPoints(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
         int k = 0;
         foreach(var val in arrays.Values)
@@ -140,7 +170,7 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         foreach(var entry in ArrayIndex.Entries)
         {
             if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
-            IArrowArray? array;
+            Array? array;
             if (arrays.TryGetValue(entry, out array))
             {
                 var builder = Arrays[(int)entry.SchemaIndex];
@@ -214,5 +244,52 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         NumberOfPoints += (ulong)k;
 
         return 0;
+    }
+
+    public override RecordBatch GetRecordBatch()
+    {
+        List<Array> cols = [Index.Build()];
+        foreach(var (dtype, builder) in DataTypes.Zip(Arrays))
+        {
+            switch (dtype.TypeId)
+            {
+                case ArrowTypeId.Double:
+                    {
+                        var builderOf = (DoubleArray.Builder)builder;
+                        cols.Add(builderOf.Build());
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Float:
+                    {
+                        var builderOf = (FloatArray.Builder)builder;
+                        cols.Add(builderOf.Build());
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int32:
+                    {
+                        var builderOf = (Int32Array.Builder)builder;
+                        cols.Add(builderOf.Build());
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int64:
+                    {
+                        var builderOf = (Int64Array.Builder)builder;
+                        cols.Add(builderOf.Build());
+                        builderOf.Clear();
+                        break;
+                    }
+                default: throw new NotImplementedException();
+            }
+        }
+
+        var schema = ArrowSchema();
+        var dtypeOf = schema.GetFieldByIndex(0).DataType;
+        var layer = new StructArray(dtypeOf, Index.Length, cols, cols[0].NullBitmapBuffer, cols[0].NullCount);
+        Index.Clear();
+
+        return new RecordBatch(schema, [layer], layer.Length);
     }
 }

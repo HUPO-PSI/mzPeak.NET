@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
+using System.Net.NetworkInformation;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BufferFormat
@@ -44,9 +45,9 @@ public enum BufferContext
 
 static class BufferContexteMethods
 {
-    public static string IndexName(this BufferContext entityType)
+    public static string IndexName(this BufferContext bufferContext)
     {
-        switch (entityType)
+        switch (bufferContext)
         {
             case BufferContext.Spectrum:
                 {
@@ -63,9 +64,28 @@ static class BufferContexteMethods
         }
     }
 
-    public static ArrayType DefaultPrimaryAxis(this BufferContext entityType)
+    public static string Name(this BufferContext bufferContext)
     {
-        switch(entityType)
+        switch (bufferContext)
+        {
+            case BufferContext.Spectrum:
+                {
+                    return "spectrum";
+                }
+            case BufferContext.Chromatogram:
+                {
+                    return "chromatogram";
+                }
+            default:
+                {
+                    throw new InvalidOperationException("Cannot create index column name for `Other`");
+                }
+        }
+    }
+
+    public static ArrayType DefaultPrimaryAxis(this BufferContext bufferContext)
+    {
+        switch(bufferContext)
         {
             case BufferContext.Spectrum:
                 {
@@ -153,12 +173,22 @@ public record ArrayIndexEntry
     public string CreateColumnName()
     {
         var notAlpha = new Regex("[^A-Za-z_]+");
+        var arrayName = notAlpha.Replace(ArrayName.Replace("m/z", "mz").Replace(" array", ""), "_");
         if (BufferPriority == Metadata.BufferPriority.Primary)
         {
-            return notAlpha.Replace(ArrayName.Replace("m/z", "mz").Replace(" array", ""), "_");
+            return arrayName;
         } else
         {
-            throw new NotImplementedException("TODO");
+            var dtypeName = BinaryDataTypeMethods.FromCURIE[DataTypeCURIE].NameForColumn();
+            var unitName = UnitCURIE != null ? UnitMethods.FromCURIE[UnitCURIE].NameForColumn() : null;
+            if (unitName != null)
+            {
+                return string.Join("_", [arrayName, dtypeName, unitName]);
+            }
+            else
+            {
+                return string.Join("_", [arrayName, dtypeName]);
+            }
         }
     }
 }
@@ -167,10 +197,67 @@ public record ArrayIndexEntry
 public class ArrayIndex
 {
     [JsonPropertyName("prefix")]
-    public required string Prefix { get; set; }
+    public string Prefix { get; set; }
 
     [JsonPropertyName("entries")]
-    public required List<ArrayIndexEntry> Entries { get; set; }
+    public List<ArrayIndexEntry> Entries { get; set; }
 
     public int Length { get => Entries.Count; }
+
+    public ArrayIndex()
+    {
+        Prefix = "?";
+        Entries = new();
+    }
+
+    public ArrayIndex(string prefix, List<ArrayIndexEntry> entries)
+    {
+        Prefix = prefix;
+        Entries = entries;
+    }
+}
+
+
+public class ArrayIndexBuilder
+{
+    string Prefix;
+    List<ArrayIndexEntry> Entries;
+    BufferContext Context;
+    BufferFormat Format;
+
+    internal ArrayIndexBuilder(string prefix, BufferContext context, BufferFormat bufferFormat)
+    {
+        Prefix = prefix;
+        Context = context;
+        Entries = new();
+        Format = bufferFormat;
+    }
+
+    public static ArrayIndexBuilder PointBuilder(BufferContext context)
+    {
+        return new("point", context, BufferFormat.Point);
+    }
+
+    public static ArrayIndexBuilder ChunkBuilder(BufferContext context)
+    {
+        return new("chunk", context, BufferFormat.ChunkValues);
+    }
+
+    public ArrayIndexBuilder Add(ArrayType arrayType, BinaryDataType dataType, Unit? unit=null, uint? sortingRank=null, string? transform=null)
+    {
+        var entry = new ArrayIndexEntry()
+        {
+            ArrayName = arrayType.Name(),
+            ArrayTypeCURIE = arrayType.CURIE(),
+            Context = Context,
+            DataTypeCURIE = dataType.CURIE(),
+            UnitCURIE = unit?.CURIE(),
+            SchemaIndex = null,
+            Path = Prefix,
+            SortingRank = sortingRank,
+            Transform = transform,
+        };
+        entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
+        return this;
+    }
 }

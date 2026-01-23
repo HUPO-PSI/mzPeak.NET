@@ -161,10 +161,17 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param
 
     public List<IArrowArray> Build()
     {
-        List<IArrowArray> fields = new() { SourceIndex.Build(), PrecursorIndex.Build(), PrecursorId.Build() };
-        fields.AddRange(IsolationWindow.Build());
-        fields.AddRange(Activation.Build());
-        return new() { new StructArray(ArrowType()[0].DataType, SourceIndex.Length, fields, default) };
+        List<IArrowArray> fields =
+        [
+            SourceIndex.Build(),
+            PrecursorIndex.Build(),
+            PrecursorId.Build(),
+            .. IsolationWindow.Build(),
+            .. Activation.Build(),
+        ];
+        var size = SourceIndex.Length;
+        Clear();
+        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
     }
 
     public void Clear()
@@ -289,6 +296,8 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             fields.AddRange(vis.Build());
         }
         fields.AddRange(ParamList.Build());
+        var size = Index.Length;
+
         Index.Clear();
         Id.Clear();
         Time.Clear();
@@ -296,7 +305,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         NumberOfAuxiliaryArrays.Clear();
         MzDeltaModel.Clear();
 
-        return new() { new StructArray(ArrowType()[0].DataType, Index.Length, fields, default) };
+        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
     }
 
     public void Clear()
@@ -391,7 +400,9 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string?
             fields.AddRange(vis.Build());
         }
         fields.AddRange(ParamList.Build());
-        return new() { new StructArray(ArrowType()[0].DataType, SourceIndex.Length, fields, default) };
+        var size = SourceIndex.Length;
+        Clear();
+        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
     }
 
     public void Clear()
@@ -471,19 +482,21 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
             fields.AddRange(vis.ArrowType());
         }
         fields.AddRange(ParamList.ArrowType());
-        return fields;
+        return new() { new Field("selected_ion", new StructType(fields), true) };
     }
 
     public List<IArrowArray> Build()
     {
-        var tp = new StructType(ArrowType());
+        var tp = ArrowType()[0];
         List<IArrowArray> fields = new() { SourceIndex.Build(), PrecursorIndex.Build(), IonMobility.Build(), IonMobilityType.Build() };
         foreach(var vis in ParamVisitors)
         {
             fields.AddRange(vis.Build());
         }
         fields.AddRange(ParamList.Build());
-        return new(){new StructArray(tp, SourceIndex.Length, fields, default)};
+        var size = SourceIndex.Length;
+        Clear();
+        return new(){new StructArray(tp.DataType, size, fields, default)};
     }
 
     public void Clear()

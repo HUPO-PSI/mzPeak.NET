@@ -39,14 +39,15 @@ public class NullInterpolationTest
         };
 
         var spans = Compute.IndicesToSpans(v);
+        Assert.Equal(2, spans.Count);
         Assert.Equal((1, 4), spans[0]);
         Assert.Equal((6, 9), spans[1]);
 
-        v = new List<int>()
-        {
+        v =
+        [
             1,2,4,
             6,7,8,9
-        };
+        ];
         spans = Compute.IndicesToSpans(v);
         Assert.Equal((1, 2), spans[0]);
         Assert.Equal((4, 4), spans[1]);
@@ -95,7 +96,7 @@ public class NullInterpolationTest
         Assert.Equal(mzs.Count, intensities.Count);
 
         var deltas = NullInterpolation.CollectDeltas(mzs, sort: false);
-        var model = SpacingInterpolationModel<double>.FitRegression(
+        var model = SpacingInterpolationModel<double>.Fit(
             mzs.Skip(1).ToList(),
             deltas,
             intensities.Skip(1).ToList()

@@ -380,6 +380,13 @@ public static class UnitMethods
         ((Unit[])Enum.GetValues(typeof(Unit))).Select((v) => new KeyValuePair<string, Unit>(v.CURIE(), v))
     );
 
+    public static string NameForColumn(this Unit unit)
+    {
+        var name = unit.Name();
+        name = string.Join("_", name.Replace("/", "").Replace(" unit", "").Split(" "));
+        return name;
+    }
+
     public static string Name(this Unit unit)
     {
         switch(unit)
@@ -1047,6 +1054,105 @@ public static class SpectrumPropertiesMethods
     }
 }
 
+public enum BinaryDataType
+{
+    Int32,
+    Int64,
+    Float32,
+    Float64,
+    ASCII
+}
+
+public static class BinaryDataTypeMethods
+{
+    public static readonly Dictionary<string, BinaryDataType> FromCURIE = new Dictionary<string, BinaryDataType>(
+        ((BinaryDataType[])Enum.GetValues(typeof(BinaryDataType))).Select((v) => new KeyValuePair<string, BinaryDataType>(v.CURIE(), v))
+    );
+
+    public static string NameForColumn(this BinaryDataType dataType)
+    {
+        switch (dataType)
+        {
+            case BinaryDataType.Float32:
+                {
+                    return "float32";
+                }
+            case BinaryDataType.Float64:
+                {
+                    return "float64";
+                }
+            case BinaryDataType.Int32:
+                {
+                    return "integer32";
+                }
+            case BinaryDataType.Int64:
+                {
+                    return "integer64";
+                }
+            case BinaryDataType.ASCII:
+                {
+                    return "ascii";
+                }
+            default: throw new NotImplementedException();
+        }
+    }
+
+    public static string Name(this BinaryDataType dataType)
+    {
+        switch (dataType)
+        {
+            case BinaryDataType.Float32:
+                {
+                    return "32-bit float";
+                }
+            case BinaryDataType.Float64:
+                {
+                    return "64-bit float";
+                }
+            case BinaryDataType.Int32:
+                {
+                    return "32-bit integer";
+                }
+            case BinaryDataType.Int64:
+                {
+                    return "64-bit integer";
+                }
+            case BinaryDataType.ASCII:
+                {
+                    return "null-terminated ASCII string";
+                }
+            default: throw new NotImplementedException();
+        }
+    }
+
+    public static string CURIE(this BinaryDataType dataType)
+    {
+        switch (dataType)
+        {
+            case BinaryDataType.Float32:
+                {
+                    return "MS:1000521";
+                }
+            case BinaryDataType.Float64:
+                {
+                    return "MS:1000523";
+                }
+            case BinaryDataType.Int32:
+                {
+                    return "MS:1000519";
+                }
+            case BinaryDataType.Int64:
+                {
+                    return "MS:1000522";
+                }
+            case BinaryDataType.ASCII:
+                {
+                    return "MS:1001479";
+                }
+            default: throw new NotImplementedException();
+        }
+    }
+}
 
 public record ColumnParam
 {

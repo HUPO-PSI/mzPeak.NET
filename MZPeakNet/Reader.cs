@@ -56,6 +56,13 @@ public class MzPeakReader
         return await reader.ReadForIndex(index);
     }
 
+    public RecordBatch? SpectrumMetadata {
+        get
+        {
+            return spectrumMetadata?.SpectrumMetadata;
+        }
+    }
+
     public async Task<ChunkedArray?> GetSpectrumData(ulong index)
     {
         var dataFacet = storage.SpectrumData();

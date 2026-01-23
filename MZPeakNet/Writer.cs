@@ -4,13 +4,14 @@ using Apache.Arrow;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Storage;
+using MZPeak.Writer.Data;
 
-
-public class MZPeakWriter
+public class MZPeakWriter : IDisposable
 {
     MzPeakMetadata mzPeakMetadata;
     IMZPeakArchiveWriter Storage;
     Visitors.SpectrumMetadataBuilder SpectrumMetadata;
+    BaseLayoutBuilder SpectrumData;
 
     public FileDescription FileDescription => mzPeakMetadata.FileDescription;
     public List<InstrumentConfiguration> InstrumentConfigurations => mzPeakMetadata.InstrumentConfigurations;
@@ -18,12 +19,39 @@ public class MZPeakWriter
     public List<Sample> Samples => mzPeakMetadata.Samples;
     public List<DataProcessingMethod> DataProcessingMethods => mzPeakMetadata.DataProcessingMethods;
 
-
     public MZPeakWriter(IMZPeakArchiveWriter storage)
     {
         Storage = storage;
         mzPeakMetadata = new();
         SpectrumMetadata = new();
+        SpectrumData = new PointLayoutBuilder(
+            new ArrayIndex("point", [
+                new ArrayIndexEntry() {
+                    Context = BufferContext.Spectrum,
+                    ArrayName = ArrayType.MZArray.Name(),
+                    ArrayTypeCURIE = ArrayType.MZArray.CURIE(),
+                    BufferPriority = BufferPriority.Primary,
+                    DataTypeCURIE = BinaryDataType.Float64.CURIE(),
+                    SchemaIndex = 1,
+                    SortingRank = 1,
+                    UnitCURIE = Unit.MZ.CURIE(),
+                    BufferFormat = BufferFormat.Point,
+                    Path = "point.mz"
+                },
+                new ArrayIndexEntry() {
+                    Context = BufferContext.Spectrum,
+                    ArrayName = ArrayType.IntensityArray.Name(),
+                    ArrayTypeCURIE = ArrayType.IntensityArray.CURIE(),
+                    BufferPriority = BufferPriority.Primary,
+                    DataTypeCURIE = BinaryDataType.Float32.CURIE(),
+                    SchemaIndex = 1,
+                    SortingRank = 1,
+                    UnitCURIE = Unit.MZ.CURIE(),
+                    BufferFormat = BufferFormat.Point,
+                    Path = "point.intensity"
+                }
+            ])
+        );
     }
 
     public ulong AddSpectrum(
@@ -82,9 +110,10 @@ public class MZPeakWriter
     public void AddSelectedIon(
         ulong sourceIndex,
         ulong precursorIndex,
-        double? ionMobility,
-        string? ionMobilityType,
-        List<Param> selectedIonParams)
+        List<Param> selectedIonParams,
+        double? ionMobility=null,
+        string? ionMobilityType=null
+    )
     {
         SpectrumMetadata.AppendSelectedIon(
             sourceIndex,
@@ -109,5 +138,10 @@ public class MZPeakWriter
         writer.NewBufferedRowGroup();
         writer.WriteBufferedRecordBatch(SpectrumMetadata.Build());
         writer.Close();
+    }
+
+    public void Dispose()
+    {
+        Storage.Dispose();
     }
 }

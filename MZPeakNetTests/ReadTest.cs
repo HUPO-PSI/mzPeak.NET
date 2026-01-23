@@ -53,16 +53,16 @@ public class ArchiveTest
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
         await dataReader.ReadForIndex(0);
         await dataReader.ReadForIndex(1);
-        // var it = dataReader.Enumerate();
-        // await foreach (ChunkedArray block in it)
-        // {
-        //     var chunk = (StructArray)block.Array(0);
-        //     var dtype = (StructType)chunk.Data.DataType;
-        //     foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
-        //     {
-        //         Assert.Equal(0, arr.NullCount);
-        //     }
-        // }
+        var it = dataReader.Enumerate();
+        await foreach (ChunkedArray block in it)
+        {
+            var chunk = (StructArray)block.Array(0);
+            var dtype = (StructType)chunk.Data.DataType;
+            foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
+            {
+                Assert.Equal(0, arr.NullCount);
+            }
+        }
     }
 
     [Fact]

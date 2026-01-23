@@ -187,7 +187,6 @@ public class SpectrumMetadataBuilder
         var scanArrays = Scan.Build();
         var precursorArrays = Precursor.Build();
         var selectedIonArrays = SelectedIon.Build();
-
         int spectrumLength = spectrumArrays[0].Length;
 
         arrays.AddRange(spectrumArrays);

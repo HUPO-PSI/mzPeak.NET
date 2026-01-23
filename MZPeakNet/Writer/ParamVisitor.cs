@@ -170,48 +170,60 @@ public class ParamBuilder : IArrowBuilder<Param>
 
 public class ParamListBuilder : IArrowBuilder<List<Param>>
 {
-    public ListArray.Builder ParamList;
+    protected ParamBuilder ValueBuilder;
+    protected Int32Array.Builder OffsetBuilder;
 
-    public int Length => ParamList.Length;
+    public int Length => ValueBuilder.Length;
 
     public ParamListBuilder()
     {
-        ParamList = new ListArray.Builder(new ParamBuilder().ArrowType()[0]);
+        ValueBuilder = new();
+        OffsetBuilder = new();
     }
 
     public void AppendNull()
     {
-        ParamList.AppendNull();
+        OffsetBuilder.Append(ValueBuilder.Length);
     }
 
     public void Append(List<Param> @params)
     {
         foreach(var par in @params)
         {
-            ((ParamBuilder)ParamList.ValueBuilder).Append(par);
+            ValueBuilder.Append(par);
         }
-        ParamList.Append();
+        OffsetBuilder.Append(ValueBuilder.Length);
     }
 
     public List<Field> ArrowType()
     {
         return new (){
-            new Field("parameters", new ListType(((ParamBuilder)ParamList.ValueBuilder).ArrowType()[0].DataType), true)
+            new Field("parameters", new ListType(ValueBuilder.ArrowType()[0].DataType), true)
         };
     }
 
     public List<IArrowArray> Build()
     {
-        List<IArrowArray> x = new() {
-            ParamList.Build()
-        };
-        ParamList.Clear();
-        return x;
+        var vals = ValueBuilder.Build()[0];
+        var offsets = OffsetBuilder.Build();
+        var dtype = ValueBuilder.ArrowType()[0];
+
+        var list = new ListArray(
+            new ListType(dtype.DataType),
+            vals.Length,
+            offsets.ValueBuffer,
+            vals,
+            offsets.NullBitmapBuffer,
+            offsets.NullCount
+        );
+        ValueBuilder.Clear();
+        OffsetBuilder.Clear();
+        return [list];
     }
 
     public void Clear()
     {
-        ParamList.Clear();
+        ValueBuilder.Clear();
     }
 }
 
