@@ -1,6 +1,7 @@
 using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Metadata;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -35,11 +36,12 @@ public class SpectrumMetadataBuilder
         string id,
         double time,
         string? dataProcessingRef,
-        int numberOfAuxiliaryArrays,
-        double[]? mzDeltaModel,
-        List<Param> spectrumParams)
+        List<double>? mzDeltaModel,
+        List<Param> spectrumParams,
+        List<AuxiliaryArray>? auxiliaryArrays=null
+    )
     {
-        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, numberOfAuxiliaryArrays, mzDeltaModel, spectrumParams);
+        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, mzDeltaModel, spectrumParams, auxiliaryArrays);
         var index = SpectrumCounter;
         SpectrumCounter += 1;
         return index;
@@ -61,10 +63,11 @@ public class SpectrumMetadataBuilder
     /// </summary>
     public void AppendScan(
         ulong sourceIndex,
-        string? instrumentConfigurationRef,
+        uint? instrumentConfigurationRef,
         double? ionMobility,
         string? ionMobilityType,
-        List<Param> scanParams)
+        List<Param> scanParams
+    )
     {
         if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
         Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanParams);
@@ -78,7 +81,8 @@ public class SpectrumMetadataBuilder
         ulong precursorIndex,
         string? precursorId,
         List<Param> isolationWindowParams,
-        List<Param> activationParams)
+        List<Param> activationParams
+    )
     {
         if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
         if (precursorIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Precursor index {0} is greater than {1}", precursorIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
@@ -93,7 +97,8 @@ public class SpectrumMetadataBuilder
         ulong precursorIndex,
         double? ionMobility,
         string? ionMobilityType,
-        List<Param> selectedIonParams)
+        List<Param> selectedIonParams
+    )
     {
         if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
         if (precursorIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Precursor index {0} is greater than {1}", precursorIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
@@ -103,14 +108,14 @@ public class SpectrumMetadataBuilder
     /// <summary>
     /// Get the Arrow schema for the packed parallel metadata table.
     /// </summary>
-    public Schema ArrowSchema()
+    public Schema ArrowSchema(IReadOnlyDictionary<string, string>? metadata=null)
     {
         var fields = new List<Field>();
         fields.AddRange(Spectrum.ArrowType());
         fields.AddRange(Scan.ArrowType());
         fields.AddRange(Precursor.ArrowType());
         fields.AddRange(SelectedIon.ArrowType());
-        return new Schema(fields, null);
+        return new Schema(fields, metadata);
     }
 
     /// <summary>

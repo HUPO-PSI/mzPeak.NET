@@ -5,6 +5,7 @@ using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Storage;
 using MZPeak.Writer.Data;
+using ParquetSharp.Arrow;
 
 public class MZPeakWriter : IDisposable
 {
@@ -13,69 +14,109 @@ public class MZPeakWriter : IDisposable
     Visitors.SpectrumMetadataBuilder SpectrumMetadata;
     BaseLayoutBuilder SpectrumData;
 
+    FileIndexEntry? CurrentEntry;
+    FileWriter CurrentWriter;
+
     public FileDescription FileDescription => mzPeakMetadata.FileDescription;
     public List<InstrumentConfiguration> InstrumentConfigurations => mzPeakMetadata.InstrumentConfigurations;
     public List<Software> Softwares => mzPeakMetadata.Softwares;
     public List<Sample> Samples => mzPeakMetadata.Samples;
     public List<DataProcessingMethod> DataProcessingMethods => mzPeakMetadata.DataProcessingMethods;
 
-    public MZPeakWriter(IMZPeakArchiveWriter storage)
+
+    protected static ArrayIndex DefaultSpectrumArrayIndex()
+    {
+        var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        return builder.Build();
+    }
+
+    public (FileWriter, FileIndexEntry) StartSpectrumData()
+    {
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .EnableDictionary()
+            .EnableWritePageIndex();
+
+        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        var schema = SpectrumData.ArrowSchema();
+        var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
+        return (writer, entry);
+    }
+
+    public void CloseCurrentWriter()
+    {
+        if (CurrentEntry != null)
+        {
+            CurrentWriter.Close();
+            CurrentEntry = null;
+        }
+    }
+
+    public MZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex spectrumArrayIndex)
     {
         Storage = storage;
         mzPeakMetadata = new();
         SpectrumMetadata = new();
-        SpectrumData = new PointLayoutBuilder(
-            new ArrayIndex("point", [
-                new ArrayIndexEntry() {
-                    Context = BufferContext.Spectrum,
-                    ArrayName = ArrayType.MZArray.Name(),
-                    ArrayTypeCURIE = ArrayType.MZArray.CURIE(),
-                    BufferPriority = BufferPriority.Primary,
-                    DataTypeCURIE = BinaryDataType.Float64.CURIE(),
-                    SchemaIndex = 1,
-                    SortingRank = 1,
-                    UnitCURIE = Unit.MZ.CURIE(),
-                    BufferFormat = BufferFormat.Point,
-                    Path = "point.mz"
-                },
-                new ArrayIndexEntry() {
-                    Context = BufferContext.Spectrum,
-                    ArrayName = ArrayType.IntensityArray.Name(),
-                    ArrayTypeCURIE = ArrayType.IntensityArray.CURIE(),
-                    BufferPriority = BufferPriority.Primary,
-                    DataTypeCURIE = BinaryDataType.Float32.CURIE(),
-                    SchemaIndex = 1,
-                    SortingRank = 1,
-                    UnitCURIE = Unit.MZ.CURIE(),
-                    BufferFormat = BufferFormat.Point,
-                    Path = "point.intensity"
-                }
-            ])
-        );
+        SpectrumData = new PointLayoutBuilder(spectrumArrayIndex);
+        (CurrentWriter, CurrentEntry) = StartSpectrumData();
+    }
+
+    public MZPeakWriter(IMZPeakArchiveWriter storage) : this(storage, DefaultSpectrumArrayIndex())
+    {}
+
+    public ulong CurrentSpectrum => SpectrumMetadata.SpectrumCounter;
+
+    public void AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    {
+        SpectrumData.Add(entryIndex, arrays);
+    }
+
+    public void AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays)
+    {
+        SpectrumData.Add(entryIndex, arrays);
+    }
+
+    public void FlushSpectrumData()
+    {
+        if (CurrentEntry?.DataKind == DataKind.DataArrays && CurrentEntry?.EntityType == EntityType.Spectrum)
+        {
+            var batch = SpectrumData.GetRecordBatch();
+            CurrentWriter.WriteBufferedRecordBatch(batch);
+        }
+        else if (SpectrumData.BufferedRows > 0)
+        {
+            throw new InvalidOperationException($"Attempting to flush the spectrum data buffer while the current entry is {CurrentEntry}");
+        }
     }
 
     public ulong AddSpectrum(
         string id,
         double time,
         string? dataProcessingRef,
-        int numberOfAuxiliaryArrays,
-        double[]? mzDeltaModel,
-        List<Param> spectrumParams
+        List<double>? mzDeltaModel,
+        List<Param> spectrumParams,
+        List<AuxiliaryArray>? auxiliaryArrays=null
     )
     {
         return SpectrumMetadata.AppendSpectrum(
             id,
             time,
             dataProcessingRef,
-            numberOfAuxiliaryArrays,
             mzDeltaModel,
-            spectrumParams
+            spectrumParams,
+            auxiliaryArrays
         );
     }
 
     public void AddScan(
         ulong sourceIndex,
-        string? instrumentConfigurationRef,
+        uint? instrumentConfigurationRef,
         double? ionMobility,
         string? ionMobilityType,
         List<Param> scanParams
@@ -124,17 +165,17 @@ public class MZPeakWriter : IDisposable
         );
     }
 
-
     public void WriteSpectrumMetadata()
     {
+        CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Metadata);
         var stream = Storage.OpenStream(entry);
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder().Compression(ParquetSharp.Compression.Zstd).EnableDictionary().EnableWritePageIndex();
-        var arrowProps = new ParquetSharp.Arrow.ArrowWriterPropertiesBuilder().StoreSchema();
+        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
-        var writer = new ParquetSharp.Arrow.FileWriter(managedStream, SpectrumMetadata.ArrowSchema(), writerProps.Build(), arrowProps.Build());
+        var writer = new FileWriter(managedStream, SpectrumMetadata.ArrowSchema(), writerProps.Build(), arrowProps.Build());
         writer.NewBufferedRowGroup();
         writer.WriteBufferedRecordBatch(SpectrumMetadata.Build());
         writer.Close();

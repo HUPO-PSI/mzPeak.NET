@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Apache.Arrow;
+using Apache.Arrow.Types;
 
 namespace MZPeak.ControlledVocabulary;
 
@@ -45,6 +46,12 @@ public static class ArrayTypeMethods
     public static readonly Dictionary<string, ArrayType> FromCURIE = new Dictionary<string, ArrayType>(
         ((ArrayType[])Enum.GetValues(typeof(ArrayType))).Select((v) => new KeyValuePair<string, ArrayType>(v.CURIE(), v))
     );
+
+    public static Param Param(this ArrayType arrayType, string? nonStandardName=null)
+    {
+        if (arrayType == ArrayType.NonStandardDataArray) return new Param(arrayType.Name(), rawValue: nonStandardName, accession: arrayType.CURIE());
+        else return new Param(arrayType.Name(), rawValue: null, accession: arrayType.CURIE());
+    }
 
     public static string Name(this ArrayType arrayType)
     {
@@ -860,6 +867,42 @@ public static class UnitMethods
     }
 }
 
+public enum Compression
+{
+    NoCompression,
+    Zlib,
+    Zstd,
+}
+
+public static class CompressionMethods
+{
+    public static readonly Dictionary<string, Compression> FromCURIE = new Dictionary<string, Compression>(
+        ((Compression[])Enum.GetValues(typeof(Compression))).Select((v) => new KeyValuePair<string, Compression>(v.CURIE(), v))
+    );
+
+    public static string Name(this Compression compression)
+    {
+        switch (compression)
+        {
+            case Compression.NoCompression: return "no compression";
+            case Compression.Zlib: return "zlib compression";
+            case Compression.Zstd: return "zstd compression";
+            default: throw new NotImplementedException();
+        }
+    }
+
+    public static string CURIE(this Compression compression)
+    {
+        switch (compression)
+        {
+            case Compression.NoCompression: return "MS:1000576";
+            case Compression.Zlib: return "MS:1000574";
+            case Compression.Zstd: return "MS:1003780";
+            default: throw new NotImplementedException();
+        }
+    }
+}
+
 public enum SpectrumProperties
 {
     SpectrumProperty,
@@ -1152,6 +1195,37 @@ public static class BinaryDataTypeMethods
             default: throw new NotImplementedException();
         }
     }
+
+    public static ArrowType ArrowType(this BinaryDataType dataType)
+    {
+        switch (dataType.CURIE())
+        {
+            case "MS:1000521":
+                {
+                    return new FloatType();
+                }
+            case "MS:1000519":
+                {
+                    return new Int32Type();
+                }
+            case "MS:1000522":
+                {
+                    return new Int64Type();
+                }
+            case "MS:1000523":
+                {
+                    return new DoubleType();
+                }
+            case "MS:1001479":
+                {
+                    return new LargeStringType();
+                }
+            default:
+                {
+                    throw new InvalidDataException("Cannot map " + dataType.CURIE() + " to an Arrow type");
+                }
+        }
+    }
 }
 
 public record ColumnParam
@@ -1182,18 +1256,18 @@ public record ColumnParam
         if (indexOfUnit == -1)
         {
             var name = string.Join('_', tokens.Slice(2, tokens.Count - 2));
-            return new ColumnParam(name, curie, null, index, field.Name, false);
+            return new ColumnParam(name.Replace("_", " "), curie, null, index, field.Name, false);
         }
         else if (indexOfUnit < tokens.Count - 1)
         {
             var name = string.Join('_', tokens.Slice(2, indexOfUnit - 2));
             var unit = string.Join(':', tokens.Slice(indexOfUnit + 1, tokens.Count - indexOfUnit - 1));
-            return new ColumnParam(name, curie, unit, index, field.Name, false);
+            return new ColumnParam(name.Replace("_", " "), curie, unit, index, field.Name, false);
         }
         else
         {
             var name = string.Join('_', tokens.Slice(2, tokens.Count));
-            return new ColumnParam(name, curie, null, index, field.Name, true);
+            return new ColumnParam(name.Replace("_", " "), curie, null, index, field.Name, true);
         }
     }
 
@@ -1235,8 +1309,6 @@ public record ColumnParam
 }
 
 
-
-
 [JsonConverter(typeof(ParamJsonConverter))]
 public class Param
 {
@@ -1247,13 +1319,13 @@ public class Param
 
     public bool IsDouble()
     {
-        return rawValue is double;
+        return rawValue is double || rawValue is float;
     }
 
     public bool IsLong()
     {
 
-        return rawValue is long;
+        return rawValue is long || rawValue is int || rawValue is uint || rawValue is ulong;
     }
 
     public bool IsString()
@@ -1277,7 +1349,7 @@ public class Param
         this.rawValue = rawValue;
     }
 
-    public Param(string name, string accession, object? rawValue)
+    public Param(string name, string? accession, object? rawValue)
     {
         Name = name;
         AccessionCURIE = accession;

@@ -1,4 +1,5 @@
 using Apache.Arrow;
+using Apache.Arrow.Memory;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 
@@ -97,7 +98,6 @@ public class ParamValueBuilder : IArrowBuilder<string>, IArrowBuilder<long>, IAr
     public int Length => String.Length;
 }
 
-
 public class ParamBuilder : IArrowBuilder<Param>
 {
     public StringArray.Builder Name;
@@ -165,25 +165,37 @@ public class ParamBuilder : IArrowBuilder<Param>
         Value.Clear();
         UnitCURIE.Clear();
     }
-}
 
+    public void Visit(StructArray type)
+    {
+        throw new NotImplementedException();
+    }
+}
 
 public class ParamListBuilder : IArrowBuilder<List<Param>>
 {
-    protected ParamBuilder ValueBuilder;
-    protected Int32Array.Builder OffsetBuilder;
+    public ParamBuilder ValueBuilder { get; }
+    private ArrowBuffer.Builder<int> ValueOffsetsBufferBuilder { get; }
 
-    public int Length => ValueBuilder.Length;
+    private ArrowBuffer.BitmapBuilder ValidityBufferBuilder { get; }
+    public int NullCount { get; protected set; }
+
+    public int Length => ValueOffsetsBufferBuilder.Length;
 
     public ParamListBuilder()
     {
         ValueBuilder = new();
-        OffsetBuilder = new();
+        ValueOffsetsBufferBuilder = new();
+        ValidityBufferBuilder = new();
+        NullCount = 0;
+        Append();
     }
 
     public void AppendNull()
     {
-        OffsetBuilder.Append(ValueBuilder.Length);
+        ValueOffsetsBufferBuilder.Append(ValueBuilder.Length);
+        ValidityBufferBuilder.Append(false);
+        NullCount++;
     }
 
     public void Append(List<Param> @params)
@@ -192,7 +204,13 @@ public class ParamListBuilder : IArrowBuilder<List<Param>>
         {
             ValueBuilder.Append(par);
         }
-        OffsetBuilder.Append(ValueBuilder.Length);
+        Append();
+    }
+
+    public void Append()
+    {
+        ValueOffsetsBufferBuilder.Append(ValueBuilder.Length);
+        ValidityBufferBuilder.Append(true);
     }
 
     public List<Field> ArrowType()
@@ -202,31 +220,37 @@ public class ParamListBuilder : IArrowBuilder<List<Param>>
         };
     }
 
+    public ListArray Build(MemoryAllocator? allocator = default)
+    {
+        ValueOffsetsBufferBuilder.Append(ValueBuilder.Length);
+        ArrowBuffer validityBuffer = NullCount > 0
+                                ? ValidityBufferBuilder.Build(allocator)
+                                : ArrowBuffer.Empty;
+        var dtype = ValueBuilder.ArrowType()[0];
+        var dataType = new ListType(dtype.DataType);
+        var values = ValueBuilder.Build()[0];
+        var listy = new ListArray(
+            dataType,
+            Length - 1,
+            ValueOffsetsBufferBuilder.Build(allocator), values,
+            validityBuffer, NullCount, 0
+        );
+        return listy;
+    }
+
     public List<IArrowArray> Build()
     {
-        var vals = ValueBuilder.Build()[0];
-        var offsets = OffsetBuilder.Build();
-        var dtype = ValueBuilder.ArrowType()[0];
-
-        var list = new ListArray(
-            new ListType(dtype.DataType),
-            vals.Length,
-            offsets.ValueBuffer,
-            vals,
-            offsets.NullBitmapBuffer,
-            offsets.NullCount
-        );
-        ValueBuilder.Clear();
-        OffsetBuilder.Clear();
+        var list = Build(null);
         return [list];
     }
 
     public void Clear()
     {
         ValueBuilder.Clear();
+        ValidityBufferBuilder.Clear();
+        ValueOffsetsBufferBuilder.Clear();
     }
 }
-
 
 public class CustomBuilderFromParam : IArrowBuilder<Param>
 {
@@ -253,6 +277,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Int64:
                 {
                     Value = new Int64Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    Value = new Int32Array.Builder();
                     break;
                 }
             case ArrowTypeId.Double:
@@ -284,6 +313,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                     ((Int64Array.Builder)Value).AppendNull();
                     break;
                 }
+            case ArrowTypeId.Int32:
+                {
+                    ((Int32Array.Builder)Value).AppendNull();
+                    break;
+                }
             case ArrowTypeId.Double:
                 {
                     ((DoubleArray.Builder)Value).AppendNull();
@@ -306,30 +340,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
 
     public void Append(Param param)
     {
+        if (param.IsNull())
+        {
+            AppendNull();
+            return;
+        }
         switch (ValueType.TypeId)
         {
             case ArrowTypeId.Int64:
                 {
-                    if (param.IsNull()) AppendNull();
-                    else ((Int64Array.Builder)Value).Append(param.AsLong());
+                    ((Int64Array.Builder)Value).Append(param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    ((Int32Array.Builder)Value).Append((int)param.AsLong());
                     break;
                 }
             case ArrowTypeId.Double:
                 {
-                    if (param.IsNull()) AppendNull();
-                    else ((DoubleArray.Builder)Value).Append(param.AsDouble());
+                    ((DoubleArray.Builder)Value).Append(param.AsDouble());
                     break;
                 }
             case ArrowTypeId.String:
                 {
-                    if (param.IsNull()) AppendNull();
-                    else ((StringArray.Builder)Value).Append(param.AsString());
+                    ((StringArray.Builder)Value).Append(param.AsString());
                     break;
                 }
             case ArrowTypeId.Boolean:
                 {
-                    if (param.IsNull()) AppendNull();
-                    else ((BooleanArray.Builder)Value).Append(param.AsBoolean());
+                    ((BooleanArray.Builder)Value).Append(param.AsBoolean());
                     break;
                 }
             default:
@@ -346,6 +386,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Int64:
                 {
                     fields.Add(new Field(baseName, new Int64Type(), true));
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    fields.Add(new Field(baseName, new Int32Type(), true));
                     break;
                 }
             case ArrowTypeId.Double:
@@ -381,25 +426,26 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Int64:
                 {
                     cols.Add(((Int64Array.Builder)Value).Build());
-                    ((Int64Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    cols.Add(((Int32Array.Builder)Value).Build());
                     break;
                 }
             case ArrowTypeId.Double:
                 {
                     cols.Add(((DoubleArray.Builder)Value).Build());
-                    ((DoubleArray.Builder)Value).Clear();
                     break;
                 }
             case ArrowTypeId.String:
                 {
                     cols.Add(((StringArray.Builder)Value).Build());
-                    ((StringArray.Builder)Value).Clear();
                     break;
                 }
             case ArrowTypeId.Boolean:
                 {
                     cols.Add(((BooleanArray.Builder)Value).Build());
-                    ((BooleanArray.Builder)Value).Clear();
                     break;
                 }
             default:
@@ -407,7 +453,6 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         }
         if (UnitValue != null) {
             cols.Add(UnitValue.Build());
-            UnitValue.Clear();
         }
         return cols;
     }
@@ -417,24 +462,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         switch (ValueType.TypeId)
         {
             case ArrowTypeId.Int64:
-                ((Int64Array.Builder)Value).Clear();
-                break;
+                {
+                    ((Int64Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    ((Int32Array.Builder)Value).Clear();
+                    break;
+                }
             case ArrowTypeId.Double:
-                ((DoubleArray.Builder)Value).Clear();
-                break;
+                {
+                    ((DoubleArray.Builder)Value).Clear();
+                    break;
+                }
             case ArrowTypeId.String:
-                ((StringArray.Builder)Value).Clear();
-                break;
+                {
+                    ((StringArray.Builder)Value).Clear();
+                    break;
+                }
             case ArrowTypeId.Boolean:
-                ((BooleanArray.Builder)Value).Clear();
-                break;
+                {
+                    ((BooleanArray.Builder)Value).Clear();
+                    break;
+                }
             default:
                 throw new InvalidOperationException("CustomBuilderFromParam does not support " + ValueType.Name);
         }
         UnitValue?.Clear();
     }
 }
-
 
 public class ParamVisitorCollection
 {

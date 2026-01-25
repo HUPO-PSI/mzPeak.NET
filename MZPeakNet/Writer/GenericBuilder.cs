@@ -1,6 +1,7 @@
 using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Metadata;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -185,14 +186,15 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param
 }
 
 
-public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, int, double[]?, List<Param>)>
+public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<double>?, List<Param>, List<AuxiliaryArray>)>
 {
     UInt64Array.Builder Index;
     StringArray.Builder Id;
     DoubleArray.Builder Time;
     StringArray.Builder DataProcessingRef;
-    Int32Array.Builder NumberOfAuxiliaryArrays;
     ListArray.Builder MzDeltaModel;
+    Int32Array.Builder NumberOfAuxiliaryArrays;
+    AuxiliaryArrayListBuilder AuxiliaryArrays;
 
     public int Length => Index.Length;
 
@@ -218,21 +220,23 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         DataProcessingRef = new();
         NumberOfAuxiliaryArrays = new();
         MzDeltaModel = new ListArray.Builder(new DoubleType());
+        AuxiliaryArrays = new();
     }
 
-    public void Append((ulong, string, double, string?, int, double[]?, List<Param>) value)
+    public void Append((ulong, string, double, string?, List<double>?, List<Param>, List<AuxiliaryArray>) value)
     {
         Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6, value.Item7);
     }
 
-    public void Append(ulong index, string id, double time, string? dataProcessingRef, int numberOfAuxiliaryArrays, double[]? mzDeltaModel, List<Param> parameters)
+    public void Append(ulong index, string id, double time, string? dataProcessingRef, List<double>? mzDeltaModel, List<Param> parameters, List<AuxiliaryArray>? auxiliaryArrays=null)
     {
         Index.Append(index);
         Id.Append(id);
         Time.Append(time);
         if (dataProcessingRef != null) DataProcessingRef.Append(dataProcessingRef);
         else DataProcessingRef.AppendNull();
-        NumberOfAuxiliaryArrays.Append(numberOfAuxiliaryArrays);
+        NumberOfAuxiliaryArrays.Append(auxiliaryArrays?.Count ?? 0);
+        AuxiliaryArrays.Append(auxiliaryArrays ?? []);
         if (mzDeltaModel != null)
         {
             var valueBuilder = (DoubleArray.Builder)MzDeltaModel.ValueBuilder;
@@ -258,6 +262,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         DataProcessingRef.AppendNull();
         NumberOfAuxiliaryArrays.AppendNull();
         MzDeltaModel.AppendNull();
+        AuxiliaryArrays.AppendNull();
         base.AppendNull();
     }
 
@@ -265,12 +270,13 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     {
         var fields = new List<Field>()
         {
-            new Field("index", new UInt64Type(), false),
-            new Field("id", new StringType(), false),
-            new Field("time", new DoubleType(), false),
+            new Field("index", new UInt64Type(), true),
+            new Field("id", new StringType(), true),
+            new Field("time", new DoubleType(), true),
             new Field("data_processing_ref", new StringType(), true),
-            new Field("number_of_auxiliary_arrays", new Int32Type(), false),
-            new Field("mz_delta_model", new ListType(new DoubleType()), true)
+            new Field("number_of_auxiliary_arrays", new Int32Type(), true),
+            new Field("mz_delta_model", new ListType(new DoubleType()), true),
+            new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         };
         foreach (var vis in ParamVisitors)
         {
@@ -289,7 +295,8 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             Time.Build(),
             DataProcessingRef.Build(),
             NumberOfAuxiliaryArrays.Build(),
-            MzDeltaModel.Build()
+            MzDeltaModel.Build(),
+            AuxiliaryArrays.Build()[0]
         };
         foreach (var vis in ParamVisitors)
         {
@@ -297,13 +304,6 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         }
         fields.AddRange(ParamList.Build());
         var size = Index.Length;
-
-        Index.Clear();
-        Id.Clear();
-        Time.Clear();
-        DataProcessingRef.Clear();
-        NumberOfAuxiliaryArrays.Clear();
-        MzDeltaModel.Clear();
 
         return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
     }
@@ -316,6 +316,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         DataProcessingRef.Clear();
         NumberOfAuxiliaryArrays.Clear();
         MzDeltaModel.Clear();
+        AuxiliaryArrays.Clear();
         foreach (var vis in ParamVisitors)
         {
             vis.Clear();
@@ -325,10 +326,10 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
 }
 
 
-public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string?, double?, string?, List<Param>)>
+public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, List<Param>)>
 {
     UInt64Array.Builder SourceIndex;
-    StringArray.Builder InstrumentConfigurationRef;
+    UInt32Array.Builder InstrumentConfigurationRef;
     DoubleArray.Builder IonMobility;
     StringArray.Builder IonMobilityType;
 
@@ -348,12 +349,12 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string?
         IonMobilityType = new();
     }
 
-    public void Append((ulong, string?, double?, string?, List<Param>) value)
+    public void Append((ulong, uint?, double?, string?, List<Param>) value)
     {
         Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5);
     }
 
-    public void Append(ulong sourceIndex, string? instrumentConfigurationRef, double? ionMobility, string? ionMobilityType, List<Param> parameters)
+    public void Append(ulong sourceIndex, uint? instrumentConfigurationRef, double? ionMobility, string? ionMobilityType, List<Param> parameters)
     {
         SourceIndex.Append(sourceIndex);
         if (instrumentConfigurationRef != null) InstrumentConfigurationRef.Append(instrumentConfigurationRef);
@@ -380,7 +381,7 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string?
         var fields = new List<Field>()
         {
             new Field("source_index", new UInt64Type(), true),
-            new Field("instrument_configuration_ref", new StringType(), true),
+            new Field("instrument_configuration_ref", new UInt32Type(), true),
             new Field("ion_mobility", new DoubleType(), true),
             new Field("ion_mobility_type", new StringType(), true)
         };
@@ -401,7 +402,6 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string?
         }
         fields.AddRange(ParamList.Build());
         var size = SourceIndex.Length;
-        Clear();
         return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
     }
 
@@ -495,7 +495,6 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         }
         fields.AddRange(ParamList.Build());
         var size = SourceIndex.Length;
-        Clear();
         return new(){new StructArray(tp.DataType, size, fields, default)};
     }
 

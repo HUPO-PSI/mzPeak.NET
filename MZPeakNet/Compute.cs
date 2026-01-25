@@ -46,7 +46,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return acc;
     }
 
-    public T MeanSquaredError(List<T?> coordinates, List<T> deltas)
+    public T MeanSquaredError(IReadOnlyList<T?> coordinates, List<T> deltas)
     {
         var acc = T.Zero;
         var n = T.Zero;
@@ -60,20 +60,19 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return acc / n;
     }
 
-    public static SpacingInterpolationModel<U> FitMedian<U>(List<U?> coordinates) where U: struct, INumber<U>
+    public static SpacingInterpolationModel<U> FitMedian<U>(IReadOnlyList<U?> coordinates) where U: struct, INumber<U>
     {
         var value = NullInterpolation.LocalMedianDelta(coordinates);
         return new(new(){value});
     }
-    public static SpacingInterpolationModel<U> FitRegression<U>(List<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U: struct, INumber<U>, IRootFunctions<U>
+
+    static (Matrix<U> data, MathNet.Numerics.LinearAlgebra.Vector<U> y, MathNet.Numerics.LinearAlgebra.Vector<U> cholWeights) ComputeFitArgs<U>(IReadOnlyList<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
         if (deltaThreshold == null) deltaThreshold = U.One;
 
         var columns = new List<List<U>>();
-        for (var i = 0; i <= rank; i++)
-        {
-            columns.Add(new());
-        }
+        for (var i = 0; i <= rank; i++) columns.Add(new());
+
         var weightsTransformed = new List<U>();
         var deltasFiltered = new List<U>();
         for (var i = 0; i < coordinates.Count; i++)
@@ -93,10 +92,18 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
                 v *= vi;
             }
         }
+
         var cholWeights = MathNet.Numerics.LinearAlgebra.Vector<U>.Build.DenseOfEnumerable(weightsTransformed);
         var y = MathNet.Numerics.LinearAlgebra.Vector<U>.Build.DenseOfEnumerable(deltasFiltered);
 
         var data = Matrix<U>.Build.DenseOfColumns(columns);
+
+        return (data, y, cholWeights);
+    }
+
+    public static SpacingInterpolationModel<U> FitRegression<U>(IReadOnlyList<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
+    {
+        var (data, y, cholWeights)  = ComputeFitArgs(coordinates, deltas, weights, deltaThreshold, rank);
         var QR = data.MapIndexed((i, j, v) => cholWeights[i] * v).QR();
         var cholY = cholWeights.PointwiseMultiply(y);
         var V = QR.Q.Transpose().Multiply(cholY);
@@ -106,7 +113,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return model;
     }
 
-    public static SpacingInterpolationModel<U> Fit<U>(List<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
+    public static SpacingInterpolationModel<U> Fit<U>(IReadOnlyList<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
         var simpleModel = FitMedian(coordinates);
         if (deltas.Count <= 3) return simpleModel;
@@ -296,7 +303,7 @@ public static class NullInterpolation
         return deltas;
     }
 
-    public static T SortedMedian<T>(List<T> values) where T : struct, INumber<T>
+    public static T SortedMedian<T>(IReadOnlyList<T> values) where T : struct, INumber<T>
     {
         if (values.Count == 0)
         {
@@ -736,7 +743,7 @@ public static class Compute
         }
     }
 
-    public static Array Equal<T>(PrimitiveArray<T> lhs, T rhs) where T: struct, INumber<T>
+    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs) where T: struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         for (int i = 0; i < lhs.Length; i++)
@@ -748,7 +755,7 @@ public static class Compute
         return cmp.Build();
     }
 
-    public static Array Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T: struct, INumber<T>
+    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T: struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         if(lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
@@ -829,6 +836,26 @@ public static class Compute
     public static List<Array> Filter(List<Array> batch, BooleanArray mask)
     {
         return batch.Select(arr => Filter(arr, mask)).ToList();
+    }
+
+    public static Dictionary<T, Array> Take<T>(Dictionary<T, Array> arrays, IList<int> indices) where T : notnull
+    {
+        Dictionary<T, Array> result = new();
+        foreach (var kv in arrays)
+        {
+            result[kv.Key] = Take(kv.Value, indices);
+        }
+        return result;
+    }
+
+    public static Dictionary<T, Array> Filter<T>(Dictionary<T, Array> arrays, BooleanArray mask) where T: notnull
+    {
+        Dictionary<T, Array> result = new();
+        foreach(var kv in arrays)
+        {
+            result[kv.Key] = Filter(kv.Value, mask);
+        }
+        return result;
     }
 
     public static RecordBatch Filter(RecordBatch batch, BooleanArray mask)

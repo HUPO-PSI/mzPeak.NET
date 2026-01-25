@@ -102,15 +102,31 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
             }
             else if (f.Name == "string")
             {
-                var vals = (LargeStringArray)facet;
-                for (var i = 0; i < vals.Length; i++)
+                if (facet.Data.DataType.TypeId == ArrowTypeId.LargeString)
                 {
-                    if (vals.IsValid(i))
+                    var vals = (LargeStringArray)facet;
+                    for (var i = 0; i < vals.Length; i++)
                     {
-                        var v = vals.GetString(i);
-                        Params[i].rawValue = v;
+                        if (vals.IsValid(i))
+                        {
+                            var v = vals.GetString(i);
+                            Params[i].rawValue = v;
+                        }
                     }
                 }
+                else if (facet.Data.DataType.TypeId == ArrowTypeId.String)
+                {
+                    var vals = (StringArray)facet;
+                    for (var i = 0; i < vals.Length; i++)
+                    {
+                        if (vals.IsValid(i))
+                        {
+                            var v = vals.GetString(i);
+                            Params[i].rawValue = v;
+                        }
+                    }
+                }
+                else throw new NotImplementedException(facet.Data.DataType.Name);
             }
             else if (f.Name == "boolean")
             {
@@ -159,7 +175,6 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
     }
 }
 
-
 public class ParamListVisitor : IArrowArrayVisitor<LargeListArray>
 {
     public List<List<Param>> ParamsLists;
@@ -167,6 +182,22 @@ public class ParamListVisitor : IArrowArrayVisitor<LargeListArray>
     public ParamListVisitor()
     {
         ParamsLists = new();
+    }
+    public void Visit(ListArray array)
+    {
+        var dtype = (ListType)array.Data.DataType;
+        if (dtype.ValueDataType.TypeId != ArrowTypeId.Struct) throw new InvalidDataException();
+        for (var i = 0; i < array.Length; i++)
+        {
+            if (array.IsNull(i)) ParamsLists.Add(new());
+            else
+            {
+                var slice = array.GetSlicedValues(i);
+                var visitor = new ParamVisitor();
+                visitor.Visit(slice);
+                ParamsLists.Add(visitor.Params);
+            }
+        }
     }
 
     public void Visit(LargeListArray array)
@@ -189,6 +220,7 @@ public class ParamListVisitor : IArrowArrayVisitor<LargeListArray>
     public void Visit(IArrowArray array)
     {
         if (array.Data.DataType.TypeId == ArrowTypeId.LargeList) Visit((LargeListArray)array);
+        else if (array.Data.DataType.TypeId == ArrowTypeId.List) Visit((ListArray)array);
         else throw new InvalidDataException();
     }
 }

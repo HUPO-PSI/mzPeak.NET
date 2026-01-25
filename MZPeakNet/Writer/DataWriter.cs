@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.Compute;
@@ -13,11 +14,15 @@ public abstract class BaseLayoutBuilder
     public BufferContext BufferContext { get; protected set; }
 
     public bool ShouldRemoveZeroRuns { get; set; } = true;
+    public bool UseNullMarking { get; set; } = false;
 
     protected UInt64Array.Builder Index;
     protected List<IArrowArrayBuilder> Arrays;
     protected List<IArrowType> DataTypes;
     public ArrayIndex ArrayIndex { get; protected set; }
+
+    public int BufferedRows => Index.Length;
+    public int BufferedSize => (Index.Length * 8) + DataTypes.Zip(Arrays).Sum(dt_builder => dt_builder.Second.Length);
 
     public abstract string LayoutName();
 
@@ -67,6 +72,10 @@ public abstract class BaseLayoutBuilder
         }
     }
 
+    public abstract (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile=null);
+    public abstract int Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays);
+    public abstract int Add(ulong entryIndex, IEnumerable<Array> arrays);
+
     public abstract RecordBatch GetRecordBatch();
 
     public Schema ArrowSchema()
@@ -79,7 +88,9 @@ public abstract class BaseLayoutBuilder
             fields.Add(new Field(name, entry.GetArrowType(), true));
         }
         var root = new Field(LayoutName(), new StructType(fields), true);
-        return new Schema([root], []);
+        Dictionary<string, string> meta = new();
+        meta[$"{BufferContext.Name()}_array_index"] = JsonSerializer.Serialize(ArrayIndex);
+        return new Schema([root], meta);
     }
 }
 
@@ -96,12 +107,14 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         return "point";
     }
 
-    public void Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public override (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         List<(ArrayIndexEntry, Array)> notCoveredArrays = new();
         ArrayIndexEntry? nullInterpolate = null;
         ArrayIndexEntry? nullZero = null;
         ArrayIndexEntry? intensityArray = null;
+        SpacingInterpolationModel<double>? deltaModel = null;
+        List<AuxiliaryArray> auxiliaryArrays = [];
         foreach (var col in arrays)
         {
             if (!ArrayIndex.Entries.Contains(col.Key))
@@ -115,7 +128,9 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         }
 
         // TODO: Construct Auxiliary Array here
-        foreach(var (k, v) in notCoveredArrays) arrays.Remove(k);
+        foreach(var (k, v) in notCoveredArrays) {
+            arrays.Remove(k);
+        }
 
         if (intensityArray != null)
         {
@@ -125,41 +140,56 @@ public class PointLayoutBuilder : BaseLayoutBuilder
                 case ArrowTypeId.Float:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((FloatArray)intensityArrayVal);
-                        intensityArrayVal = Compute.Compute.Take((FloatArray)intensityArrayVal, indices);
+                        arrays = Compute.Compute.Take(arrays, indices);
                         break;
                     }
                 case ArrowTypeId.Double:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((DoubleArray)intensityArrayVal);
-                        intensityArrayVal = Compute.Compute.Take((DoubleArray)intensityArrayVal, indices);
+                        arrays = Compute.Compute.Take(arrays, indices);
+                        break;
+                    }
+                case ArrowTypeId.Int8:
+                    {
+                        var indices = ZeroRunRemoval.WhereNotZeroRun((Int8Array)intensityArrayVal);
+                        arrays = Compute.Compute.Take(arrays, indices);
+                        break;
+                    }
+                case ArrowTypeId.Int16:
+                    {
+                        var indices = ZeroRunRemoval.WhereNotZeroRun((Int16Array)intensityArrayVal);
+                        arrays = Compute.Compute.Take(arrays, indices);
                         break;
                     }
                 case ArrowTypeId.Int32:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((Int32Array)intensityArrayVal);
-                        intensityArrayVal = Compute.Compute.Take((Int32Array)intensityArrayVal, indices);
+                        arrays = Compute.Compute.Take(arrays, indices);
                         break;
                     }
                 case ArrowTypeId.Int64:
                     {
                         var indices = ZeroRunRemoval.WhereNotZeroRun((Int64Array)intensityArrayVal);
-                        intensityArrayVal = Compute.Compute.Take((Int64Array)intensityArrayVal, indices);
+                        arrays = Compute.Compute.Take(arrays, indices);
                         break;
                     }
                 default:
                     throw new NotImplementedException();
             }
-            arrays[intensityArray] = intensityArrayVal;
         }
 
         if (nullInterpolate != null && nullZero != null)
         {
 
         } else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
+
+        return (arrays, deltaModel, auxiliaryArrays);
     }
 
-    public int AddPoints(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public override int Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
+        Preprocess(entryIndex, arrays);
+
         int k = 0;
         foreach(var val in arrays.Values)
         {
@@ -173,8 +203,8 @@ public class PointLayoutBuilder : BaseLayoutBuilder
             Array? array;
             if (arrays.TryGetValue(entry, out array))
             {
-                var builder = Arrays[(int)entry.SchemaIndex];
-                var dtype = DataTypes[(int)entry.SchemaIndex];
+                var builder = Arrays[(int)entry.SchemaIndex - 1];
+                var dtype = DataTypes[(int)entry.SchemaIndex - 1];
                 switch (dtype.TypeId)
                 {
                     case ArrowTypeId.Double:
@@ -188,6 +218,20 @@ public class PointLayoutBuilder : BaseLayoutBuilder
                         {
                             FloatArray valArray = (FloatArray)array;
                             FloatArray.Builder valBuilder = (FloatArray.Builder)builder;
+                            foreach (var v in valArray) valBuilder.Append(v);
+                            break;
+                        }
+                    case ArrowTypeId.Int8:
+                        {
+                            Int8Array valArray = (Int8Array)array;
+                            Int8Array.Builder valBuilder = (Int8Array.Builder)builder;
+                            foreach (var v in valArray) valBuilder.Append(v);
+                            break;
+                        }
+                    case ArrowTypeId.Int16:
+                        {
+                            Int16Array valArray = (Int16Array)array;
+                            Int16Array.Builder valBuilder = (Int16Array.Builder)builder;
                             foreach (var v in valArray) valBuilder.Append(v);
                             break;
                         }
@@ -207,10 +251,11 @@ public class PointLayoutBuilder : BaseLayoutBuilder
                         }
                     default: throw new NotImplementedException();
                 }
-            } else
+            }
+            else
             {
-                var builder = Arrays[(int)entry.SchemaIndex];
-                var dtype = DataTypes[(int)entry.SchemaIndex];
+                var builder = Arrays[(int)entry.SchemaIndex - 1];
+                var dtype = DataTypes[(int)entry.SchemaIndex - 1];
                 switch (dtype.TypeId)
                 {
                     case ArrowTypeId.Double:
@@ -223,6 +268,18 @@ public class PointLayoutBuilder : BaseLayoutBuilder
                         {
                             for (var j = 0; j < k; j++)
                                 ((FloatArray.Builder)builder).AppendNull();
+                            break;
+                        }
+                    case ArrowTypeId.Int8:
+                        {
+                            for (var j = 0; j < k; j++)
+                                ((Int8Array.Builder)builder).AppendNull();
+                            break;
+                        }
+                    case ArrowTypeId.Int16:
+                        {
+                            for (var j = 0; j < k; j++)
+                                ((Int16Array.Builder)builder).AppendNull();
                             break;
                         }
                     case ArrowTypeId.Int32:
@@ -246,6 +303,12 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         return 0;
     }
 
+    public override int Add(ulong entryIndex, IEnumerable<Array> arrays)
+    {
+        var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
+        return Add(entryIndex, kvs);
+    }
+
     public override RecordBatch GetRecordBatch()
     {
         List<Array> cols = [Index.Build()];
@@ -263,6 +326,20 @@ public class PointLayoutBuilder : BaseLayoutBuilder
                 case ArrowTypeId.Float:
                     {
                         var builderOf = (FloatArray.Builder)builder;
+                        cols.Add(builderOf.Build());
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int8:
+                    {
+                        var builderOf = (Int8Array.Builder)builder;
+                        cols.Add(builderOf.Build());
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int16:
+                    {
+                        var builderOf = (Int16Array.Builder)builder;
                         cols.Add(builderOf.Build());
                         builderOf.Clear();
                         break;

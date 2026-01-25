@@ -1,6 +1,7 @@
 
 using Apache.Arrow;
 using MZPeak.Metadata;
+using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 
 namespace MZPeak.Reader;
@@ -61,6 +62,36 @@ public class MzPeakReader
         {
             return spectrumMetadata?.SpectrumMetadata;
         }
+    }
+
+    public RecordBatch? ScanMetadata
+    {
+        get
+        {
+            return spectrumMetadata?.ScanMetadata;
+        }
+    }
+
+    public RecordBatch? PrecursorMetadata
+    {
+        get
+        {
+            return spectrumMetadata?.PrecursorMetadata;
+        }
+    }
+
+    public RecordBatch? SelectedIonMetadata
+    {
+        get
+        {
+            return spectrumMetadata?.PrecursorMetadata;
+        }
+    }
+
+    public SpectrumMetaRecord GetSpectrumMeta(ulong index)
+    {
+        if (spectrumMetadata == null) throw new InvalidOperationException("Spectrum metadata table is absent");
+        return spectrumMetadata.GetSpectrum(index);
     }
 
     public async Task<ChunkedArray?> GetSpectrumData(ulong index)

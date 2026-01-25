@@ -5,6 +5,11 @@ using System.Text.Json.Serialization;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using System.Net.NetworkInformation;
+using System.ComponentModel.DataAnnotations;
+using Apache.Arrow;
+using System.Net;
+using System.IO.Compression;
+using MZPeak.Reader.Visitors;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BufferFormat
@@ -139,6 +144,21 @@ public record ArrayIndexEntry
     [JsonIgnore]
     public int? SchemaIndex { get; set; } = null;
 
+    public ArrayType? GetArrayType()
+    {
+        ArrayType v;
+        if (ArrayTypeMethods.FromCURIE.TryGetValue(ArrayTypeCURIE, out v)) return v;
+        else return null;
+    }
+
+    public Unit? GetUnit()
+    {
+        if (UnitCURIE == null) return null;
+        Unit v;
+        if (UnitMethods.FromCURIE.TryGetValue(UnitCURIE, out v)) return v;
+        else return null;
+    }
+
     public ArrowType GetArrowType()
     {
         switch (DataTypeCURIE)
@@ -202,8 +222,6 @@ public class ArrayIndex
     [JsonPropertyName("entries")]
     public List<ArrayIndexEntry> Entries { get; set; }
 
-    public int Length { get => Entries.Count; }
-
     public ArrayIndex()
     {
         Prefix = "?";
@@ -243,7 +261,7 @@ public class ArrayIndexBuilder
         return new("chunk", context, BufferFormat.ChunkValues);
     }
 
-    public ArrayIndexBuilder Add(ArrayType arrayType, BinaryDataType dataType, Unit? unit=null, uint? sortingRank=null, string? transform=null)
+    public ArrayIndexBuilder Add(ArrayType arrayType, BinaryDataType dataType, Unit? unit=null, uint? sortingRank=null, string? transform=null, BufferPriority? priority=null)
     {
         var entry = new ArrayIndexEntry()
         {
@@ -256,8 +274,85 @@ public class ArrayIndexBuilder
             Path = Prefix,
             SortingRank = sortingRank,
             Transform = transform,
+            BufferPriority = priority
         };
         entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
+        Entries.Add(entry);
         return this;
     }
+
+    public void MarkPriorities()
+    {
+        Dictionary<ArrayType, int> indexOfFirst = new();
+        Dictionary<ArrayType, bool> hadPriority = new();
+        for (var i = 0; i < Entries.Count; i++)
+        {
+            var tp = ArrayTypeMethods.FromCURIE[Entries[i].ArrayTypeCURIE];
+            if (Entries[i].BufferPriority == BufferPriority.Primary)
+            {
+                hadPriority[tp] = true;
+            }
+            if (!indexOfFirst.ContainsKey(tp) && Entries[i].BufferPriority == null)
+            {
+                indexOfFirst[tp] = i;
+            }
+        }
+        foreach(var kv in indexOfFirst)
+        {
+            bool hadPriorityFor;
+            if (!hadPriority.TryGetValue(kv.Key, out hadPriorityFor))
+            {
+                hadPriorityFor = false;
+            }
+            if (hadPriorityFor) continue;
+            Entries[kv.Value].BufferPriority = BufferPriority.Primary;
+        }
+        foreach(var entry in Entries)
+        {
+            entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
+        }
+    }
+
+    public ArrayIndex Build()
+    {
+        MarkPriorities();
+        return new ArrayIndex(Prefix, Entries);
+    }
+}
+
+
+public class AuxiliaryArray :  HasParameters
+{
+    public Memory<byte> Data;
+    public Param Name;
+    public BinaryDataType DataType;
+    public Compression Compression;
+    public Unit? Unit;
+    public List<Param> Parameters;
+    public ArrowType ArrowType => DataType.ArrowType();
+
+    List<Param> HasParameters.Parameters { get => Parameters; set => Parameters = value; }
+
+    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression=Compression.NoCompression, List<Param>? parameters=null)
+    {
+        Data = data;
+        Name = name;
+        DataType = dataType;
+        Unit = unit;
+        Compression = compression;
+        Parameters = parameters ?? new();
+    }
+
+    public ReadOnlySpan<T> View<T>() where T: struct
+    {
+        if (Compression == Compression.NoCompression) return Data.Span.CastTo<T>();
+        switch (Compression)
+        {
+            case Compression.NoCompression: return Data.Span.CastTo<T>();
+            case Compression.Zlib: throw new NotImplementedException();
+            case Compression.Zstd: throw new NotImplementedException();
+            default: throw new NotImplementedException();
+        }
+    }
+
 }

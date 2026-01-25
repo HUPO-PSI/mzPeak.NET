@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Compute;
+using MZPeak.Reader.Visitors;
 
 
 namespace MZPeak.Metadata;
@@ -200,6 +201,50 @@ public class SpectrumMetadataReader : MetadataReaderBase
             return selectedIonMetadata;
         }
         set => selectedIonMetadata = value;
+    }
+
+    public SpectrumMetaRecord GetSpectrum(ulong index)
+    {
+        if (SpectrumMetadata == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
+
+        var idxArr = (UInt64Array)SpectrumMetadata.Column(0);
+        var mask = Compute.Compute.Equal(idxArr, index);
+        var recs = Compute.Compute.Filter(SpectrumMetadata, mask);
+        var visitor = new SpectrumVisitor();
+        visitor.Visit(recs);
+        var rec = visitor.Values[0];
+        List<ScanInfo> scanRecs = new();
+        if (ScanMetadata != null)
+        {
+            idxArr = (UInt64Array)ScanMetadata.Column(0);
+            mask = Compute.Compute.Equal(idxArr, index);
+            recs = Compute.Compute.Filter(ScanMetadata, mask);
+            var scanVisitor = new ScanVisitor();
+            scanVisitor.Visit(recs);
+            scanRecs = scanVisitor.Values;
+        }
+        List<PrecursorInfo> precursorInfos = new();
+        if (PrecursorMetadata != null)
+        {
+            idxArr = (UInt64Array)PrecursorMetadata.Column(0);
+            mask = Compute.Compute.Equal(idxArr, index);
+            recs = Compute.Compute.Filter(PrecursorMetadata, mask);
+            var scanVisitor = new PrecursorVisitor();
+            scanVisitor.Visit(recs);
+            precursorInfos = scanVisitor.Values;
+        }
+        List<SelectedIonInfo> selectedIons = new();
+        if (SelectedIonMetadata != null)
+        {
+            idxArr = (UInt64Array)SelectedIonMetadata.Column(0);
+            mask = Compute.Compute.Equal(idxArr, index);
+            recs = Compute.Compute.Filter(SelectedIonMetadata, mask);
+            var scanVisitor = new SelectedIonVisitor();
+            scanVisitor.Visit(recs);
+            selectedIons = scanVisitor.Values;
+        }
+
+        return new SpectrumMetaRecord(rec, scanRecs, precursorInfos, selectedIons);
     }
 
     public async Task InitializeTables()
