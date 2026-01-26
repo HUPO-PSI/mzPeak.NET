@@ -355,4 +355,50 @@ public class AuxiliaryArray :  HasParameters
         }
     }
 
+    public static AuxiliaryArray FromValues<T>(List<T> values, ArrayIndexEntry entry) where T : struct
+    {
+        var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(values)).ToArray();
+        var name = new Param(entry.ArrayName, entry.ArrayTypeCURIE, null, entry.UnitCURIE);
+        var dataType = BinaryDataTypeMethods.FromCURIE[entry.DataTypeCURIE];
+        var unit = entry.GetUnit();
+        return new AuxiliaryArray(bytes, name, dataType, unit, Compression.NoCompression);
+    }
+
+    public static AuxiliaryArray FromValues(IArrowArray values, ArrayIndexEntry entry)
+    {
+        switch (values.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return FromValues((DoubleArray)values, entry);
+            case ArrowTypeId.Float:
+                return FromValues((FloatArray)values, entry);
+            case ArrowTypeId.Int32:
+                return FromValues((Int32Array)values, entry);
+            case ArrowTypeId.Int64:
+                return FromValues((Int64Array)values, entry);
+            case ArrowTypeId.UInt32:
+                return FromValues((UInt32Array)values, entry);
+            case ArrowTypeId.UInt64:
+                return FromValues((UInt64Array)values, entry);
+            case ArrowTypeId.Int16:
+                return FromValues((Int16Array)values, entry);
+            case ArrowTypeId.Int8:
+                return FromValues((Int8Array)values, entry);
+            case ArrowTypeId.UInt16:
+                return FromValues((UInt16Array)values, entry);
+            case ArrowTypeId.UInt8:
+                return FromValues((UInt8Array)values, entry);
+            default:
+                throw new InvalidDataException("Unsupported data type " + values.Data.DataType.Name);
+        }
+    }
+
+    public static AuxiliaryArray FromValues<T>(PrimitiveArray<T> values, ArrayIndexEntry entry) where T : struct, System.Numerics.INumber<T>
+    {
+        var bytes = values.ValueBuffer.Memory.ToArray();
+        var name = new Param(entry.ArrayName, entry.ArrayTypeCURIE, null, entry.UnitCURIE);
+        var dataType = BinaryDataTypeMethods.FromCURIE[entry.DataTypeCURIE];
+        var unit = entry.GetUnit();
+        return new AuxiliaryArray(bytes, name, dataType, unit, Compression.NoCompression);
+    }
 }

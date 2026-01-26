@@ -37,6 +37,7 @@ public class MzPeakReader
     public List<Software> Softwares => spectrumMetadata?.Softwares ?? chromatogramMetadata?.Softwares ?? new();
     public List<Sample> Samples => spectrumMetadata?.Samples ?? chromatogramMetadata?.Samples ?? new();
     public List<DataProcessingMethod> DataProcessingMethods => spectrumMetadata?.DataProcessingMethods ?? chromatogramMetadata?.DataProcessingMethods ?? new();
+    public MSRun Run => spectrumMetadata?.Run ?? chromatogramMetadata?.Run ?? new();
     public async Task<ChunkedArray?> GetChromatogramData(ulong index)
     {
         var dataFacet = storage.ChromatogramData();
@@ -57,36 +58,19 @@ public class MzPeakReader
         return await reader.ReadForIndex(index);
     }
 
-    public RecordBatch? SpectrumMetadata {
-        get
-        {
-            return spectrumMetadata?.SpectrumMetadata;
-        }
-    }
+    public RecordBatch? SpectrumMetadata => spectrumMetadata?.SpectrumMetadata;
 
-    public RecordBatch? ScanMetadata
-    {
-        get
-        {
-            return spectrumMetadata?.ScanMetadata;
-        }
-    }
+    public RecordBatch? ScanMetadata => spectrumMetadata?.ScanMetadata;
 
-    public RecordBatch? PrecursorMetadata
-    {
-        get
-        {
-            return spectrumMetadata?.PrecursorMetadata;
-        }
-    }
+    public RecordBatch? PrecursorMetadata => spectrumMetadata?.PrecursorMetadata;
 
-    public RecordBatch? SelectedIonMetadata
-    {
-        get
-        {
-            return spectrumMetadata?.PrecursorMetadata;
-        }
-    }
+    public RecordBatch? SelectedIonMetadata => spectrumMetadata?.PrecursorMetadata;
+
+    public RecordBatch? ChromatogramMetadata => chromatogramMetadata?.ChromatogramMetadata;
+
+    public RecordBatch? ChromatogramPrecursorMetadata => chromatogramMetadata?.PrecursorMetadata;
+
+    public RecordBatch? ChromatogramSelectedIonMetadata => chromatogramMetadata?.PrecursorMetadata;
 
     public SpectrumMetaRecord GetSpectrumMeta(ulong index)
     {

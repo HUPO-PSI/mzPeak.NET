@@ -20,6 +20,7 @@ public class MetadataReaderBase
     public List<Software> Softwares => mzPeakMetadata.Softwares;
     public List<Sample> Samples => mzPeakMetadata.Samples;
     public List<DataProcessingMethod> DataProcessingMethods => mzPeakMetadata.DataProcessingMethods;
+    public MSRun Run => mzPeakMetadata.Run;
 
     protected MetadataReaderBase(MzPeakMetadata mzPeakMetadata)
     {

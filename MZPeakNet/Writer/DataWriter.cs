@@ -14,7 +14,6 @@ public abstract class BaseLayoutBuilder
     public BufferContext BufferContext { get; protected set; }
 
     public bool ShouldRemoveZeroRuns { get; set; } = true;
-    public bool UseNullMarking { get; set; } = false;
 
     protected UInt64Array.Builder Index;
     protected List<IArrowArrayBuilder> Arrays;
@@ -22,7 +21,7 @@ public abstract class BaseLayoutBuilder
     public ArrayIndex ArrayIndex { get; protected set; }
 
     public int BufferedRows => Index.Length;
-    public int BufferedSize => (Index.Length * 8) + DataTypes.Zip(Arrays).Sum(dt_builder => dt_builder.Second.Length);
+    public int BufferedSize => Index.Length + DataTypes.Zip(Arrays).Sum(dtBuilder => dtBuilder.Second.Length);
 
     public abstract string LayoutName();
 
@@ -73,8 +72,12 @@ public abstract class BaseLayoutBuilder
     }
 
     public abstract (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile=null);
-    public abstract int Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays);
-    public abstract int Add(ulong entryIndex, IEnumerable<Array> arrays);
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays);
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays);
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    {
+        return Add(entryIndex, arrays.Select(a => (Array)a));
+    }
 
     public abstract RecordBatch GetRecordBatch();
 
@@ -127,12 +130,13 @@ public class PointLayoutBuilder : BaseLayoutBuilder
             else if (col.Key.Transform == NullInterpolation.NullZeroCURIE) nullZero = col.Key;
         }
 
-        // TODO: Construct Auxiliary Array here
         foreach(var (k, v) in notCoveredArrays) {
+            Console.WriteLine($"{k} is treated as an auxiliary array");
             arrays.Remove(k);
+            auxiliaryArrays.Add(AuxiliaryArray.FromValues(v, k));
         }
 
-        if (intensityArray != null)
+        if (intensityArray != null && ShouldRemoveZeroRuns)
         {
             var intensityArrayVal = arrays[intensityArray];
             switch (intensityArrayVal.Data.DataType.TypeId)
@@ -180,15 +184,17 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 
         if (nullInterpolate != null && nullZero != null)
         {
-
+            var coordinates = Compute.Compute.CastDouble(arrays[nullInterpolate]);
+            var weights = arrays[nullZero];
+            deltaModel = SpacingInterpolationModel<double>.Fit(coordinates, weights);
         } else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
 
         return (arrays, deltaModel, auxiliaryArrays);
     }
 
-    public override int Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
-        Preprocess(entryIndex, arrays);
+        (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays);
 
         int k = 0;
         foreach(var val in arrays.Values)
@@ -300,10 +306,10 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         }
         NumberOfPoints += (ulong)k;
 
-        return 0;
+        return (deltaModel, auxiliaryArrays);
     }
 
-    public override int Add(ulong entryIndex, IEnumerable<Array> arrays)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays)
     {
         var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs);

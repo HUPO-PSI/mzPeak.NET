@@ -53,7 +53,6 @@ public class IsolationWindowBuilder : ParamVisitorCollection, IArrowBuilder<List
     }
 }
 
-
 public class ActivationBuilder : ParamVisitorCollection, IArrowBuilder<List<Param>>
 {
     public int Length => ParamVisitors[0].Length;
@@ -102,7 +101,6 @@ public class ActivationBuilder : ParamVisitorCollection, IArrowBuilder<List<Para
         ParamList.Clear();
     }
 }
-
 
 public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param>, List<Param>)>
 {
@@ -184,7 +182,6 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param
         Activation.Clear();
     }
 }
-
 
 public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<double>?, List<Param>, List<AuxiliaryArray>)>
 {
@@ -325,7 +322,6 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     }
 }
 
-
 public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, List<Param>)>
 {
     UInt64Array.Builder SourceIndex;
@@ -419,7 +415,6 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
     }
 }
 
-
 public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, ulong, List<Param>)>
 {
     UInt64Array.Builder SourceIndex;
@@ -511,4 +506,3 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         ParamList.Clear();
     }
 }
-

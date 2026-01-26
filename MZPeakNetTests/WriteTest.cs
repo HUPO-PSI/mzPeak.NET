@@ -3,9 +3,6 @@ using MZPeak.Reader;
 using MZPeak.Writer;
 using Apache.Arrow;
 using MZPeak.ControlledVocabulary;
-using Apache.Arrow.Types;
-using System.Text.Json.Nodes;
-using System.Text.Json;
 using MZPeak.Reader.Visitors;
 using MZPeak.Metadata;
 using MZPeak.Writer.Data;
@@ -70,6 +67,9 @@ public class WriteTest
         var chunk = (StructArray)data.Array(0);
         var n0 = chunk.Length;
 
+        var intensities = (FloatArray)chunk.Fields[2];
+        var count = Compute.Equal(intensities, 0f).Sum(v => v != null ? ((bool)v ? 1 : 0) : 0);
+
         var index = builder.Build();
         var writer = new PointLayoutBuilder(index);
 
@@ -89,7 +89,11 @@ public class WriteTest
 
         var idxArr = (UInt64Array)points.Fields[0];
         var mask0 = Compute.Equal(idxArr, 0ul);
-        var points0 = Compute.Filter(points, mask0);
+        var points0 = (StructArray)Compute.Filter(points, mask0);
+
+        var intensities0 = (FloatArray)points0.Fields[2];
+        var count0 = Compute.Equal(intensities0, 0f).Sum(v => v != null ? ((bool)v ? 1 : 0) : 0);
+        Assert.True(count0 > 0);
         Assert.Equal(n0, points0.Length);
 
         var mask1 = Compute.Equal(idxArr, 1ul);
@@ -109,12 +113,56 @@ public class WriteTest
         var meta0 = reader.GetSpectrumMeta(0);
         Assert.NotNull(dat0);
         Assert.NotNull(meta0);
-        writer.AddSpectrumData(
+        var (deltaModel, auxArrays) = writer.AddSpectrumData(
             writer.CurrentSpectrum,
-            ((StructArray)dat0.Array(0)).Fields.Skip(1).Select(a => (Apache.Arrow.Array)a)
+            ((StructArray)dat0.Array(0)).Fields.Skip(1)
         );
 
-        writer.AddSpectrum(meta0.Id, meta0.Time, null, meta0.MzDeltaModel, meta0.Parameters, []);
+        var index = writer.AddSpectrum(
+            meta0.Id,
+            meta0.Time,
+            null,
+            deltaModel?.Coefficients,
+            meta0.Parameters,
+            auxArrays
+        );
+
+        writer.AddScan(
+            index,
+            meta0.Scans[0].InstrumentConfigurationRef,
+            meta0.Scans[0].IonMobility,
+            meta0.Scans[0].IonMobilityTypeCURIE,
+            meta0.Scans[0].Parameters
+        );
+
+        if (meta0.Precursors.Count > 0)
+        {
+            var prec = meta0.Precursors[0];
+            writer.AddPrecursor(
+                index,
+                prec.PrecursorIndex,
+                prec.PrecursorId,
+                prec.IsolationWindowParameters,
+                prec.ActivationParameters
+            );
+        }
+        if (meta0.SelectedIons.Count > 0)
+        {
+            var prec = meta0.SelectedIons[0];
+            writer.AddSelectedIon(
+                index,
+                prec.PrecursorIndex,
+                prec.Parameters,
+                prec.IonMobility,
+                prec.IonMobilityTypeCURIE
+            );
+        }
+        writer.Close();
+
+        stream.Position = 0;
+        var dupReader = new MzPeakReader(new ZipArchiveStream<MemoryStream>(stream));
+        var rec0 = dupReader.GetSpectrumMeta(0);
+        Assert.Equal(0ul, rec0.Index);
     }
 
     [Fact]

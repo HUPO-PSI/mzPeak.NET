@@ -66,7 +66,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return new(new(){value});
     }
 
-    static (Matrix<U> data, MathNet.Numerics.LinearAlgebra.Vector<U> y, MathNet.Numerics.LinearAlgebra.Vector<U> cholWeights) ComputeFitArgs<U>(IReadOnlyList<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
+    static (Matrix<U> data, MathNet.Numerics.LinearAlgebra.Vector<U> y, MathNet.Numerics.LinearAlgebra.Vector<U> cholWeights) ComputeFitArgs<U>(IReadOnlyList<U?> coordinates, List<U> deltas, IReadOnlyList<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
         if (deltaThreshold == null) deltaThreshold = U.One;
 
@@ -101,7 +101,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return (data, y, cholWeights);
     }
 
-    public static SpacingInterpolationModel<U> FitRegression<U>(IReadOnlyList<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
+    public static SpacingInterpolationModel<U> FitRegression<U>(IReadOnlyList<U?> coordinates, List<U> deltas, IReadOnlyList<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
         var (data, y, cholWeights)  = ComputeFitArgs(coordinates, deltas, weights, deltaThreshold, rank);
         var QR = data.MapIndexed((i, j, v) => cholWeights[i] * v).QR();
@@ -113,7 +113,30 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return model;
     }
 
-    public static SpacingInterpolationModel<U> Fit<U>(IReadOnlyList<U?> coordinates, List<U> deltas, List<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
+    public static SpacingInterpolationModel<U> Fit<U>(PrimitiveArray<U> coordinates, IArrowArray? weights = null, U? deltaThreshold = null, int rank = 2) where U: struct, INumber<U>, IRootFunctions<U>
+    {
+        var deltas = NullInterpolation.CollectDeltas(coordinates, false);
+        if (weights != null)
+        {
+            switch (coordinates.Data.DataType.TypeId)
+            {
+                case ArrowTypeId.Float:
+                    {
+                        weights = Compute.CastFloat(weights);
+                        break;
+                    }
+                case ArrowTypeId.Double:
+                    {
+                        weights = Compute.CastDouble(weights);
+                        break;
+                    }
+                default: throw new InvalidDataException($"Invalid data {coordinates.Data.DataType.Name} for fit");
+            }
+        }
+        return Fit(coordinates, deltas, weights != null ? (PrimitiveArray<U>)weights : null, deltaThreshold, rank);
+    }
+
+    public static SpacingInterpolationModel<U> Fit<U>(IReadOnlyList<U?> coordinates, List<U> deltas, IReadOnlyList<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
         var simpleModel = FitMedian(coordinates);
         if (deltas.Count <= 3) return simpleModel;
@@ -176,7 +199,7 @@ public static class ZeroRunRemoval
             {
                 if (v == T.Zero)
                 {
-                    if (wasZero || (acc.Count == 0 && i < n1 && data.GetValue(i + 1) == T.Zero) || i == n1)
+                    if ((wasZero || acc.Count == 0) && (i < n1 && data.GetValue(i + 1) == T.Zero || i == n1))
                     { }
                     else
                     {
@@ -738,6 +761,166 @@ public static class Compute
                     NullToZero((UInt8Array)(IArrowArray)array, builder);
                     return builder.Build();
                 }
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    public static Int64Array CastInt64<T>(PrimitiveArray<T> array) where T: struct, INumber<T>
+    {
+        var builder = new Int64Array.Builder();
+        foreach(var val in array)
+        {
+            if (val != null) builder.Append(long.CreateChecked((T)val));
+            else builder.AppendNull();
+        }
+        return builder.Build();
+    }
+
+    public static Int32Array CastInt32<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    {
+        var builder = new Int32Array.Builder();
+        foreach (var val in array)
+        {
+            if (val != null) builder.Append(int.CreateChecked((T)val));
+            else builder.AppendNull();
+        }
+        return builder.Build();
+    }
+
+    public static FloatArray CastFloat<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    {
+        var builder = new FloatArray.Builder();
+        foreach (var val in array)
+        {
+            if (val != null) builder.Append(float.CreateChecked((T)val));
+            else builder.AppendNull();
+        }
+        return builder.Build();
+    }
+
+    public static DoubleArray CastDouble<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    {
+        var builder = new DoubleArray.Builder();
+        foreach (var val in array)
+        {
+            if (val != null) builder.Append(double.CreateChecked((T)val));
+            else builder.AppendNull();
+        }
+        return builder.Build();
+    }
+
+    public static Int64Array CastInt64(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return CastInt64((DoubleArray)array);
+            case ArrowTypeId.Float:
+                return CastInt64((FloatArray)array);
+            case ArrowTypeId.Int32:
+                return CastInt64((Int32Array)array);
+            case ArrowTypeId.Int64:
+                return (Int64Array)array;
+            case ArrowTypeId.UInt32:
+                return CastInt64((UInt32Array)array);
+            case ArrowTypeId.UInt64:
+                return CastInt64((UInt64Array)array);
+            case ArrowTypeId.Int16:
+                return CastInt64((Int16Array)array);
+            case ArrowTypeId.Int8:
+                return CastInt64((Int8Array)array);
+            case ArrowTypeId.UInt16:
+                return CastInt64((UInt16Array)array);
+            case ArrowTypeId.UInt8:
+                return CastInt64((UInt8Array)array);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    public static Int32Array CastInt32(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return CastInt32((DoubleArray)array);
+            case ArrowTypeId.Float:
+                return CastInt32((FloatArray)array);
+            case ArrowTypeId.Int32:
+                return (Int32Array)array;
+            case ArrowTypeId.Int64:
+                return CastInt32((Int64Array)array);
+            case ArrowTypeId.UInt32:
+                return CastInt32((UInt32Array)array);
+            case ArrowTypeId.UInt64:
+                return CastInt32((UInt64Array)array);
+            case ArrowTypeId.Int16:
+                return CastInt32((Int16Array)array);
+            case ArrowTypeId.Int8:
+                return CastInt32((Int8Array)array);
+            case ArrowTypeId.UInt16:
+                return CastInt32((UInt16Array)array);
+            case ArrowTypeId.UInt8:
+                return CastInt32((UInt8Array)array);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    public static FloatArray CastFloat(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return CastFloat((DoubleArray)array);
+            case ArrowTypeId.Float:
+                return (FloatArray)array;
+            case ArrowTypeId.Int32:
+                return CastFloat((Int32Array)array);
+            case ArrowTypeId.Int64:
+                return CastFloat((Int64Array)array);
+            case ArrowTypeId.UInt32:
+                return CastFloat((UInt32Array)array);
+            case ArrowTypeId.UInt64:
+                return CastFloat((UInt64Array)array);
+            case ArrowTypeId.Int16:
+                return CastFloat((Int16Array)array);
+            case ArrowTypeId.Int8:
+                return CastFloat((Int8Array)array);
+            case ArrowTypeId.UInt16:
+                return CastFloat((UInt16Array)array);
+            case ArrowTypeId.UInt8:
+                return CastFloat((UInt8Array)array);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    public static DoubleArray CastDouble(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return (DoubleArray)array;
+            case ArrowTypeId.Float:
+                return CastDouble((FloatArray)array);
+            case ArrowTypeId.Int32:
+                return CastDouble((Int32Array)array);
+            case ArrowTypeId.Int64:
+                return CastDouble((Int64Array)array);
+            case ArrowTypeId.UInt32:
+                return CastDouble((UInt32Array)array);
+            case ArrowTypeId.UInt64:
+                return CastDouble((UInt64Array)array);
+            case ArrowTypeId.Int16:
+                return CastDouble((Int16Array)array);
+            case ArrowTypeId.Int8:
+                return CastDouble((Int8Array)array);
+            case ArrowTypeId.UInt16:
+                return CastDouble((UInt16Array)array);
+            case ArrowTypeId.UInt8:
+                return CastDouble((UInt8Array)array);
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }

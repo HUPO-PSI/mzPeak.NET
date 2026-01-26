@@ -131,6 +131,48 @@ public record DataProcessingMethod
 }
 
 
+public record MSRun
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; }
+
+    [JsonPropertyName("default_data_processing_id")]
+    public string DefaultDataProcessingId { get; set; }
+
+    [JsonPropertyName("default_instrument_id")]
+    public int DefaultInstrumentId { get; set; }
+
+    [JsonPropertyName("default_source_file_id")]
+    public string DefaultSourceFileId { get; set; }
+
+    [JsonPropertyName("start_time")]
+    public DateTime? StartTime { get; set; }
+
+    [JsonPropertyName("parameters")]
+    public List<Param> Parameters { get; set; }
+
+    public MSRun(string id, string defaultDataProcessingId, int defaultInstrumentId, string defaultSourceFileId, DateTime? startTime=null, List<Param>? parameters=null)
+    {
+        Id = id;
+        DefaultDataProcessingId = defaultDataProcessingId;
+        DefaultInstrumentId = defaultInstrumentId;
+        DefaultSourceFileId = defaultSourceFileId;
+        StartTime = startTime;
+        Parameters = parameters ?? new();
+    }
+
+    public MSRun()
+    {
+        Id = "";
+        DefaultDataProcessingId = "";
+        DefaultInstrumentId = 0;
+        DefaultSourceFileId = "";
+        StartTime = null;
+        Parameters = new();
+    }
+}
+
+
 public class MzPeakMetadata
 {
     public FileDescription FileDescription { get; set; }
@@ -138,6 +180,7 @@ public class MzPeakMetadata
     public List<Software> Softwares {get; set;}
     public List<Sample> Samples {get; set;}
     public List<DataProcessingMethod> DataProcessingMethods { get; set; }
+    public MSRun Run { get; set; }
 
     public MzPeakMetadata()
     {
@@ -150,15 +193,22 @@ public class MzPeakMetadata
         Softwares = new();
         Samples = new();
         DataProcessingMethods = new();
+        Run = new();
     }
 
-    public MzPeakMetadata(FileDescription description, List<InstrumentConfiguration> instrumentConfigurations, List<Software> softwares, List<Sample> samples, List<DataProcessingMethod> dataProcessingMethods)
+    public MzPeakMetadata(FileDescription description,
+                          List<InstrumentConfiguration> instrumentConfigurations,
+                          List<Software> softwares,
+                          List<Sample> samples,
+                          List<DataProcessingMethod> dataProcessingMethods,
+                          MSRun run)
     {
         FileDescription = description;
         InstrumentConfigurations = instrumentConfigurations;
         Softwares = softwares;
         Samples = samples;
         DataProcessingMethods = dataProcessingMethods;
+        Run = run;
     }
 
     public static MzPeakMetadata FromParquet(ParquetFileReader reader)
@@ -200,6 +250,20 @@ public class MzPeakMetadata
             if (dataProcessingMethods == null) throw new InvalidDataException("data_processing_method_list failed to deserialize");
         }
 
-        return new MzPeakMetadata(fileDescription, instrumentConfigurations, softwares, samples, dataProcessingMethods);
+        MSRun run = new();
+        if (meta.TryGetValue("run", out buf))
+        {
+            run = JsonSerializer.Deserialize<MSRun>(buf) ?? new();
+            if (run == null) throw new InvalidDataException("run failed to deserialize");
+        }
+
+        return new MzPeakMetadata(
+            fileDescription,
+            instrumentConfigurations,
+            softwares,
+            samples,
+            dataProcessingMethods,
+            run
+        );
     }
 }
