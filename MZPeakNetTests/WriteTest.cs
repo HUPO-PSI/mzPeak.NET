@@ -110,7 +110,7 @@ public class WriteTest
         var reader = new MzPeakReader(PointArchive);
         Assert.NotNull(reader);
         var dat0 = await reader.GetSpectrumData(0);
-        var meta0 = reader.GetSpectrumMeta(0);
+        var meta0 = reader.GetSpectrumDescription(0);
         Assert.NotNull(dat0);
         Assert.NotNull(meta0);
         var (deltaModel, auxArrays) = writer.AddSpectrumData(
@@ -161,7 +161,7 @@ public class WriteTest
 
         stream.Position = 0;
         var dupReader = new MzPeakReader(new ZipArchiveStream<MemoryStream>(stream));
-        var rec0 = dupReader.GetSpectrumMeta(0);
+        var rec0 = dupReader.GetSpectrumDescription(0);
         Assert.Equal(0ul, rec0.Index);
     }
 
@@ -181,7 +181,7 @@ public class WriteTest
         var readerStorage = new ZipArchiveStream<MemoryStream>(stream);
         var reader = new MzPeakReader(readerStorage);
 
-        var meta = reader.SpectrumMetadata;
+        var meta = reader.SpectrumTable;
         Assert.NotNull(meta);
 
         var idArr = (StringArray)meta.Column("id");

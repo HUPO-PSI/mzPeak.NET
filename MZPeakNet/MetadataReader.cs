@@ -204,7 +204,7 @@ public class SpectrumMetadataReader : MetadataReaderBase
         set => selectedIonMetadata = value;
     }
 
-    public SpectrumMetaRecord GetSpectrum(ulong index)
+    public SpectrumDescription GetSpectrum(ulong index)
     {
         if (SpectrumMetadata == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
 
@@ -245,7 +245,7 @@ public class SpectrumMetadataReader : MetadataReaderBase
             selectedIons = scanVisitor.Values;
         }
 
-        return new SpectrumMetaRecord(rec, scanRecs, precursorInfos, selectedIons);
+        return new SpectrumDescription(rec, scanRecs, precursorInfos, selectedIons);
     }
 
     public async Task InitializeTables()

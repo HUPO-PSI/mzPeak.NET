@@ -13,22 +13,26 @@ public record HasIonMobility
     public string? IonMobilityTypeCURIE { get; set; } = null;
 }
 
-public interface HasParameters
+public interface IHasParameters
 {
     public List<Param> Parameters {get; set;}
+
+    public Param? FindParam(string accession) => Parameters.First(p => p.AccessionCURIE == accession);
+    public bool HasParam(string accession) => FindParam(accession) != null;
+
 }
 
-public interface HasSourceIndex
+public interface IHasSourceIndex
 {
     public ulong SourceIndex {get; set;}
 }
 
-public interface HasPrecursorIndex
+public interface IHasPrecursorIndex
 {
     public ulong PrecursorIndex { get; set; }
 }
 
-public record SpectrumInfo : HasParameters
+public record SpectrumInfo : IHasParameters
 {
     public ulong Index { get; set; }
     public string Id { get; set; }
@@ -39,6 +43,11 @@ public record SpectrumInfo : HasParameters
     public List<double>? MzDeltaModel {get; set; } = null;
     public List<Param> Parameters { get; set; }
     public List<AuxiliaryArray> AuxiliaryArrays { get; set; }
+
+    public bool IsProfile => ((IHasParameters)this).HasParam("MS:1000128");
+    public bool IsCentroid => ((IHasParameters)this).HasParam("MS1000127");
+    public double? BasePeakMZ => ((IHasParameters)this).FindParam(SpectrumProperties.BasePeakMZ.CURIE())?.AsDouble();
+    public double? BasePeakIntensity => ((IHasParameters)this).FindParam(SpectrumProperties.BasePeakIntensity.CURIE())?.AsDouble();
 
     public SpectrumInfo(ulong index, string id, double time, byte msLevel, string? dataProcessingRef=null, int numberOfAuxiliaryArrays=0, List<double>? mzDeltaModel=null, List<Param>? parameters=null, List<AuxiliaryArray>? auxiliaryArray=null)
     {
@@ -59,7 +68,7 @@ public record SpectrumInfo : HasParameters
     }
 }
 
-record ParamListRecord : HasParameters
+record ParamListRecord : IHasParameters
 {
     public List<Param> Parameters {get; set;}
 
@@ -83,7 +92,7 @@ public record ScanWindow
     }
 }
 
-public record ScanInfo : HasIonMobility, HasSourceIndex, HasParameters
+public record ScanInfo : HasIonMobility, IHasSourceIndex, IHasParameters
 {
     public ulong SourceIndex { get; set; }
     public uint? InstrumentConfigurationRef { get; set; }
@@ -106,7 +115,7 @@ public record ScanInfo : HasIonMobility, HasSourceIndex, HasParameters
     }
 }
 
-public record PrecursorInfo : HasSourceIndex, HasPrecursorIndex
+public record PrecursorInfo : IHasSourceIndex, IHasPrecursorIndex
 {
     public ulong SourceIndex {get; set; }
     public ulong PrecursorIndex {get; set;}
@@ -129,7 +138,7 @@ public record PrecursorInfo : HasSourceIndex, HasPrecursorIndex
     }
 }
 
-public record SelectedIonInfo: HasIonMobility, HasSourceIndex, HasParameters, HasPrecursorIndex
+public record SelectedIonInfo: HasIonMobility, IHasSourceIndex, IHasParameters, IHasPrecursorIndex
 {
     public ulong SourceIndex { get; set; }
     public ulong PrecursorIndex { get; set; }
@@ -150,7 +159,7 @@ public record SelectedIonInfo: HasIonMobility, HasSourceIndex, HasParameters, Ha
     }
 }
 
-public record SpectrumMetaRecord
+public record SpectrumDescription
 {
     SpectrumInfo SpectrumInfo;
     public List<ScanInfo> Scans;
@@ -165,7 +174,7 @@ public record SpectrumMetaRecord
     public List<double>? MzDeltaModel => SpectrumInfo.MzDeltaModel;
     public string? DataProcessingRef => SpectrumInfo.DataProcessingRef;
 
-    public SpectrumMetaRecord(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
+    public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
     {
         SpectrumInfo = spectrumInfo;
         Scans = scans;
@@ -174,13 +183,13 @@ public record SpectrumMetaRecord
     }
 }
 
-public interface VisitorAssemblyWithOffsets<T>
+public interface IVisitorAssemblyWithOffsets<T>
 {
     List<int> Offsets { get; }
     List<T> Values { get; }
 }
 
-public interface HasIonMobilityVisitor<T>: VisitorAssemblyWithOffsets<T> where T: HasIonMobility
+public interface IHasIonMobilityVisitor<T>: IVisitorAssemblyWithOffsets<T> where T: HasIonMobility
 {
 
     public void VisitIonMobilityType(IArrowArray array)
@@ -237,7 +246,7 @@ public interface HasIonMobilityVisitor<T>: VisitorAssemblyWithOffsets<T> where T
     }
 }
 
-public interface HasParametersVisitor<T>: VisitorAssemblyWithOffsets<T> where T: HasParameters
+public interface IHasParametersVisitor<T>: IVisitorAssemblyWithOffsets<T> where T: IHasParameters
 {
     public IEnumerable<(int, long?)> VisitInteger<U>(PrimitiveArray<U> array) where U: struct, INumber<U>
     {
@@ -465,7 +474,7 @@ public interface HasParametersVisitor<T>: VisitorAssemblyWithOffsets<T> where T:
     }
 }
 
-public interface HasSourceIndexVisitor<T>: VisitorAssemblyWithOffsets<T> where T: HasSourceIndex
+public interface IHasSourceIndexVisitor<T>: IVisitorAssemblyWithOffsets<T> where T: IHasSourceIndex
 {
     public T CreateFromIndex(ulong index);
 
@@ -482,7 +491,7 @@ public interface HasSourceIndexVisitor<T>: VisitorAssemblyWithOffsets<T> where T
     }
 }
 
-public interface HasPrecursorIndexVisitor<T> : VisitorAssemblyWithOffsets<T> where T: HasPrecursorIndex
+public interface IHasPrecursorIndexVisitor<T> : IVisitorAssemblyWithOffsets<T> where T: IHasPrecursorIndex
 {
     public void VisitPrecursorIndex(IArrowArray array)
     {
@@ -497,7 +506,7 @@ public interface HasPrecursorIndexVisitor<T> : VisitorAssemblyWithOffsets<T> whe
     }
 }
 
-class GenericParamStructVisitor : VisitorAssemblyWithOffsets<ParamListRecord>, HasParametersVisitor<ParamListRecord>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<ListArray>, IArrowArrayVisitor<LargeListArray>
+class GenericParamStructVisitor : IVisitorAssemblyWithOffsets<ParamListRecord>, IHasParametersVisitor<ParamListRecord>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<ListArray>, IArrowArrayVisitor<LargeListArray>
 {
     public List<ParamListRecord> Values {get; set;}
     public List<int> Offsets {get; set;}
@@ -523,8 +532,8 @@ class GenericParamStructVisitor : VisitorAssemblyWithOffsets<ParamListRecord>, H
         var dtype = (StructType)array.Data.DataType;
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
-            if (f.Name == "parameters") ((HasParametersVisitor<ParamListRecord>)this).VisitParameters(arr);
-            else ((HasParametersVisitor<ParamListRecord>)this).VisitAsParameter(f, arr);
+            if (f.Name == "parameters") ((IHasParametersVisitor<ParamListRecord>)this).VisitParameters(arr);
+            else ((IHasParametersVisitor<ParamListRecord>)this).VisitAsParameter(f, arr);
         }
     }
 
@@ -579,7 +588,7 @@ class GenericParamStructVisitor : VisitorAssemblyWithOffsets<ParamListRecord>, H
     }
 }
 
-public class ScanVisitor : VisitorAssemblyWithOffsets<ScanInfo>, HasIonMobilityVisitor<ScanInfo>, HasParametersVisitor<ScanInfo>, IArrowArrayVisitor<StructArray>, HasSourceIndexVisitor<ScanInfo>, IArrowArrayVisitor<RecordBatch>
+public class ScanVisitor : IVisitorAssemblyWithOffsets<ScanInfo>, IHasIonMobilityVisitor<ScanInfo>, IHasParametersVisitor<ScanInfo>, IArrowArrayVisitor<StructArray>, IHasSourceIndexVisitor<ScanInfo>, IArrowArrayVisitor<RecordBatch>
 {
     public List<ScanInfo> Values {get; set;}
     public List<int> Offsets {get; set;}
@@ -626,7 +635,7 @@ public class ScanVisitor : VisitorAssemblyWithOffsets<ScanInfo>, HasIonMobilityV
         {
             if (f.Name == "source_index")
             {
-                ((HasSourceIndexVisitor<ScanInfo>)this).VisitSourceIndex(arr);
+                ((IHasSourceIndexVisitor<ScanInfo>)this).VisitSourceIndex(arr);
                 break;
             }
         }
@@ -634,16 +643,16 @@ public class ScanVisitor : VisitorAssemblyWithOffsets<ScanInfo>, HasIonMobilityV
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
             if (f.Name == "instrument_configuration_ref") VisitInstrumentConfigurationRef(arr);
-            else if (f.Name == "ion_mobility_value") ((HasIonMobilityVisitor<ScanInfo>)this).VisitIonMobilityValue(arr);
-            else if (f.Name == "ion_mobility_type") ((HasIonMobilityVisitor<ScanInfo>)this).VisitIonMobilityType(arr);
-            else if (f.Name == "parameters") ((HasParametersVisitor<ScanInfo>)this).VisitParameters(arr);
+            else if (f.Name == "ion_mobility_value") ((IHasIonMobilityVisitor<ScanInfo>)this).VisitIonMobilityValue(arr);
+            else if (f.Name == "ion_mobility_type") ((IHasIonMobilityVisitor<ScanInfo>)this).VisitIonMobilityType(arr);
+            else if (f.Name == "parameters") ((IHasParametersVisitor<ScanInfo>)this).VisitParameters(arr);
             else if (f.Name == "scan_windows")
             {
                 //TODO: sub-visitor
             }
             else if (f.Name == "source_index") {}
             else {
-                ((HasParametersVisitor<ScanInfo>)this).VisitAsParameter(f, arr);
+                ((IHasParametersVisitor<ScanInfo>)this).VisitAsParameter(f, arr);
             }
         }
     }
@@ -666,7 +675,7 @@ public class ScanVisitor : VisitorAssemblyWithOffsets<ScanInfo>, HasIonMobilityV
     }
 }
 
-public class SelectedIonVisitor : VisitorAssemblyWithOffsets<SelectedIonInfo>, HasIonMobilityVisitor<SelectedIonInfo>, HasParametersVisitor<SelectedIonInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>, HasSourceIndexVisitor<SelectedIonInfo>, HasPrecursorIndexVisitor<SelectedIonInfo>
+public class SelectedIonVisitor : IVisitorAssemblyWithOffsets<SelectedIonInfo>, IHasIonMobilityVisitor<SelectedIonInfo>, IHasParametersVisitor<SelectedIonInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>, IHasSourceIndexVisitor<SelectedIonInfo>, IHasPrecursorIndexVisitor<SelectedIonInfo>
 {
 
     public List<SelectedIonInfo> Values {get; set;}
@@ -695,20 +704,20 @@ public class SelectedIonVisitor : VisitorAssemblyWithOffsets<SelectedIonInfo>, H
         {
             if (f.Name == "source_index")
             {
-                ((HasSourceIndexVisitor<SelectedIonInfo>)this).VisitSourceIndex(arr);
+                ((IHasSourceIndexVisitor<SelectedIonInfo>)this).VisitSourceIndex(arr);
                 break;
             }
         }
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
-            if (f.Name == "precursor_index") ((HasPrecursorIndexVisitor<SelectedIonInfo>)this).VisitPrecursorIndex(arr);
+            if (f.Name == "precursor_index") ((IHasPrecursorIndexVisitor<SelectedIonInfo>)this).VisitPrecursorIndex(arr);
             else if (f.Name == "source_index") {}
-            else if (f.Name == "ion_mobility_value") ((HasIonMobilityVisitor<SelectedIonInfo>)this).VisitIonMobilityValue(arr);
-            else if (f.Name == "ion_mobility_type") ((HasIonMobilityVisitor<SelectedIonInfo>)this).VisitIonMobilityType(arr);
-            else if (f.Name == "parameters") ((HasParametersVisitor<SelectedIonInfo>)this).VisitParameters(arr);
+            else if (f.Name == "ion_mobility_value") ((IHasIonMobilityVisitor<SelectedIonInfo>)this).VisitIonMobilityValue(arr);
+            else if (f.Name == "ion_mobility_type") ((IHasIonMobilityVisitor<SelectedIonInfo>)this).VisitIonMobilityType(arr);
+            else if (f.Name == "parameters") ((IHasParametersVisitor<SelectedIonInfo>)this).VisitParameters(arr);
             else
             {
-                ((HasParametersVisitor<SelectedIonInfo>)this).VisitAsParameter(f, arr);
+                ((IHasParametersVisitor<SelectedIonInfo>)this).VisitAsParameter(f, arr);
             }
         }
     }
@@ -726,7 +735,7 @@ public class SelectedIonVisitor : VisitorAssemblyWithOffsets<SelectedIonInfo>, H
     }
 }
 
-public class PrecursorVisitor : VisitorAssemblyWithOffsets<PrecursorInfo>, HasSourceIndexVisitor<PrecursorInfo>, HasPrecursorIndexVisitor<PrecursorInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>
+public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHasSourceIndexVisitor<PrecursorInfo>, IHasPrecursorIndexVisitor<PrecursorInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>
 {
     public List<PrecursorInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
@@ -775,13 +784,13 @@ public class PrecursorVisitor : VisitorAssemblyWithOffsets<PrecursorInfo>, HasSo
         {
             if (f.Name == "source_index")
             {
-                ((HasSourceIndexVisitor<PrecursorInfo>)this).VisitSourceIndex(arr);
+                ((IHasSourceIndexVisitor<PrecursorInfo>)this).VisitSourceIndex(arr);
                 break;
             }
         }
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
-            if (f.Name == "precursor_index") ((HasPrecursorIndexVisitor<PrecursorInfo>)this).VisitPrecursorIndex(arr);
+            if (f.Name == "precursor_index") ((IHasPrecursorIndexVisitor<PrecursorInfo>)this).VisitPrecursorIndex(arr);
             else if (f.Name == "precursor_id") VisitPrecursorId(arr);
             else if (f.Name == "activation") VisitActivationParameters(arr);
             else if (f.Name == "isolation_window") VisitIsolationWindowParameters(arr);
@@ -828,7 +837,7 @@ public class PrecursorVisitor : VisitorAssemblyWithOffsets<PrecursorInfo>, HasSo
     }
 }
 
-public class SpectrumVisitor : VisitorAssemblyWithOffsets<SpectrumInfo>, HasParametersVisitor<SpectrumInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>
+public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasParametersVisitor<SpectrumInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>
 {
     public List<SpectrumInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
@@ -880,7 +889,7 @@ public class SpectrumVisitor : VisitorAssemblyWithOffsets<SpectrumInfo>, HasPara
 
     public void VisitTime(IArrowArray array)
     {
-        HasParametersVisitor<SpectrumInfo> self = this;
+        IHasParametersVisitor<SpectrumInfo> self = this;
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Float:
@@ -905,14 +914,14 @@ public class SpectrumVisitor : VisitorAssemblyWithOffsets<SpectrumInfo>, HasPara
 
     public void VisitMSLevel(IArrowArray array)
     {
-        var self = (HasParametersVisitor<SpectrumInfo>)this;
+        var self = (IHasParametersVisitor<SpectrumInfo>)this;
         foreach ((var i, var val) in self.VisitInteger(array))
             Values[i].MSLevel = (byte)(val ?? 0);
     }
 
     public void VisitNumberOfAuxiliaryArrays(IArrowArray array)
     {
-        var self = (HasParametersVisitor<SpectrumInfo>)this;
+        var self = (IHasParametersVisitor<SpectrumInfo>)this;
         foreach((var i, var val) in self.VisitInteger(array))
             Values[i].NumberOfAuxiliaryArrays = (int)(val ?? 0);
     }
@@ -982,7 +991,7 @@ public class SpectrumVisitor : VisitorAssemblyWithOffsets<SpectrumInfo>, HasPara
             }
         }
 
-        var self = (HasParametersVisitor<SpectrumInfo>)this;
+        var self = (IHasParametersVisitor<SpectrumInfo>)this;
 
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
@@ -1047,3 +1056,4 @@ public class SpectrumVisitor : VisitorAssemblyWithOffsets<SpectrumInfo>, HasPara
         }
     }
 }
+

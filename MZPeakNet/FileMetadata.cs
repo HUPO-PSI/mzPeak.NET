@@ -5,6 +5,10 @@ using System.Text.Json.Serialization;
 using MZPeak.ControlledVocabulary;
 using ParquetSharp;
 
+/// <summary>
+/// Describes the contents and source files of an mzPeak file.
+/// Analogous to the mzML fileDescription element.
+/// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record FileDescription
 {
@@ -23,13 +27,26 @@ public record FileDescription
         };
     }
 
+    /// <summary>
+    /// Parameters describing the contents of the file, such as types of spectra.
+    /// Analogous to mzML fileContent.
+    /// </summary>
     [JsonPropertyName("contents")]
     public List<Param> Contents {get; set;}
+
+    /// <summary>
+    /// List of all files used as data sources for this mzPeak file.
+    /// Analogous to mzML sourceFileList.
+    /// </summary>
     [JsonPropertyName("source_files")]
     public List<SourceFile> SourceFiles {get; set;}
 }
 
 
+/// <summary>
+/// A data file that was read in order to produce this mzPeak file.
+/// Analogous to the mzML sourceFile element.
+/// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record SourceFile
 {
@@ -41,113 +58,248 @@ public record SourceFile
         Parameters = parameters;
     }
 
+    /// <summary>
+    /// A unique identifier for this source file.
+    /// </summary>
     [JsonPropertyName("id")]
     public required string Id {get; set;}
+
+    /// <summary>
+    /// The name of the source file, not including parent directory.
+    /// </summary>
     [JsonPropertyName("name")]
     public required string Name {get; set;}
+
+    /// <summary>
+    /// The path to the source file, URI encoded. May include file:// protocols and UNC paths.
+    /// </summary>
     [JsonPropertyName("location")]
     public required string Location {get; set;}
+
+    /// <summary>
+    /// Additional parameters describing this source file, like checksums, nativeID format, or file format.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public required List<Param> Parameters {get; set;}
 }
 
+/// <summary>
+/// The type of instrument component in the mass spectrometer.
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ComponentType
 {
+    /// <summary>
+    /// The ion source component.
+    /// </summary>
     [JsonStringEnumMemberName("ionsource")]
     IonSouce,
+
+    /// <summary>
+    /// The mass analyzer component.
+    /// </summary>
     [JsonStringEnumMemberName("analyzer")]
     Analyzer,
+
+    /// <summary>
+    /// The detector component.
+    /// </summary>
     [JsonStringEnumMemberName("detector")]
     Detector,
 }
 
 
+/// <summary>
+/// Describes an instrument component like the ion source, mass analyzer, or detector.
+/// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record InstrumentComponent
 {
+    /// <summary>
+    /// The kind of component this is.
+    /// </summary>
     [JsonPropertyName("component_type")]
     public required ComponentType ComponentType { get; set; }
+
+    /// <summary>
+    /// The order in which the analytes travel through the component.
+    /// </summary>
     [JsonPropertyName("order")]
     public required int Order { get; set; }
+
+    /// <summary>
+    /// Additional parameters describing this component, like the particular hardware type.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public required List<Param> Parameters { get; set; }
 }
 
 
+/// <summary>
+/// Describes a single instrument configuration that was used.
+/// Analogous to the mzML instrumentConfiguration element.
+/// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record InstrumentConfiguration
 {
+    /// <summary>
+    /// A unique identifier for this instrument configuration.
+    /// </summary>
     [JsonPropertyName("id")]
     public required uint Id { get; set; }
+
+    /// <summary>
+    /// The list of instrument components in this configuration.
+    /// </summary>
     [JsonPropertyName("components")]
     public required List<InstrumentComponent> Components { get; set; }
+
+    /// <summary>
+    /// The identifier for a software that was associated with the data acquisition process.
+    /// </summary>
     [JsonPropertyName("software_reference")]
     public string? SoftwareReference { get; set; }
+
+    /// <summary>
+    /// Additional parameters describing this configuration, like the instrument model and serial number.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public required List<Param> Parameters { get; set; }
 }
 
+/// <summary>
+/// A piece of software. Analogous to the mzML software element.
+/// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record Software
 {
+    /// <summary>
+    /// A unique identifier for this software, even amongst different versions of the same software.
+    /// </summary>
     [JsonPropertyName("id")]
     public required string Id {get; set;}
+
+    /// <summary>
+    /// The version of the software.
+    /// </summary>
     [JsonPropertyName("version")]
     public required string Version {get; set;}
+
+    /// <summary>
+    /// Additional parameters describing this software, such as its controlled vocabulary identifier.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public required List<Param> Parameters { get; set; }
 }
 
+/// <summary>
+/// A description of a sample used to generate this dataset.
+/// Analogous to the mzML sample element.
+/// </summary>
 public record Sample
 {
+    /// <summary>
+    /// A unique identifier for this sample.
+    /// </summary>
     [JsonPropertyName("id")]
     public required string Id { get; set; }
+
+    /// <summary>
+    /// A human-readable name for this sample that might be easier to recognize.
+    /// </summary>
     [JsonPropertyName("name")]
     public required string Name { get; set; }
+
+    /// <summary>
+    /// Additional parameters describing this sample.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public required List<Param> Parameters { get; set; }
 }
 
 
+/// <summary>
+/// Describes a single step of data processing.
+/// </summary>
 public record ProcessingMethod
 {
+    /// <summary>
+    /// The order in which the step is applied in the data processing pipeline.
+    /// </summary>
     [JsonPropertyName("order")]
     public required uint Order { get; set; }
+
+    /// <summary>
+    /// The identifier for a software entry that performed this operation.
+    /// </summary>
     [JsonPropertyName("software_reference")]
     public required string SoftwareReference { get; set; }
 
+    /// <summary>
+    /// Additional parameters describing this data processing step denoting actions, parameters, and other descriptors.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public required List<Param> Parameters { get; set; }
 }
 
 
+/// <summary>
+/// Describes a data processing workflow. Analogous to the mzML dataProcessing element.
+/// </summary>
 public record DataProcessingMethod
 {
+    /// <summary>
+    /// A unique identifier for the data processing method.
+    /// </summary>
     [JsonPropertyName("id")]
     public required string Id { get; set; }
+
+    /// <summary>
+    /// The list of processing steps in this workflow.
+    /// </summary>
     [JsonPropertyName("methods")]
     public required List<ProcessingMethod> ProcessingMethods { get; set; }
 }
 
 
+/// <summary>
+/// Run-level metadata section. Analogous to the mzML run element.
+/// </summary>
 public record MSRun
 {
+    /// <summary>
+    /// A unique identifier for the run.
+    /// </summary>
     [JsonPropertyName("id")]
     public string Id { get; set; }
 
+    /// <summary>
+    /// The default data processing identifier.
+    /// </summary>
     [JsonPropertyName("default_data_processing_id")]
     public string DefaultDataProcessingId { get; set; }
 
+    /// <summary>
+    /// The default instrument configuration identifier.
+    /// </summary>
     [JsonPropertyName("default_instrument_id")]
     public int DefaultInstrumentId { get; set; }
 
+    /// <summary>
+    /// The default source file the content references.
+    /// </summary>
     [JsonPropertyName("default_source_file_id")]
     public string DefaultSourceFileId { get; set; }
 
+    /// <summary>
+    /// The time that data acquisition started, encoded in RFC 3339 format.
+    /// </summary>
     [JsonPropertyName("start_time")]
     public DateTime? StartTime { get; set; }
 
+    /// <summary>
+    /// Parameters describing the run not otherwise covered by the attributes.
+    /// </summary>
     [JsonPropertyName("parameters")]
     public List<Param> Parameters { get; set; }
 
@@ -173,13 +325,39 @@ public record MSRun
 }
 
 
+/// <summary>
+/// The complete metadata container for an mzPeak file, combining all metadata sections.
+/// </summary>
 public class MzPeakMetadata
 {
+    /// <summary>
+    /// Describes the contents and source files of the mzPeak file.
+    /// </summary>
     public FileDescription FileDescription { get; set; }
+
+    /// <summary>
+    /// List of instrument configurations used in this experiment.
+    /// </summary>
     public List<InstrumentConfiguration> InstrumentConfigurations { get; set; }
+
+    /// <summary>
+    /// List of software used to acquire or process the data.
+    /// </summary>
     public List<Software> Softwares {get; set;}
+
+    /// <summary>
+    /// List of samples used in this experiment.
+    /// </summary>
     public List<Sample> Samples {get; set;}
+
+    /// <summary>
+    /// List of data processing workflows applied to the data.
+    /// </summary>
     public List<DataProcessingMethod> DataProcessingMethods { get; set; }
+
+    /// <summary>
+    /// Run-level metadata for the experiment.
+    /// </summary>
     public MSRun Run { get; set; }
 
     public MzPeakMetadata()

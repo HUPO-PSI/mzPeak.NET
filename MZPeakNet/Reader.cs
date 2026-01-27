@@ -58,27 +58,59 @@ public class MzPeakReader
         return await reader.ReadForIndex(index);
     }
 
-    public RecordBatch? SpectrumMetadata => spectrumMetadata?.SpectrumMetadata;
+    public RecordBatch? SpectrumTable => spectrumMetadata?.SpectrumMetadata;
 
-    public RecordBatch? ScanMetadata => spectrumMetadata?.ScanMetadata;
+    public RecordBatch? ScanTable => spectrumMetadata?.ScanMetadata;
 
-    public RecordBatch? PrecursorMetadata => spectrumMetadata?.PrecursorMetadata;
+    public RecordBatch? PrecursorTable => spectrumMetadata?.PrecursorMetadata;
 
-    public RecordBatch? SelectedIonMetadata => spectrumMetadata?.PrecursorMetadata;
+    public RecordBatch? SelectedIonTable => spectrumMetadata?.PrecursorMetadata;
 
-    public RecordBatch? ChromatogramMetadata => chromatogramMetadata?.ChromatogramMetadata;
+    public RecordBatch? ChromatogramTable => chromatogramMetadata?.ChromatogramMetadata;
 
-    public RecordBatch? ChromatogramPrecursorMetadata => chromatogramMetadata?.PrecursorMetadata;
+    public RecordBatch? ChromatogramPrecursorTable => chromatogramMetadata?.PrecursorMetadata;
 
-    public RecordBatch? ChromatogramSelectedIonMetadata => chromatogramMetadata?.PrecursorMetadata;
+    public RecordBatch? ChromatogramSelectedIonTable => chromatogramMetadata?.PrecursorMetadata;
 
-    public SpectrumMetaRecord GetSpectrumMeta(ulong index)
+    public SpectrumDescription GetSpectrumDescription(ulong index)
     {
         if (spectrumMetadata == null) throw new InvalidOperationException("Spectrum metadata table is absent");
         return spectrumMetadata.GetSpectrum(index);
     }
 
-    public async Task<ChunkedArray?> GetSpectrumData(ulong index)
+    public BufferFormat? SpectrumDataFormat { get
+        {
+            if (spectrumArraysMeta != null) return spectrumArraysMeta.Format;
+            else
+            {
+                var reader = OpenSpectrumDataReader();
+                if (reader == null) return null;
+                return reader.Metadata.Format;
+            }
+        }
+    }
+
+    public DataArraysReaderMeta? SpectrumDataReaderMeta => OpenSpectrumDataReader()?.Metadata;
+
+    public async IAsyncEnumerable<(SpectrumDescription, StructArray)> EnumerateSpectraAsync()
+    {
+        var reader = OpenSpectrumDataReader();
+        if (reader != null)
+        {
+            var i = 0ul;
+            var dataReader = reader;
+            var it = dataReader.Enumerate();
+            await foreach(var data in it)
+            {
+                var meta = GetSpectrumDescription(i);
+                var item = (meta, data);
+                yield return item;
+            }
+        }
+    }
+
+
+    DataArraysReader? OpenSpectrumDataReader()
     {
         var dataFacet = storage.SpectrumData();
         DataArraysReader reader;
@@ -96,6 +128,13 @@ public class MzPeakReader
         {
             reader = new DataArraysReader(dataFacet, spectrumArraysMeta);
         }
+        return reader;
+    }
+
+    public async Task<ChunkedArray?> GetSpectrumData(ulong index)
+    {
+        var reader = OpenSpectrumDataReader();
+        if (reader == null) return null;
         return await reader.ReadForIndex(index);
     }
 }

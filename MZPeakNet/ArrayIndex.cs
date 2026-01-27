@@ -321,7 +321,7 @@ public class ArrayIndexBuilder
 }
 
 
-public class AuxiliaryArray :  HasParameters
+public class AuxiliaryArray :  IHasParameters
 {
     public Memory<byte> Data;
     public Param Name;
@@ -331,7 +331,7 @@ public class AuxiliaryArray :  HasParameters
     public List<Param> Parameters;
     public ArrowType ArrowType => DataType.ArrowType();
 
-    List<Param> HasParameters.Parameters { get => Parameters; set => Parameters = value; }
+    List<Param> IHasParameters.Parameters { get => Parameters; set => Parameters = value; }
 
     public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression=Compression.NoCompression, List<Param>? parameters=null)
     {

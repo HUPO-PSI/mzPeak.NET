@@ -5,6 +5,7 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNet", "MZPeakNet/MZPeakNet.csproj", "{0EAF4019-7E79-3EAC-1479-321F07059688}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNetTests", "MZPeakNetTests/MZPeakNetTests.csproj", "{0EAF4019-7E79-3EAC-1479-321F07059688}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNetTests.AppTest", "MZPeakNet.AppTest/MZPeakNet.AppTest.csproj", "{0EAF4019-7E79-3EAC-1479-321F07059688}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

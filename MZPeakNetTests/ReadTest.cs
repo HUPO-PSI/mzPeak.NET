@@ -54,9 +54,8 @@ public class ArchiveTest
         await dataReader.ReadForIndex(0);
         await dataReader.ReadForIndex(1);
         var it = dataReader.Enumerate();
-        await foreach (ChunkedArray block in it)
+        await foreach (StructArray chunk in it)
         {
-            var chunk = (StructArray)block.Array(0);
             var dtype = (StructType)chunk.Data.DataType;
             foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
             {
@@ -87,9 +86,8 @@ public class ArchiveTest
         Assert.NotNull(data);
 
         var it = dataReader.Enumerate();
-        await foreach (ChunkedArray block in it)
+        await foreach (StructArray chunk in it)
         {
-            var chunk = (StructArray)block.Array(0);
             var dtype = (StructType)chunk.Data.DataType;
             foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
             {

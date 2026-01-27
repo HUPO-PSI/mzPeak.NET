@@ -289,6 +289,8 @@ public class DataArraysReader
         Metadata = new DataArraysReaderMeta(reader, context);
     }
 
+    public BufferFormat Format => Metadata.Format;
+
     public async Task<ChunkedArray?> ReadForIndex(ulong key)
     {
         var rowGroups = RowGroupIndex.KeysFor(key);
@@ -337,7 +339,7 @@ public class DataArraysReader
     public long Length { get => Metadata.EntrySpanIndex.Length; }
 
     //TODO: Factor this into a type
-    public async IAsyncEnumerable<ChunkedArray> Enumerate()
+    public async IAsyncEnumerable<StructArray> Enumerate()
     {
         BaseLayoutReader reader;
         if (Metadata.Format == BufferFormat.Point)
@@ -376,13 +378,13 @@ public class BaseLayoutReader
     protected virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
         var indexArr = (UInt64Array)rootStruct.Fields[0];
-        var mask = (BooleanArray)Compute.Equal(indexArr, entryIndex);
+        var mask = Compute.Equal(indexArr, entryIndex);
         rootStruct = (StructArray)Compute.Filter(rootStruct, mask);
         rowCountRead += (ulong)rootStruct.Length;
         return rootStruct;
     }
 
-    public async IAsyncEnumerable<ChunkedArray> EnumerateEntries()
+    public async IAsyncEnumerable<StructArray> EnumerateEntries()
     {
         ulong rowCountRead = 0;
         var chunks = new List<IArrowArray>();
@@ -417,7 +419,8 @@ public class BaseLayoutReader
                         ulong zn = (ulong)block.Length;
                         block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
                         chunks.Add(block);
-                        yield return new ChunkedArray(chunks);
+
+                        yield return (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
                     }
                     chunks = new();
                     offsetIn = c;
@@ -436,7 +439,7 @@ public class BaseLayoutReader
         }
         if (chunks.Count > 0)
         {
-            yield return new ChunkedArray(chunks);
+            yield return (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
         }
     }
 

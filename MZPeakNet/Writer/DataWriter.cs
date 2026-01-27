@@ -71,46 +71,7 @@ public abstract class BaseLayoutBuilder
         }
     }
 
-    public abstract (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile=null);
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays);
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays);
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays)
-    {
-        return Add(entryIndex, arrays.Select(a => (Array)a));
-    }
-
-    public abstract RecordBatch GetRecordBatch();
-
-    public Schema ArrowSchema()
-    {
-        List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
-
-        foreach(var entry in ArrayIndex.Entries)
-        {
-            var name = entry.CreateColumnName();
-            fields.Add(new Field(name, entry.GetArrowType(), true));
-        }
-        var root = new Field(LayoutName(), new StructType(fields), true);
-        Dictionary<string, string> meta = new();
-        meta[$"{BufferContext.Name()}_array_index"] = JsonSerializer.Serialize(ArrayIndex);
-        return new Schema([root], meta);
-    }
-}
-
-
-public class PointLayoutBuilder : BaseLayoutBuilder
-{
-    public ulong NumberOfPoints = 0;
-
-    public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex)
-    {}
-
-    public override string LayoutName()
-    {
-        return "point";
-    }
-
-    public override (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         List<(ArrayIndexEntry, Array)> notCoveredArrays = new();
         ArrayIndexEntry? nullInterpolate = null;
@@ -130,13 +91,14 @@ public class PointLayoutBuilder : BaseLayoutBuilder
             else if (col.Key.Transform == NullInterpolation.NullZeroCURIE) nullZero = col.Key;
         }
 
-        foreach(var (k, v) in notCoveredArrays) {
+        foreach (var (k, v) in notCoveredArrays)
+        {
             Console.WriteLine($"{k} is treated as an auxiliary array");
             arrays.Remove(k);
             auxiliaryArrays.Add(AuxiliaryArray.FromValues(v, k));
         }
 
-        if (intensityArray != null && ShouldRemoveZeroRuns)
+        if (intensityArray != null && ShouldRemoveZeroRuns && (isProfile ?? true))
         {
             var intensityArrayVal = arrays[intensityArray];
             switch (intensityArrayVal.Data.DataType.TypeId)
@@ -182,15 +144,56 @@ public class PointLayoutBuilder : BaseLayoutBuilder
             }
         }
 
-        if (nullInterpolate != null && nullZero != null)
+        if (nullInterpolate != null && nullZero != null && (isProfile ?? true))
         {
             var coordinates = Compute.Compute.CastDouble(arrays[nullInterpolate]);
             var weights = arrays[nullZero];
             deltaModel = SpacingInterpolationModel<double>.Fit(coordinates, weights);
-        } else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
+        }
+        else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
 
         return (arrays, deltaModel, auxiliaryArrays);
     }
+
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays);
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays);
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    {
+        return Add(entryIndex, arrays.Select(a => (Array)a));
+    }
+
+    public abstract RecordBatch GetRecordBatch();
+
+    public Schema ArrowSchema()
+    {
+        List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
+
+        foreach(var entry in ArrayIndex.Entries)
+        {
+            var name = entry.CreateColumnName();
+            fields.Add(new Field(name, entry.GetArrowType(), true));
+        }
+        var root = new Field(LayoutName(), new StructType(fields), true);
+        Dictionary<string, string> meta = new();
+        meta[$"{BufferContext.Name()}_array_index"] = JsonSerializer.Serialize(ArrayIndex);
+        return new Schema([root], meta);
+    }
+}
+
+
+public class PointLayoutBuilder : BaseLayoutBuilder
+{
+    public ulong NumberOfPoints = 0;
+
+    public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex)
+    {}
+
+    public override string LayoutName()
+    {
+        return "point";
+    }
+
+
 
     public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {

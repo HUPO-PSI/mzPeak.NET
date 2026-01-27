@@ -45,6 +45,14 @@ public class MZPeakWriter : IDisposable
         return builder.Build();
     }
 
+    protected static ArrayIndex DefaultChromatogramArrayIndex()
+    {
+        var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Chromatogram);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.Minute, 1);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        return builder.Build();
+    }
+
     public void StartSpectrumData()
     {
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
@@ -54,7 +62,19 @@ public class MZPeakWriter : IDisposable
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .EnableDictionary()
-            .EnableWritePageIndex();
+            .EnableWritePageIndex()
+            .Encoding(
+                $"{SpectrumData.LayoutName}.{SpectrumData.BufferContext.IndexName()}",
+                ParquetSharp.Encoding.DeltaBinaryPacked
+            );
+
+        foreach(var arrayType in SpectrumData.ArrayIndex.Entries)
+        {
+            if(arrayType.GetArrayType() == ArrayType.MZArray)
+            {
+                writerProps = writerProps.Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
+            }
+        }
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
         var schema = SpectrumData.ArrowSchema();
