@@ -25,7 +25,9 @@ public class MZPeakWriter : IDisposable
     MzPeakMetadata MzPeakMetadata;
     IMZPeakArchiveWriter Storage;
     Visitors.SpectrumMetadataBuilder SpectrumMetadata;
+    Visitors.ChromatogramMetadataBuilder ChromatogramMetadata;
     BaseLayoutBuilder SpectrumData;
+    BaseLayoutBuilder ChromatogramData;
 
     FileIndexEntry? CurrentEntry;
     FileWriter? CurrentWriter;
@@ -101,6 +103,8 @@ public class MZPeakWriter : IDisposable
         MzPeakMetadata = new();
         SpectrumMetadata = new();
         SpectrumData = new PointLayoutBuilder(spectrumArrayIndex);
+        ChromatogramMetadata = new();
+        ChromatogramData = new PointLayoutBuilder(DefaultChromatogramArrayIndex());
         StartSpectrumData();
     }
 
@@ -159,9 +163,9 @@ public class MZPeakWriter : IDisposable
     public void AddScan(
         ulong sourceIndex,
         uint? instrumentConfigurationRef,
-        double? ionMobility,
-        string? ionMobilityType,
-        List<Param> scanParams
+        List<Param> scanParams,
+        double? ionMobility=null,
+        string? ionMobilityType=null
     )
     {
         SpectrumMetadata.AppendScan(
@@ -229,7 +233,9 @@ public class MZPeakWriter : IDisposable
         meta["data_processing_method_list"] = JsonSerializer.Serialize(DataProcessingMethods);
         meta["software_list"] = JsonSerializer.Serialize(Softwares);
         meta["sample_list"] = JsonSerializer.Serialize(Samples);
-        // meta["run"] = JsonSerializer.Serialize()
+        meta["run"] = JsonSerializer.Serialize(Run);
+        meta["spectrum_count"] = SpectrumMetadata.Length.ToString();
+        meta["spectrum_data_point_count"] = SpectrumData.NumberOfPoints.ToString();
 
         CurrentWriter = new FileWriter(
             managedStream,
@@ -247,14 +253,14 @@ public class MZPeakWriter : IDisposable
         if (State > WriterState.ChromatogramData)
             return;
         State = WriterState.ChromatogramData;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder().Compression(ParquetSharp.Compression.Zstd).EnableDictionary().EnableWritePageIndex();
-        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-        CurrentEntry = entry;
-        // CurrentWriter = new FileWriter(managedStream, SpectrumMetadata.ArrowSchema(), writerProps.Build(), arrowProps.Build());
-        CloseCurrentWriter();
+        // var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
+        // var stream = Storage.OpenStream(entry);
+        // var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        // var writerProps = new ParquetSharp.WriterPropertiesBuilder().Compression(ParquetSharp.Compression.Zstd).EnableDictionary().EnableWritePageIndex();
+        // var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        // CurrentEntry = entry;
+        // // CurrentWriter = new FileWriter(managedStream, SpectrumMetadata.ArrowSchema(), writerProps.Build(), arrowProps.Build());
+        // CloseCurrentWriter();
     }
 
     public void WriteChromatogramMetadata()
@@ -262,13 +268,13 @@ public class MZPeakWriter : IDisposable
         if (State > WriterState.ChromatogramMetadata)
             return;
         State = WriterState.ChromatogramMetadata;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder().Compression(ParquetSharp.Compression.Zstd).EnableDictionary().EnableWritePageIndex();
-        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-        CurrentEntry = entry;
-        CloseCurrentWriter();
+        // var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
+        // var stream = Storage.OpenStream(entry);
+        // var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        // var writerProps = new ParquetSharp.WriterPropertiesBuilder().Compression(ParquetSharp.Compression.Zstd).EnableDictionary().EnableWritePageIndex();
+        // var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        // CurrentEntry = entry;
+        // CloseCurrentWriter();
     }
 
     public void Close()
@@ -277,8 +283,8 @@ public class MZPeakWriter : IDisposable
         if (State == WriterState.SpectrumData)
             CloseCurrentWriter();
         WriteSpectrumMetadata();
-        WriteChromatogramData();
-        WriteChromatogramMetadata();
+        // WriteChromatogramData();
+        // WriteChromatogramMetadata();
         Storage.Dispose();
     }
 

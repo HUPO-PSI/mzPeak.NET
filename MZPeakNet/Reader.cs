@@ -105,6 +105,7 @@ public class MzPeakReader
                 var meta = GetSpectrumDescription(i);
                 var item = (meta, data);
                 yield return item;
+                i += 1;
             }
         }
     }

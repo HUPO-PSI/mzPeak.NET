@@ -14,6 +14,7 @@ public abstract class BaseLayoutBuilder
     public BufferContext BufferContext { get; protected set; }
 
     public bool ShouldRemoveZeroRuns { get; set; } = true;
+    public ulong NumberOfPoints = 0;
 
     protected UInt64Array.Builder Index;
     protected List<IArrowArrayBuilder> Arrays;
@@ -183,7 +184,7 @@ public abstract class BaseLayoutBuilder
 
 public class PointLayoutBuilder : BaseLayoutBuilder
 {
-    public ulong NumberOfPoints = 0;
+
 
     public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex)
     {}

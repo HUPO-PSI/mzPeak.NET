@@ -96,6 +96,54 @@ public class SpectrumMetadataReader : MetadataReaderBase
         }
     }
 
+    Dictionary<ulong, SpacingInterpolationModel<double>> loadSpectrumInterpolationModels(ListArray modelArr, UInt64Array indexArr)
+    {
+        Dictionary<ulong, SpacingInterpolationModel<double>> accumulator = new();
+        for (var i = 0; i < indexArr.Length; i++)
+        {
+            var index = indexArr.GetValue(i);
+            if (index == null)
+            {
+                continue;
+            }
+            if (modelArr.IsNull(i))
+            {
+                continue;
+            }
+            var modelAt = modelArr.GetSlicedValues(i);
+            var coefs = SpacingInterpolationModel<double>.FromArray(modelAt);
+            if (coefs != null)
+            {
+                accumulator[(ulong)index] = coefs;
+            }
+        }
+        return accumulator;
+    }
+
+    Dictionary<ulong, SpacingInterpolationModel<double>> loadSpectrumInterpolationModels(LargeListArray modelArr, UInt64Array indexArr)
+    {
+        Dictionary<ulong, SpacingInterpolationModel<double>> accumulator = new();
+        for (var i = 0; i < indexArr.Length; i++)
+        {
+            var index = indexArr.GetValue(i);
+            if (index == null)
+            {
+                continue;
+            }
+            if (modelArr.IsNull(i))
+            {
+                continue;
+            }
+            var modelAt = modelArr.GetSlicedValues(i);
+            var coefs = SpacingInterpolationModel<double>.FromArray(modelAt);
+            if (coefs != null)
+            {
+                accumulator[(ulong)index] = coefs;
+            }
+        }
+        return accumulator;
+    }
+
     public Dictionary<ulong, SpacingInterpolationModel<double>> GetSpacingModelIndex()
     {
         if (SpectrumMetadata == null)
@@ -109,56 +157,18 @@ public class SpectrumMetadataReader : MetadataReaderBase
         }
 
         var indexArr = (UInt64Array)SpectrumMetadata.Column(0);
-        var modelArr = (LargeListArray)SpectrumMetadata.Column(fieldIdx);
-        Dictionary<ulong, SpacingInterpolationModel<double>> accumulator = new();
-        for(var i = 0; i < indexArr.Length; i++)
+        var modelArr = SpectrumMetadata.Column(fieldIdx);
+        if (modelArr.Data.DataType.TypeId == ArrowTypeId.List)
         {
-            var index = indexArr.GetValue(i);
-            if (index == null)
-            {
-                continue;
-            }
-            if (modelArr.IsNull(i))
-            {
-                continue;
-            }
-            var modelAt = modelArr.GetSlicedValues(i);
-            var coefs = new List<double>();
-            switch(modelAt.Data.DataType.TypeId)
-            {
-                case ArrowTypeId.Float:
-                    {
-                        foreach (var v in (FloatArray)modelAt)
-                        {
-                            if (v != null)
-                            {
-                                coefs.Add((double)v);
-                            }
-                        }
-                        break;
-                    }
-                case ArrowTypeId.Double:
-                    {
-                        foreach (var v in (DoubleArray)modelAt)
-                        {
-                            if (v != null)
-                            {
-                                coefs.Add((double)v);
-                            }
-                        }
-                        break;
-                    }
-                default:
-                    {
-                        throw new InvalidDataException("Only float and double arrays are supported in mz_delta_model");
-                    }
-            }
-            if(coefs.Count > 0)
-            {
-                accumulator[(ulong)index] = new SpacingInterpolationModel<double>(coefs);
-            }
+            return loadSpectrumInterpolationModels((ListArray)modelArr, indexArr);
         }
-        return accumulator;
+        else if (modelArr.Data.DataType.TypeId == ArrowTypeId.LargeList)
+        {
+            return loadSpectrumInterpolationModels((LargeListArray)modelArr, indexArr);
+        } else
+        {
+            throw new NotImplementedException($"{modelArr.Data.DataType.Name} not supported");
+        }
     }
     public Dictionary<ulong, string?> GetNativeIds()
     {

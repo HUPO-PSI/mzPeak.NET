@@ -130,9 +130,9 @@ public class WriteTest
         writer.AddScan(
             index,
             meta0.Scans[0].InstrumentConfigurationRef,
+            meta0.Scans[0].Parameters,
             meta0.Scans[0].IonMobility,
-            meta0.Scans[0].IonMobilityTypeCURIE,
-            meta0.Scans[0].Parameters
+            meta0.Scans[0].IonMobilityTypeCURIE
         );
 
         if (meta0.Precursors.Count > 0)

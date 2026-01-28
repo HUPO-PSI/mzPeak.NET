@@ -60,6 +60,41 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return acc / n;
     }
 
+    public static SpacingInterpolationModel<double>? FromArray(IArrowArray array)
+    {
+        var coefs = new List<double>();
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Float:
+                {
+                    foreach (var v in (FloatArray)array)
+                    {
+                        if (v != null)
+                        {
+                            coefs.Add((double)v);
+                        }
+                    }
+                    break;
+                }
+            case ArrowTypeId.Double:
+                {
+                    foreach (var v in (DoubleArray)array)
+                    {
+                        if (v != null)
+                        {
+                            coefs.Add((double)v);
+                        }
+                    }
+                    break;
+                }
+            default:
+                {
+                    throw new InvalidDataException("Only float and double arrays are supported in mz_delta_model");
+                }
+        }
+        return coefs.Count > 0 ? new SpacingInterpolationModel<double>(coefs) : null;
+    }
+
     public static SpacingInterpolationModel<U> FitMedian<U>(IReadOnlyList<U?> coordinates) where U: struct, INumber<U>
     {
         var value = NullInterpolation.LocalMedianDelta(coordinates);
@@ -113,7 +148,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return model;
     }
 
-    public static SpacingInterpolationModel<U> Fit<U>(PrimitiveArray<U> coordinates, IArrowArray? weights = null, U? deltaThreshold = null, int rank = 2) where U: struct, INumber<U>, IRootFunctions<U>
+    public static SpacingInterpolationModel<U> Fit<U>(PrimitiveArray<U> coordinates, Array? weights = null, U? deltaThreshold = null, int rank = 2) where U: struct, INumber<U>, IRootFunctions<U>
     {
         var deltas = NullInterpolation.CollectDeltas(coordinates, false);
         if (weights != null)
@@ -133,7 +168,8 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
                 default: throw new InvalidDataException($"Invalid data {coordinates.Data.DataType.Name} for fit");
             }
         }
-        return Fit(coordinates, deltas, weights != null ? (PrimitiveArray<U>)weights : null, deltaThreshold, rank);
+        return Fit((PrimitiveArray<U>)coordinates.Slice(1, coordinates.Length - 1),
+                    deltas, weights != null ? (PrimitiveArray<U>)weights.Slice(1, weights.Length - 1) : null, deltaThreshold, rank);
     }
 
     public static SpacingInterpolationModel<U> Fit<U>(IReadOnlyList<U?> coordinates, List<U> deltas, IReadOnlyList<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
