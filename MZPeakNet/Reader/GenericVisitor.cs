@@ -1113,9 +1113,10 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
                 var i = Offsets[j];
                 if (arr.IsNull(i)) continue;
                 var chunk = arr.GetSlicedValues(i);
-                var visitor = new AuxiliaryArrayVisitor();
-                visitor.Visit(chunk);
-                Values[j].AuxiliaryArrays.AddRange(visitor.Values);
+                // TODO: Investigate why this does not seem to behave reliably when all other recursive struct visitors do.
+                // var visitor = new AuxiliaryArrayVisitor();
+                // visitor.Visit(chunk);
+                // Values[j].AuxiliaryArrays.AddRange(visitor.Values);
             }
         }
         else if (array.Data.DataType.TypeId == ArrowTypeId.LargeList)

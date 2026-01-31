@@ -292,6 +292,24 @@ public class DataArraysReader
 
     public BufferFormat Format => Metadata.Format;
 
+    public StructArray EmptyArrays()
+    {
+        List<Field> fields = new();
+        List<Array> arrays = new();
+        HashSet<Field> arrayTypes = new();
+        foreach(var arrType in ArrayIndex.Entries)
+        {
+            var dtype = arrType.GetArrowType();
+            var name = arrType.CreateColumnName();
+            var field = new Field(name, dtype, true);
+            if (arrayTypes.Contains(field)) continue;
+            fields.Add(field);
+            arrayTypes.Add(field);
+        }
+        var structDtype = new StructType(fields);
+        return new StructArray(structDtype, 0, [], default);
+    }
+
     public async Task<ChunkedArray?> ReadForIndex(ulong key)
     {
         var rowGroups = RowGroupIndex.KeysFor(key);

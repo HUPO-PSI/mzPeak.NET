@@ -175,8 +175,11 @@ internal class Program
 
         var isProfile = 0;
         var isCentroid = 0;
+        var i = 0;
         await foreach(var (descr, spec) in reader.EnumerateSpectraAsync())
         {
+            i++;
+            if (i % 1000 == 0) Logger?.LogInformation($"{i} spectra read...");
             isProfile += descr.IsProfile ? 1 : 0;
             isCentroid += descr.IsCentroid ? 1 : 0;
         }

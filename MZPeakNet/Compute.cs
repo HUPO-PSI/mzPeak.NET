@@ -7,6 +7,7 @@ using Apache.Arrow.Types;
 
 using MathNet.Numerics.LinearAlgebra;
 using Microsoft.Extensions.Logging;
+using MZPeak.Reader.Visitors;
 
 public class SpacingInterpolationModel<T> where T : struct, INumber<T>
 {
@@ -664,6 +665,121 @@ public static class DeltaCodec
 }
 
 
+public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<LargeListArray>, IArrowArrayVisitor<LargeStringArray>, IArrowArrayVisitor<LargeBinaryArray>
+{
+    public IArrowArray? Result = null;
+
+    public static IArrowArray MakeNetCompatible(IArrowArray array)
+    {
+        var visitor = new ArrowCompatibilityVisitor();
+        visitor.Visit(array);
+        if (visitor.Result == null) throw new InvalidOperationException();
+        return visitor.Result;
+    }
+
+    public StructArray HandleStruct(StructArray array)
+    {
+        var dtype = (StructType)array.Data.DataType;
+        var newFields = new List<Field>();
+        var newVals = new List<IArrowArray>();
+        int size = 0;
+        foreach(var(field, arr) in dtype.Fields.Zip(array.Fields))
+        {
+            var visitor = new ArrowCompatibilityVisitor();
+            visitor.Visit(arr);
+            if (visitor.Result == null) throw new InvalidOperationException();
+            newFields.Add(new Field(field.Name, visitor.Result.Data.DataType, field.IsNullable));
+            newVals.Add(visitor.Result);
+            if (size != 0 && visitor.Result.Length != 0 && visitor.Result.Length != size) throw new InvalidDataException();
+            size = visitor.Result.Length;
+        }
+        var result = new StructArray(new StructType(newFields), size, newVals, array.NullBitmapBuffer);
+        if (result.Fields.Count > 0) {}
+        return result;
+    }
+
+    public void Visit(StructArray array)
+    {
+        Result = HandleStruct(array);
+    }
+
+    public void Visit(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Struct:
+                {
+                    Visit((StructArray)array);
+                    break;
+                }
+            case ArrowTypeId.LargeList:
+                {
+                    Visit((LargeListArray)array);
+                    break;
+                }
+            case ArrowTypeId.LargeString:
+                {
+                    Visit((LargeStringArray)array);
+                    break;
+                }
+            case ArrowTypeId.LargeBinary:
+                {
+                    Visit((LargeBinaryArray)array);
+                    break;
+                }
+            default:
+                {
+                    Result = array;
+                    break;
+                }
+        }
+    }
+
+    public void Visit(LargeListArray array)
+    {
+        ArrowCompatibilityVisitor visitor = new();
+        visitor.Visit(array.Values);
+        var offsetsBuffer = new ArrowBuffer.Builder<int>();
+        foreach(var v in array.ValueOffsets)
+        {
+            offsetsBuffer.Append((int)v);
+        }
+        if (visitor.Result == null) throw new InvalidOperationException();
+        Result = new ListArray(
+            new ListType(((LargeListType)array.Data.DataType).ValueDataType),
+            array.Length,
+            offsetsBuffer.Build(),
+            visitor.Result,
+            array.NullBitmapBuffer,
+            array.NullCount,
+            array.Offset
+        );
+    }
+
+    public void Visit(LargeStringArray array)
+    {
+        var offsetsBuffer = new ArrowBuffer.Builder<int>();
+        foreach (var v in array.ValueOffsets)
+        {
+            offsetsBuffer.Append((int)v);
+        }
+        Result = new StringArray(
+            array.Length,
+            offsetsBuffer.Build(),
+            array.ValueBuffer,
+            array.NullBitmapBuffer,
+            array.NullCount,
+            array.Offset
+        );
+    }
+
+    public void Visit(LargeBinaryArray type)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+
 public static class Compute
 {
     public static ILogger? Logger = null;
@@ -1117,13 +1233,14 @@ public static class Compute
         {
             return batch.Slice(0, 0);
         }
-        var builder = new RecordBatch.Builder();
-        foreach (var (start, end) in spans)
+        List<Array> columns = new();
+        var size = 0;
+        foreach(var col in batch.Arrays)
         {
-            if (end < start || end < 0 || start < 0) throw new InvalidOperationException(string.Format("Invalid span: {0} {1}", start, end));
-            builder.Append(batch.Slice(start, end - start + 1));
+            columns.Add(Take((Array)col, spans));
+            size = columns.Last().Length;
         }
-        return builder.Build();
+        return new RecordBatch(batch.Schema, columns, size);
     }
 
     public static RecordBatch Take(RecordBatch batch, IList<int> indices)

@@ -33,16 +33,17 @@ public class DataFacet<T>
 
     public async IAsyncEnumerable<(T, StructArray)> EnumerateAsync()
     {
+        var metaRecs = MetadataReader.BulkLoad();
         var i = 0ul;
         await foreach (var (idx, data) in DataReader.Enumerate())
         {
             while (i < idx)
             {
-                var metaSkipped = MetadataReader.Get(i);
-                yield return (metaSkipped, new StructArray(new StructType([]), 0, [], default));
+                var metaSkipped = metaRecs[(int)i];
+                yield return (metaSkipped, DataReader.EmptyArrays());
                 i++;
             }
-            var meta = MetadataReader.Get(idx);
+            var meta = metaRecs[(int)idx];
 
             var item = (meta, data);
             yield return item;

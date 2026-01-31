@@ -44,8 +44,10 @@ public class AuxiliaryArrayVisitor: IArrowArrayVisitor<StructArray>
     public void Visit(StructArray array)
     {
         Values = new();
-
+        Console.WriteLine($"array = {array}");
+        Console.WriteLine($"arrayType = {array.Data.DataType}");
         var dtype = (StructType)array.Data.DataType;
+        Console.WriteLine($"{dtype.Fields.Count} fields");
 
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {

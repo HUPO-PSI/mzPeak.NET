@@ -2,16 +2,15 @@ namespace MZPeak.Metadata;
 
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
-using Apache.Arrow.Types;
-using MZPeak.ControlledVocabulary;
-using System.Net.NetworkInformation;
-using System.ComponentModel.DataAnnotations;
-using Apache.Arrow;
-using System.Net;
-using System.IO.Compression;
-using MZPeak.Reader.Visitors;
 
-[JsonConverter(typeof(JsonStringEnumConverter))]
+using Apache.Arrow.Types;
+using Apache.Arrow;
+
+using MZPeak.ControlledVocabulary;
+using MZPeak.Reader.Visitors;
+using System.Text.Json;
+
+[JsonConverter(typeof(BufferFormatConverter))]
 public enum BufferFormat
 {
     [JsonStringEnumMemberName("point")]
@@ -28,6 +27,63 @@ public enum BufferFormat
     ChunkSecondary,
     [JsonStringEnumMemberName("chunk_transform")]
     ChunkTransform,
+}
+
+public class BufferFormatConverter : JsonConverter<BufferFormat>
+{
+    public override BufferFormat Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var s = reader.GetString();
+        if (s == null) throw new JsonException("Null string");
+        switch (s)
+        {
+            case "point": return BufferFormat.Point;
+            case "chunk_values": return BufferFormat.ChunkValues;
+            case "chunk_start": return BufferFormat.ChunkStart;
+            case "chunk_end": return BufferFormat.ChunkEnd;
+            case "chunk_encoding": return BufferFormat.ChunkEncoding;
+            case "secondary_chunk":
+            case "chunk_secondary": return BufferFormat.ChunkSecondary;
+            case "chunk_transform": return BufferFormat.ChunkTransform;
+            default: throw new JsonException($"{s} is not a recognized buffer format");
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, BufferFormat value, JsonSerializerOptions options)
+    {
+    switch (value)
+        {
+            case BufferFormat.Point: {
+                writer.WriteStringValue("point");
+                break;
+            }
+            case BufferFormat.ChunkValues: {
+                writer.WriteStringValue("chunk_values");
+                break;
+            }
+            case BufferFormat.ChunkStart: {
+                writer.WriteStringValue("chunk_start");
+                break;
+            }
+            case BufferFormat.ChunkEnd: {
+                writer.WriteStringValue("chunk_end");
+                break;
+            }
+            case BufferFormat.ChunkEncoding: {
+                writer.WriteStringValue("chunk_encoding");
+                break;
+            }
+            case BufferFormat.ChunkSecondary: {
+                writer.WriteStringValue("chunk_secondary");
+                break;
+            }
+            case BufferFormat.ChunkTransform: {
+                writer.WriteStringValue("chunk_transform");
+                break;
+            }
+
+        }
+    }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -105,7 +161,7 @@ static class BufferContexteMethods
     }
 }
 
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+// [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record ArrayIndexEntry
 {
     [JsonPropertyName("context")]
@@ -213,7 +269,6 @@ public record ArrayIndexEntry
     }
 }
 
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class ArrayIndex
 {
     [JsonPropertyName("prefix")]
