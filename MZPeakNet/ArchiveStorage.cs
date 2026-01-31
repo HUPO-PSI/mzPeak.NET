@@ -8,6 +8,7 @@ using System.IO.Compression;
 using ParquetSharp.IO;
 using MZPeak.Metadata;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EntityType
@@ -138,6 +139,8 @@ public class FileIndex
 
 public interface IMZPeakArchiveStorage
 {
+    internal static ILogger? Logger = null;
+
     public List<string> FileNames();
 
     public Stream? OpenEntry(EntityType entityType, DataKind dataKind)
@@ -524,6 +527,8 @@ public class DirectoryArchive : IMZPeakArchiveStorage
 
 public interface IMZPeakArchiveWriter : IDisposable
 {
+    public static ILogger? Logger = null;
+
     public Stream OpenStream(FileIndexEntry indexEntry);
 
     public FileIndex FileIndex();
@@ -532,6 +537,8 @@ public interface IMZPeakArchiveWriter : IDisposable
 
 public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 {
+    public static ILogger? Logger = null;
+
     public string Path;
     public FileIndex FileIndex;
 
@@ -569,6 +576,8 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T: Stream
 {
 
+    public static ILogger? Logger = null;
+
     ZipArchive Archive;
     T OuterStream;
     Stream? CurrentStream;
@@ -587,7 +596,7 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T: Stream
     {
         if (CurrentStream != null)
         {
-            Console.WriteLine($"Closing current stream for {CurrentEntry}");
+            Logger?.LogDebug($"Closing current stream for {CurrentEntry}");
             CurrentStream.Close();
             CurrentStream = null;
             CurrentEntry = null;
@@ -600,19 +609,19 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T: Stream
         var entry = Archive.CreateEntry(FileIndex.FILE_NAME, CompressionLevel.NoCompression);
         using (var stream = entry.Open())
         {
-            Console.WriteLine("Writing file index");
+            Logger?.LogDebug("Writing file index");
             var payload = JsonSerializer.Serialize(FileIndex);
             var bytesOf = new UTF8Encoding().GetBytes(payload);
             stream.Write(bytesOf);
         }
-        Console.WriteLine("Closing ZIP archive");
+        Logger?.LogDebug("Closing ZIP archive");
         Archive.Dispose();
     }
 
     public Stream OpenStream(FileIndexEntry indexEntry)
     {
         CloseCurrent();
-        Console.WriteLine($"Opening {indexEntry}");
+        Logger?.LogDebug($"Opening {indexEntry}");
         var entry = Archive.CreateEntry(indexEntry.Name, CompressionLevel.NoCompression);
         CurrentStream = entry.Open();
         CurrentEntry = entry;

@@ -1,15 +1,20 @@
 ﻿using MZPeak;
 using MZPeak.Storage;
 using System.CommandLine;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace MZPeakCliConverter;
 
 internal class Program
 {
+    static ILogger? Logger = null;
+
     static void Main(string[] args)
     {
-
+        ConfigureLogging();
+#if DEBUG
+        Logger?.LogInformation("Running Debug Mode");
+#endif
         RootCommand rootCommand = new("Demo application for mzPeak .NET")
         {
             CreateReadCommand(),
@@ -18,6 +23,21 @@ internal class Program
 
         var opts = rootCommand.Parse(args);
         opts.Invoke();
+    }
+
+    static void ConfigureLogging()
+    {
+        var loggerFactory = LoggerFactory.Create(builder => {
+            builder.AddSimpleConsole(options =>
+            {
+                options.IncludeScopes = true;
+                options.SingleLine = true;
+                options.TimestampFormat = "HH:mm:ss";
+            });
+        });
+
+        MZPeak.Util.LoggingConfig.ConfigureLogging(loggerFactory);
+        Logger = loggerFactory.CreateLogger("MZPeakNet.App");
     }
 
     static Command CreateReadCommand()
@@ -33,7 +53,7 @@ internal class Program
             }
             else
             {
-                ReadFile(fp);
+                ReadFile(fp).Wait();
             }
         });
         return cmd;
@@ -64,7 +84,7 @@ internal class Program
         var spectrumArrays = reader.SpectrumDataReaderMeta?.ArrayIndex;
         if (spectrumArrays == null)
         {
-            Console.WriteLine("Cannot transcode a file without spectra yet");
+            Logger?.LogError("Cannot transcode a file without spectra yet");
             return;
         }
         using (var fileStream = File.Create(destinationFile.FullName))
@@ -85,14 +105,14 @@ internal class Program
 
             await foreach(var(descr, data) in reader.EnumerateSpectraAsync())
             {
-                Console.WriteLine($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
+                Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
                 var index = writer.CurrentSpectrum;
-                var (spacingModel, auxArrays) = writer.AddSpectrumData(index, data.Fields.Skip(1));
+                var (spacingModel, auxArrays) = writer.AddSpectrumData(index, data.Fields.Skip(1), descr.IsProfile);
                 writer.AddSpectrum(
                     descr.Id,
                     descr.Time,
                     descr.DataProcessingRef,
-                    spacingModel?.Coefficients,
+                    spacingModel?.Coefficients ?? new(),
                     descr.Parameters,
                     auxArrays
                 );
@@ -127,17 +147,40 @@ internal class Program
                     );
                 }
             }
+            writer.FlushSpectrumData();
+            await foreach(var(descr, data) in reader.EnumerateChromatogramsAsync())
+            {
+                Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
+                var index = writer.CurrentChromatogram;
+                var auxArrays = writer.AddChromatogramData(index, data.Fields.Skip(1));
+                writer.AddChromatogram(
+                    descr.Id,
+                    descr.DataProcessingRef,
+                    descr.Parameters,
+                    auxArrays
+                );
+
+            }
             writer.Close();
         }
 
     }
 
-    static void ReadFile(FileInfo fileInfo)
+    static async Task ReadFile(FileInfo fileInfo)
     {
-        Console.WriteLine($"Reading {fileInfo}");
+        Logger?.LogInformation($"Reading {fileInfo}");
         var reader = new MZPeak.Reader.MzPeakReader(fileInfo.FullName);
-        Console.WriteLine($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
-        Console.WriteLine($"Spectrum storage format = {reader.SpectrumDataFormat}");
+        Logger?.LogInformation($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
+        Logger?.LogInformation($"Spectrum storage format = {reader.SpectrumDataFormat}");
 
+        var isProfile = 0;
+        var isCentroid = 0;
+        await foreach(var (descr, spec) in reader.EnumerateSpectraAsync())
+        {
+            isProfile += descr.IsProfile ? 1 : 0;
+            isCentroid += descr.IsCentroid ? 1 : 0;
+        }
+
+        Logger?.LogInformation($"{isProfile} profile spectra, {isCentroid} centroid spectra");
     }
 }

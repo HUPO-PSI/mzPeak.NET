@@ -44,12 +44,16 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
         if (arr.Data.DataType.TypeId == ArrowTypeId.String)
         {
             var accs = (StringArray)arr;
-            for (var i = 0; i < accs.Length; i++) Params[i].AccessionCURIE = accs.GetString(i);
+            for (var i = 0; i < accs.Length; i++) {
+                Params[i].AccessionCURIE = accs.GetString(i);
+            }
         }
         else if (arr.Data.DataType.TypeId == ArrowTypeId.LargeString)
         {
             var accs = (LargeStringArray)arr;
-            for (var i = 0; i < accs.Length; i++) Params[i].AccessionCURIE = accs.GetString(i);
+            for (var i = 0; i < accs.Length; i++) {
+                Params[i].AccessionCURIE = accs.GetString(i);
+            }
         }
         else throw new InvalidDataException("Unsupported type for accession: " + arr.Data.DataType.Name);
     }

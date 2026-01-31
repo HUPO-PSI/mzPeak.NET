@@ -3,6 +3,7 @@ using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Compute;
 using MZPeak.Reader.Visitors;
+using Microsoft.Extensions.Logging;
 
 
 namespace MZPeak.Metadata;
@@ -11,8 +12,10 @@ namespace MZPeak.Metadata;
 /// <summary>
 /// A base class for generic metadata table reading
 /// </summary>
-public class MetadataReaderBase
+public abstract class MetadataReaderBase<T>
 {
+    internal static ILogger? Logger = null;
+
     protected MzPeakMetadata mzPeakMetadata;
 
     public FileDescription FileDescription => mzPeakMetadata.FileDescription;
@@ -56,10 +59,13 @@ public class MetadataReaderBase
         return nativeIds;
     }
 
+    public abstract int Length {get;}
+
+    public abstract T Get(ulong index);
 }
 
 
-public class SpectrumMetadataReader : MetadataReaderBase
+public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
 {
     public ParquetSharp.Arrow.FileReader FileReader;
 
@@ -72,7 +78,7 @@ public class SpectrumMetadataReader : MetadataReaderBase
     RecordBatch? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
-    public int Length { get
+    public override int Length { get
         {
             if (SpectrumMetadata == null) {
                 InitializeTables().Wait();
@@ -130,7 +136,7 @@ public class SpectrumMetadataReader : MetadataReaderBase
             {
                 continue;
             }
-            if (modelArr.IsNull(i))
+            if (modelArr.IsNull(i) || modelArr.GetValueLength(i) == 0)
             {
                 continue;
             }
@@ -214,7 +220,7 @@ public class SpectrumMetadataReader : MetadataReaderBase
         set => selectedIonMetadata = value;
     }
 
-    public SpectrumDescription GetSpectrum(ulong index)
+    SpectrumDescription GetSpectrum(ulong index)
     {
         if (SpectrumMetadata == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
 
@@ -224,6 +230,7 @@ public class SpectrumMetadataReader : MetadataReaderBase
         var visitor = new SpectrumVisitor();
         visitor.Visit(recs);
         var rec = visitor.Values[0];
+        var pn = rec.Parameters.Find(p => p.AccessionCURIE == "MS:1000127");
         List<ScanInfo> scanRecs = new();
         if (ScanMetadata != null)
         {
@@ -263,14 +270,17 @@ public class SpectrumMetadataReader : MetadataReaderBase
         var reader = FileReader.GetRecordBatchReader();
         var builder = new RecordBatch.Builder();
         RecordBatch batch;
+        int ctr = 0;
         while (true) {
             batch = await reader.ReadNextRecordBatchAsync();
             if(batch == null)
             {
                 break;
             }
+            ctr++;
             builder.Append(batch);
         }
+        if (ctr == 0) return;
         batch = builder.Build();
         var spectrumCol = (StructArray?)batch.Column("spectrum");
         if (spectrumCol != null)
@@ -308,9 +318,13 @@ public class SpectrumMetadataReader : MetadataReaderBase
         }
     }
 
+    public override SpectrumDescription Get(ulong index)
+    {
+        return GetSpectrum(index);
+    }
 }
 
-public class ChromatogramMetadataReader : MetadataReaderBase
+public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescription>
 {
     public ParquetSharp.Arrow.FileReader FileReader;
 
@@ -321,7 +335,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase
     RecordBatch? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
-    public int Length
+    public override int Length
     {
         get
         {
@@ -389,11 +403,47 @@ public class ChromatogramMetadataReader : MetadataReaderBase
         return GetNativeIdsFrom(ChromatogramMetadata);
     }
 
+    ChromatogramDescription GetChromatogram(ulong index)
+    {
+        if (ChromatogramMetadata == null) throw new IndexOutOfRangeException($"{index} out of chromatogram index range");
+
+        var idxArr = (UInt64Array)ChromatogramMetadata.Column(0);
+        var mask = Compute.Compute.Equal(idxArr, index);
+        var recs = Compute.Compute.Filter(ChromatogramMetadata, mask);
+        var visitor = new ChromatogramVisitor();
+        visitor.Visit(recs);
+        var rec = visitor.Values[0];
+
+        List<PrecursorInfo> precursorInfos = new();
+        if (PrecursorMetadata != null)
+        {
+            idxArr = (UInt64Array)PrecursorMetadata.Column(0);
+            mask = Compute.Compute.Equal(idxArr, index);
+            recs = Compute.Compute.Filter(PrecursorMetadata, mask);
+            var scanVisitor = new PrecursorVisitor();
+            scanVisitor.Visit(recs);
+            precursorInfos = scanVisitor.Values;
+        }
+        List<SelectedIonInfo> selectedIons = new();
+        if (SelectedIonMetadata != null)
+        {
+            idxArr = (UInt64Array)SelectedIonMetadata.Column(0);
+            mask = Compute.Compute.Equal(idxArr, index);
+            recs = Compute.Compute.Filter(SelectedIonMetadata, mask);
+            var scanVisitor = new SelectedIonVisitor();
+            scanVisitor.Visit(recs);
+            selectedIons = scanVisitor.Values;
+        }
+
+        return new ChromatogramDescription(rec, precursorInfos, selectedIons);
+    }
+
     public async Task InitializeTables()
     {
         var reader = FileReader.GetRecordBatchReader();
         var builder = new RecordBatch.Builder();
         RecordBatch batch;
+        int ctr = 0;
         while (true)
         {
             batch = await reader.ReadNextRecordBatchAsync();
@@ -401,8 +451,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase
             {
                 break;
             }
+            ctr++;
             builder.Append(batch);
         }
+        if (ctr == 0) return;
         batch = builder.Build();
         var spectrumCol = (StructArray?)batch.Column("chromatogram");
         if (spectrumCol != null)
@@ -429,5 +481,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase
             selectedIonMetadataColumns = ColumnParam.FromFields(dtype.Fields);
             SelectedIonMetadata = new RecordBatch(specSchema, selectedIon.Fields, selectedIon.Length);
         }
+    }
+
+    public override ChromatogramDescription Get(ulong index)
+    {
+        return GetChromatogram(index);
     }
 }

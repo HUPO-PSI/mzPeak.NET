@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Reflection.Metadata;
 using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Types;
@@ -17,9 +18,14 @@ public interface IHasParameters
 {
     public List<Param> Parameters {get; set;}
 
-    public Param? FindParam(string accession) => Parameters.First(p => p.AccessionCURIE == accession);
-    public bool HasParam(string accession) => FindParam(accession) != null;
+    public Param? FindParam(string accession)
+    {
+        foreach (var p in Parameters)
+            if (p.AccessionCURIE == accession) return p;
+        return null;
+    }
 
+    public bool HasParam(string accession) => FindParam(accession) != null;
 }
 
 public interface IHasSourceIndex
@@ -44,10 +50,20 @@ public record SpectrumInfo : IHasParameters
     public List<Param> Parameters { get; set; }
     public List<AuxiliaryArray> AuxiliaryArrays { get; set; }
 
-    public bool IsProfile => ((IHasParameters)this).HasParam("MS:1000128");
-    public bool IsCentroid => ((IHasParameters)this).HasParam("MS1000127");
-    public double? BasePeakMZ => ((IHasParameters)this).FindParam(SpectrumProperties.BasePeakMZ.CURIE())?.AsDouble();
-    public double? BasePeakIntensity => ((IHasParameters)this).FindParam(SpectrumProperties.BasePeakIntensity.CURIE())?.AsDouble();
+    public Param? FindParam(string accession) {
+        foreach(var p in Parameters)
+            if (p.AccessionCURIE == accession) {
+                return p;
+            }
+        return null;
+    }
+
+    public bool HasParam(string accession) => FindParam(accession) != null;
+
+    public bool IsProfile => HasParam(SpectrumRepresentation.ProfileSpectrum.CURIE());
+    public bool IsCentroid => HasParam(SpectrumRepresentation.CentroidSpectrum.CURIE());
+    public double? BasePeakMZ => FindParam(SpectrumProperties.BasePeakMZ.CURIE())?.AsDouble();
+    public double? BasePeakIntensity => FindParam(SpectrumProperties.BasePeakIntensity.CURIE())?.AsDouble();
 
     public SpectrumInfo(ulong index, string id, double time, byte msLevel, string? dataProcessingRef=null, int numberOfAuxiliaryArrays=0, List<double>? mzDeltaModel=null, List<Param>? parameters=null, List<AuxiliaryArray>? auxiliaryArray=null)
     {
@@ -159,6 +175,43 @@ public record SelectedIonInfo: HasIonMobility, IHasSourceIndex, IHasParameters, 
     }
 }
 
+public record ChromatogramInfo : IHasParameters
+{
+    public ulong Index { get; set; }
+    public string Id { get; set; }
+    public string? DataProcessingRef { get; set; } = null;
+    public int NumberOfAuxiliaryArrays { get; set; }
+    public List<Param> Parameters { get; set; }
+    public List<AuxiliaryArray> AuxiliaryArrays { get; set; }
+
+    public Param? FindParam(string accession)
+    {
+        foreach (var p in Parameters)
+            if (p.AccessionCURIE == accession)
+            {
+                return p;
+            }
+        return null;
+    }
+
+    public bool HasParam(string accession) => FindParam(accession) != null;
+
+    public ChromatogramInfo(ulong index, string id, string? dataProcessingRef = null, int numberOfAuxiliaryArrays = 0, List<Param>? parameters = null, List<AuxiliaryArray>? auxiliaryArray = null)
+    {
+        Index = index;
+        Id = id;
+        DataProcessingRef = dataProcessingRef;
+        Parameters = parameters ?? new();
+        NumberOfAuxiliaryArrays = numberOfAuxiliaryArrays;
+        AuxiliaryArrays = auxiliaryArray ?? new();
+    }
+
+    public override string ToString()
+    {
+        return "ChromatogramInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
+    }
+}
+
 public record SpectrumDescription
 {
     SpectrumInfo SpectrumInfo;
@@ -173,11 +226,34 @@ public record SpectrumDescription
     public List<Param> Parameters => SpectrumInfo.Parameters;
     public List<double>? MzDeltaModel => SpectrumInfo.MzDeltaModel;
     public string? DataProcessingRef => SpectrumInfo.DataProcessingRef;
+    public bool IsProfile => SpectrumInfo.IsProfile;
+    public bool IsCentroid => SpectrumInfo.IsCentroid;
+    public double? BasePeakMZ => SpectrumInfo.BasePeakMZ;
+    public double? BasePeakIntensity => SpectrumInfo.BasePeakIntensity;
 
     public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
     {
         SpectrumInfo = spectrumInfo;
         Scans = scans;
+        Precursors = precursors;
+        SelectedIons = selectedIons;
+    }
+}
+
+public record ChromatogramDescription
+{
+    ChromatogramInfo ChromatogramInfo;
+    public List<PrecursorInfo> Precursors;
+    public List<SelectedIonInfo> SelectedIons;
+
+    public string Id => ChromatogramInfo.Id;
+    public ulong Index => ChromatogramInfo.Index;
+    public List<Param> Parameters => ChromatogramInfo.Parameters;
+    public string? DataProcessingRef => ChromatogramInfo.DataProcessingRef;
+
+    public ChromatogramDescription(ChromatogramInfo chromatogramInfo, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
+    {
+        ChromatogramInfo = chromatogramInfo;
         Precursors = precursors;
         SelectedIons = selectedIons;
     }
@@ -546,7 +622,7 @@ class GenericParamStructVisitor : IVisitorAssemblyWithOffsets<ParamListRecord>, 
             var chunk = array.GetSlicedValues(i);
             var visitor = new ParamVisitor();
             visitor.Visit(chunk);
-            Values[j].Parameters = visitor.Params;
+            Values[j].Parameters.AddRange(visitor.Params);
         }
 
     }
@@ -560,7 +636,7 @@ class GenericParamStructVisitor : IVisitorAssemblyWithOffsets<ParamListRecord>, 
             var chunk = array.GetSlicedValues(i);
             var visitor = new ParamVisitor();
             visitor.Visit(chunk);
-            Values[j].Parameters = visitor.Params;
+            Values[j].Parameters.AddRange(visitor.Params);
         }
     }
 
@@ -811,7 +887,7 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
         visitor.Visit(array);
         for (var i = 0; i < Values.Count; i++)
         {
-            Values[i].ActivationParameters = visitor.Values[i].Parameters;
+            Values[i].ActivationParameters.AddRange(visitor.Values[i].Parameters);
         }
     }
 
@@ -821,7 +897,7 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
         visitor.Visit(array);
         for(var i = 0; i < Values.Count; i++)
         {
-            Values[i].IsolationWindowParameters = visitor.Values[i].Parameters;
+            Values[i].IsolationWindowParameters.AddRange(visitor.Values[i].Parameters);
         }
     }
 
@@ -887,7 +963,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
         else throw new InvalidDataException();
     }
 
-    public void VisitTime(IArrowArray array)
+    protected void VisitTime(IArrowArray array)
     {
         IHasParametersVisitor<SpectrumInfo> self = this;
         switch (array.Data.DataType.TypeId)
@@ -912,21 +988,23 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
         }
     }
 
-    public void VisitMSLevel(IArrowArray array)
+    protected void VisitMSLevel(IArrowArray array)
     {
         var self = (IHasParametersVisitor<SpectrumInfo>)this;
         foreach ((var i, var val) in self.VisitInteger(array))
+        {
             Values[i].MSLevel = (byte)(val ?? 0);
+        }
     }
 
-    public void VisitNumberOfAuxiliaryArrays(IArrowArray array)
+    protected void VisitNumberOfAuxiliaryArrays(IArrowArray array)
     {
         var self = (IHasParametersVisitor<SpectrumInfo>)this;
         foreach((var i, var val) in self.VisitInteger(array))
             Values[i].NumberOfAuxiliaryArrays = (int)(val ?? 0);
     }
 
-    public void VisitMzDeltaModel(IArrowArray array)
+    protected void VisitMzDeltaModel(IArrowArray array)
     {
         switch (array.Data.DataType.TypeId)
         {
@@ -973,7 +1051,23 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
         }
     }
 
-    public void VisitDataProcessingRef(IArrowArray array) { }
+    protected void VisitDataProcessingRef(IArrowArray array) { }
+
+    protected void VisitSpectrumRepresentation(IArrowArray array)
+    {
+        var self = (IHasParametersVisitor<SpectrumInfo>)this;
+        IEnumerable<(int, string?)> it;
+        if (array.Data.DataType.TypeId == ArrowTypeId.String) it = self.VisitString((StringArray)array);
+        else if (array.Data.DataType.TypeId == ArrowTypeId.LargeString) it = self.VisitString((LargeStringArray)array);
+        else throw new InvalidDataException($"{array.Data.DataType.Name} is not a valid data type for spectrum representation");
+        foreach (var (i, val) in it)
+        {
+            if (val == null) continue;
+            else if (val == "MS:1000128") Values[i].Parameters.Add(new Param("profile spectrum", accession: "MS:1000128", null));
+            else if (val == "MS:1000127") Values[i].Parameters.Add(new Param("centroid spectrum", accession: "MS:1000127", null));
+            else throw new NotImplementedException($"{val} is not a recognized spectrum representation");
+        }
+    }
 
     public void Visit(StructArray array)
     {
@@ -999,6 +1093,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
             else if (f.Name == "index") {}
             else if (f.Name == "time") VisitTime(arr);
             else if (f.Name == "MS_1000511_ms_level") VisitMSLevel(arr);
+            else if (f.Name == "MS_1000525_spectrum_representation") VisitSpectrumRepresentation(arr);
             else if (f.Name == "data_processing_ref") VisitDataProcessingRef(arr);
             else if (f.Name == "mz_delta_model") VisitMzDeltaModel(arr);
             else if (f.Name == "number_of_auxiliary_arrays") VisitNumberOfAuxiliaryArrays(arr);
@@ -1057,3 +1152,140 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
     }
 }
 
+public class ChromatogramVisitor : IVisitorAssemblyWithOffsets<ChromatogramInfo>, IHasParametersVisitor<ChromatogramInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>
+{
+    public List<ChromatogramInfo> Values { get; set; }
+    public List<int> Offsets { get; set; }
+
+    public ChromatogramVisitor()
+    {
+        Values = new();
+        Offsets = new();
+    }
+
+    void VisitId(IArrowArray array)
+    {
+        if (array.Data.DataType.TypeId == ArrowTypeId.String)
+        {
+            StringArray arr = (StringArray)array;
+            for (int j = 0; j < Offsets.Count; j++)
+            {
+                var i = Offsets[j];
+                if (arr.IsNull(i)) continue;
+                var chunk = arr.GetString(i);
+                Values[j].Id = chunk;
+            }
+        }
+        else if (array.Data.DataType.TypeId == ArrowTypeId.LargeString)
+        {
+            LargeStringArray arr = (LargeStringArray)array;
+            for (int j = 0; j < Offsets.Count; j++)
+            {
+                var i = Offsets[j];
+                if (arr.IsNull(i)) continue;
+                var chunk = arr.GetString(i);
+                Values[j].Id = chunk;
+            }
+        }
+        else throw new NotImplementedException();
+    }
+
+    protected void VisitDataProcessingRef(IArrowArray array) { }
+
+    public void Visit(RecordBatch array)
+    {
+        var dtype = new StructType(array.Schema.FieldsList);
+        Visit(new StructArray(dtype, array.Length, array.Arrays, default));
+    }
+
+    public void Visit(IArrowArray array)
+    {
+        if (array.Data.DataType.TypeId == ArrowTypeId.Struct) Visit((StructArray)array);
+        else throw new InvalidDataException();
+    }
+
+    public void Visit(StructArray array)
+    {
+        Values = new();
+        Offsets.Clear();
+
+        var dtype = (StructType)array.Data.DataType;
+
+        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
+        {
+            if (f.Name == "index")
+            {
+                VisitIndex(arr);
+                break;
+            }
+        }
+
+        var self = (IHasParametersVisitor<ChromatogramInfo>)this;
+
+        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
+        {
+            if (f.Name == "id") VisitId(arr);
+            else if (f.Name == "index") { }
+            else if (f.Name == "data_processing_ref") VisitDataProcessingRef(arr);
+            else if (f.Name == "number_of_auxiliary_arrays") VisitNumberOfAuxiliaryArrays(arr);
+            else if (f.Name == "auxiliary_arrays") VisitAuxiliarArrays(arr);
+            else if (f.Name == "parameters") self.VisitParameters(arr);
+            else self.VisitAsParameter(f, arr);
+        }
+    }
+
+    protected void VisitNumberOfAuxiliaryArrays(IArrowArray array)
+    {
+        var self = (IHasParametersVisitor<ChromatogramInfo>)this;
+        foreach ((var i, var val) in self.VisitInteger(array))
+            Values[i].NumberOfAuxiliaryArrays = (int)(val ?? 0);
+    }
+
+    void VisitAuxiliarArrays(IArrowArray array)
+    {
+        if (array.Data.DataType.TypeId == ArrowTypeId.List)
+        {
+            ListArray arr = (ListArray)array;
+            for (int j = 0; j < Offsets.Count; j++)
+            {
+                var i = Offsets[j];
+                if (arr.IsNull(i)) continue;
+                var chunk = arr.GetSlicedValues(i);
+                var visitor = new AuxiliaryArrayVisitor();
+                visitor.Visit(chunk);
+                Values[j].AuxiliaryArrays.AddRange(visitor.Values);
+            }
+        }
+        else if (array.Data.DataType.TypeId == ArrowTypeId.LargeList)
+        {
+            LargeListArray arr = (LargeListArray)array;
+            for (int j = 0; j < Offsets.Count; j++)
+            {
+                var i = Offsets[j];
+                if (arr.IsNull(i)) continue;
+                var chunk = arr.GetSlicedValues(i);
+                var visitor = new AuxiliaryArrayVisitor();
+                visitor.Visit(chunk);
+                Values[j].AuxiliaryArrays.AddRange(visitor.Values);
+            }
+        }
+        else throw new NotImplementedException();
+    }
+
+    public ChromatogramInfo CreateFromIndex(ulong index)
+    {
+        return new ChromatogramInfo(index, "");
+    }
+
+    public void VisitIndex(IArrowArray array)
+    {
+        UInt64Array arr = (UInt64Array)array;
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var idx = arr.GetValue(i);
+            if (idx == null) continue;
+            Offsets.Add(i);
+            Values.Add(CreateFromIndex((ulong)idx));
+        }
+    }
+}

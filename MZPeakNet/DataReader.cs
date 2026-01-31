@@ -13,6 +13,7 @@ using ParquetSharp.Arrow;
 using MZPeak.Metadata;
 using Apache.Arrow.Types;
 using MZPeak.Compute;
+using Microsoft.Extensions.Logging;
 
 public record struct GroupTagBounds<T> where T : IComparable<T>
 {
@@ -339,7 +340,7 @@ public class DataArraysReader
     public long Length { get => Metadata.EntrySpanIndex.Length; }
 
     //TODO: Factor this into a type
-    public async IAsyncEnumerable<StructArray> Enumerate()
+    public async IAsyncEnumerable<(ulong, StructArray)> Enumerate()
     {
         BaseLayoutReader reader;
         if (Metadata.Format == BufferFormat.Point)
@@ -364,6 +365,8 @@ public class DataArraysReader
 
 public class BaseLayoutReader
 {
+    public static ILogger? Logger = null;
+
     protected ArrayIndex ArrayIndex;
     protected IArrowArrayStream Reader;
     protected Dictionary<ulong, SpacingInterpolationModel<double>>? SpacingModels;
@@ -384,7 +387,7 @@ public class BaseLayoutReader
         return rootStruct;
     }
 
-    public async IAsyncEnumerable<StructArray> EnumerateEntries()
+    public async IAsyncEnumerable<(ulong, StructArray)> EnumerateEntries()
     {
         ulong rowCountRead = 0;
         var chunks = new List<IArrowArray>();
@@ -420,7 +423,7 @@ public class BaseLayoutReader
                         block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
                         chunks.Add(block);
 
-                        yield return (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
+                        yield return ((ulong)lastIndex, (StructArray)ArrowArrayConcatenator.Concatenate(chunks));
                     }
                     chunks = new();
                     offsetIn = c;
@@ -437,9 +440,9 @@ public class BaseLayoutReader
                 chunks.Add(block);
             }
         }
-        if (chunks.Count > 0)
+        if (chunks.Count > 0 && lastIndex != null)
         {
-            yield return (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
+            yield return ((ulong)lastIndex, (StructArray)ArrowArrayConcatenator.Concatenate(chunks));
         }
     }
 

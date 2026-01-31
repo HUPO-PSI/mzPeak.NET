@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using Microsoft.Extensions.Logging;
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
@@ -94,7 +95,7 @@ public abstract class BaseLayoutBuilder
 
         foreach (var (k, v) in notCoveredArrays)
         {
-            Console.WriteLine($"{k} is treated as an auxiliary array");
+            // ($"{k} is treated as an auxiliary array");
             arrays.Remove(k);
             auxiliaryArrays.Add(AuxiliaryArray.FromValues(v, k));
         }
@@ -145,22 +146,25 @@ public abstract class BaseLayoutBuilder
             }
         }
 
-        if (nullInterpolate != null && nullZero != null && (isProfile ?? true))
+        if (isProfile ?? false)
         {
-            var coordinates = Compute.Compute.CastDouble(arrays[nullInterpolate]);
-            var weights = arrays[nullZero];
-            deltaModel = SpacingInterpolationModel<double>.Fit(coordinates, weights);
+            if (nullInterpolate != null && nullZero != null)
+            {
+                var coordinates = Compute.Compute.CastDouble(arrays[nullInterpolate]);
+                var weights = arrays[nullZero];
+                deltaModel = SpacingInterpolationModel<double>.Fit(coordinates, weights);
+            }
+            else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
         }
-        else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
 
         return (arrays, deltaModel, auxiliaryArrays);
     }
 
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays);
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays);
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
-        return Add(entryIndex, arrays.Select(a => (Array)a));
+        return Add(entryIndex, arrays.Select(a => (Array)a), isProfile);
     }
 
     public abstract RecordBatch GetRecordBatch();
@@ -196,9 +200,9 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 
 
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
-        (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays);
+        (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
 
         int k = 0;
         foreach(var val in arrays.Values)
@@ -313,10 +317,10 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         return (deltaModel, auxiliaryArrays);
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
         var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
-        return Add(entryIndex, kvs);
+        return Add(entryIndex, kvs, isProfile);
     }
 
     public override RecordBatch GetRecordBatch()

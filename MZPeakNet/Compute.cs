@@ -6,6 +6,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 
 using MathNet.Numerics.LinearAlgebra;
+using Microsoft.Extensions.Logging;
 
 public class SpacingInterpolationModel<T> where T : struct, INumber<T>
 {
@@ -665,6 +666,8 @@ public static class DeltaCodec
 
 public static class Compute
 {
+    public static ILogger? Logger = null;
+
     static void NullToZero<T, TBuilder>(PrimitiveArray<T> array, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator) where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
         foreach (var value in array)

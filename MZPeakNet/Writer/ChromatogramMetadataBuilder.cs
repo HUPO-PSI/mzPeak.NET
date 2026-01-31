@@ -1,5 +1,4 @@
 using Apache.Arrow;
-using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 
@@ -150,7 +149,6 @@ public class ChromatogramMetadataBuilder
         arrays.AddRange(chromatogramArrays);
         arrays.AddRange(precursorArrays);
         arrays.AddRange(selectedIonArrays);
-        Clear();
         return new RecordBatch(schema, arrays, chromatogramLength);
     }
 }

@@ -217,6 +217,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         DataProcessingRef = new();
         NumberOfAuxiliaryArrays = new();
         MzDeltaModel = new ListArray.Builder(new DoubleType());
+        MzDeltaModel.Append();
         AuxiliaryArrays = new();
     }
 
@@ -245,7 +246,9 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         }
         else
         {
-            MzDeltaModel.AppendNull();
+            // Parquet C++ library does not support writing interleaved null and non-null values https://github.com/apache/arrow/issues/24425
+            // MzDeltaModel.AppendNull();
+            MzDeltaModel.Append();
         }
         Visited.Clear();
         VisitParameters(parameters);
@@ -270,16 +273,18 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             new Field("index", new UInt64Type(), true),
             new Field("id", new StringType(), true),
             new Field("time", new DoubleType(), true),
-            new Field("data_processing_ref", new StringType(), true),
-            new Field("number_of_auxiliary_arrays", new Int32Type(), true),
-            new Field("mz_delta_model", new ListType(new DoubleType()), true),
-            new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         };
         foreach (var vis in ParamVisitors)
         {
             fields.AddRange(vis.ArrowType());
         }
         fields.AddRange(ParamList.ArrowType());
+        fields.AddRange([
+            new Field("data_processing_ref", new StringType(), true),
+            new Field("mz_delta_model", new ListType(new DoubleType()), true),
+            new Field("number_of_auxiliary_arrays", new Int32Type(), true),
+            new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
+        ]);
         return new() { new Field("spectrum", new StructType(fields), true) };
     }
 
@@ -290,16 +295,18 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             Index.Build(),
             Id.Build(),
             Time.Build(),
-            DataProcessingRef.Build(),
-            NumberOfAuxiliaryArrays.Build(),
-            MzDeltaModel.Build(),
-            AuxiliaryArrays.Build()[0]
         };
         foreach (var vis in ParamVisitors)
         {
             fields.AddRange(vis.Build());
         }
         fields.AddRange(ParamList.Build());
+        fields.AddRange([
+            DataProcessingRef.Build(),
+            MzDeltaModel.Build(),
+            NumberOfAuxiliaryArrays.Build(),
+            AuxiliaryArrays.Build()[0]
+        ]);
         var size = Index.Length;
 
         return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
@@ -566,15 +573,17 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         {
             new Field("index", new UInt64Type(), true),
             new Field("id", new StringType(), true),
-            new Field("data_processing_ref", new StringType(), true),
-            new Field("number_of_auxiliary_arrays", new Int32Type(), true),
-            new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         };
         foreach (var vis in ParamVisitors)
         {
             fields.AddRange(vis.ArrowType());
         }
         fields.AddRange(ParamList.ArrowType());
+        fields.AddRange([
+            new Field("data_processing_ref", new StringType(), true),
+            new Field("number_of_auxiliary_arrays", new Int32Type(), true),
+            new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
+        ]);
         return new() { new Field("chromatogram", new StructType(fields), true) };
     }
 
@@ -584,15 +593,17 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         {
             Index.Build(),
             Id.Build(),
-            DataProcessingRef.Build(),
-            NumberOfAuxiliaryArrays.Build(),
-            AuxiliaryArrays.Build()[0]
         };
         foreach (var vis in ParamVisitors)
         {
             fields.AddRange(vis.Build());
         }
         fields.AddRange(ParamList.Build());
+        fields.AddRange([
+            DataProcessingRef.Build(),
+            NumberOfAuxiliaryArrays.Build(),
+            AuxiliaryArrays.Build()[0]
+        ]);
         var size = Index.Length;
 
         return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };

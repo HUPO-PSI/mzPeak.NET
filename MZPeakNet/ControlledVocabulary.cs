@@ -1228,6 +1228,131 @@ public static class BinaryDataTypeMethods
     }
 }
 
+public enum Activation
+{
+    DissociationMethod,
+    CollisionInducedDissociation,
+    PlasmaDesorption,
+    PostSourceDecay,
+    SurfaceInducedDissociation,
+    BlackbodyInfraredRadiativeDissociation,
+    ElectronCaptureDissociation,
+    SustainedOffResonanceIrradiation,
+    LowEnergyCollisionInducedDissociation,
+    Photodissociation,
+    ElectronTransferDissociation,
+    PulsedQDissociation,
+    InSourceCollisionInducedDissociation,
+    Lift,
+    NegativeElectronTransferDissociation,
+    BeamTypeCollisionInducedDissociation,
+    TrapTypeCollisionInducedDissociation,
+    SupplementalCollisionInducedDissociation,
+    ElectronActivatedDissociation,
+    InfraredMultiphotonDissociation,
+    UltravioletPhotodissociation,
+    HigherEnergyBeamTypeCollisionInducedDissociation,
+    SupplementalBeamTypeCollisionInducedDissociation,
+}
+
+public static class ActivationMethods
+{
+    public static string Name(this Activation term)
+    {
+        switch (term)
+        {
+            case Activation.DissociationMethod: return "dissociation method";
+            case Activation.CollisionInducedDissociation: return "collision-induced dissociation";
+            case Activation.PlasmaDesorption: return "plasma desorption";
+            case Activation.PostSourceDecay: return "post-source decay";
+            case Activation.SurfaceInducedDissociation: return "surface-induced dissociation";
+            case Activation.BlackbodyInfraredRadiativeDissociation: return "blackbody infrared radiative dissociation";
+            case Activation.ElectronCaptureDissociation: return "electron capture dissociation";
+            case Activation.SustainedOffResonanceIrradiation: return "sustained off-resonance irradiation";
+            case Activation.LowEnergyCollisionInducedDissociation: return "low-energy collision-induced dissociation";
+            case Activation.Photodissociation: return "photodissociation";
+            case Activation.ElectronTransferDissociation: return "electron transfer dissociation";
+            case Activation.PulsedQDissociation: return "pulsed q dissociation";
+            case Activation.InSourceCollisionInducedDissociation: return "in-source collision-induced dissociation";
+            case Activation.Lift: return "LIFT";
+            case Activation.NegativeElectronTransferDissociation: return "negative electron transfer dissociation";
+            case Activation.BeamTypeCollisionInducedDissociation: return "beam-type collision-induced dissociation";
+            case Activation.TrapTypeCollisionInducedDissociation: return "trap-type collision-induced dissociation";
+            case Activation.SupplementalCollisionInducedDissociation: return "supplemental collision-induced dissociation";
+            case Activation.ElectronActivatedDissociation: return "electron activated dissociation";
+            case Activation.InfraredMultiphotonDissociation: return "infrared multiphoton dissociation";
+            case Activation.UltravioletPhotodissociation: return "ultraviolet photodissociation";
+            case Activation.HigherEnergyBeamTypeCollisionInducedDissociation: return "higher energy beam-type collision-induced dissociation";
+            case Activation.SupplementalBeamTypeCollisionInducedDissociation: return "supplemental beam-type collision-induced dissociation";
+            default: throw new InvalidOperationException($"Unknown activation method {term}");
+        }
+    }
+
+    public static string CURIE(this Activation term)
+    {
+        switch (term)
+        {
+            case Activation.DissociationMethod: return "MS:1000044";
+            case Activation.CollisionInducedDissociation: return "MS:1000133";
+            case Activation.PlasmaDesorption: return "MS:1000134";
+            case Activation.PostSourceDecay: return "MS:1000135";
+            case Activation.SurfaceInducedDissociation: return "MS:1000136";
+            case Activation.BlackbodyInfraredRadiativeDissociation: return "MS:1000242";
+            case Activation.ElectronCaptureDissociation: return "MS:1000250";
+            case Activation.SustainedOffResonanceIrradiation: return "MS:1000282";
+            case Activation.LowEnergyCollisionInducedDissociation: return "MS:1000433";
+            case Activation.Photodissociation: return "MS:1000435";
+            case Activation.ElectronTransferDissociation: return "MS:1000598";
+            case Activation.PulsedQDissociation: return "MS:1000599";
+            case Activation.InSourceCollisionInducedDissociation: return "MS:1001880";
+            case Activation.Lift: return "MS:1002000";
+            case Activation.NegativeElectronTransferDissociation: return "MS:1003247";
+            case Activation.BeamTypeCollisionInducedDissociation: return "MS:1000422";
+            case Activation.TrapTypeCollisionInducedDissociation: return "MS:1002472";
+            case Activation.SupplementalCollisionInducedDissociation: return "MS:1002679";
+            case Activation.ElectronActivatedDissociation: return "MS:1003294";
+            case Activation.InfraredMultiphotonDissociation: return "MS:1000262";
+            case Activation.UltravioletPhotodissociation: return "MS:1003246";
+            case Activation.HigherEnergyBeamTypeCollisionInducedDissociation: return "MS:1002481";
+            case Activation.SupplementalBeamTypeCollisionInducedDissociation: return "MS:1002678";
+            default: throw new InvalidOperationException($"Unknown activation method {term}");
+        }
+    }
+}
+
+public enum SpectrumRepresentation
+{
+    SpectrumRepresentation,
+    CentroidSpectrum,
+    ProfileSpectrum,
+}
+
+public static class SpectrumRepresentationMethods
+{
+
+    public static string Name(this SpectrumRepresentation term)
+    {
+        switch (term)
+        {
+            case SpectrumRepresentation.SpectrumRepresentation: return "spectrum representation";
+            case SpectrumRepresentation.CentroidSpectrum: return "centroid spectrum";
+            case SpectrumRepresentation.ProfileSpectrum: return "profile spectrum";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this SpectrumRepresentation term)
+    {
+        switch (term)
+        {
+            case SpectrumRepresentation.SpectrumRepresentation: return "MS:1000525";
+            case SpectrumRepresentation.CentroidSpectrum: return "MS:1000127";
+            case SpectrumRepresentation.ProfileSpectrum: return "MS:1000128";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
 public record ColumnParam
 {
     public string Name;
