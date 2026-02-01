@@ -965,6 +965,22 @@ public static class Compute
         return builder.Build();
     }
 
+    public static DoubleArray CastDouble<T>(T[] array) where T : struct, INumber<T>
+    {
+        var builder = new DoubleArray.Builder();
+        foreach (var val in array)
+            builder.Append(double.CreateChecked(val));
+        return builder.Build();
+    }
+
+    public static FloatArray CastFloat<T>(T[] array) where T : struct, INumber<T>
+    {
+        var builder = new FloatArray.Builder();
+        foreach (var val in array)
+            builder.Append(float.CreateChecked(val));
+        return builder.Build();
+    }
+
     public static Int64Array CastInt64(IArrowArray array)
     {
         switch (array.Data.DataType.TypeId)

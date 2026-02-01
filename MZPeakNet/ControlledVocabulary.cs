@@ -1351,6 +1351,235 @@ public static class SpectrumRepresentationMethods
             default: throw new InvalidOperationException();
         }
     }
+
+    public static Param AsParam(this SpectrumRepresentation term)
+    {
+        return new Param(term.Name(), term.CURIE(), null);
+    }
+}
+
+public enum ScanPolarity
+{
+    ScanPolarity,
+    NegativeScan,
+    PositiveScan,
+}
+
+public static class ScanPolarityMethods
+{
+    public static string Name(this ScanPolarity term)
+    {
+        switch (term)
+        {
+            case ScanPolarity.ScanPolarity: return "scan polarity";
+            case ScanPolarity.NegativeScan: return "negative scan";
+            case ScanPolarity.PositiveScan: return "positive scan";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this ScanPolarity term)
+    {
+        switch (term)
+        {
+            case ScanPolarity.ScanPolarity: return "MS:1000465";
+            case ScanPolarity.NegativeScan: return "MS:1000129";
+            case ScanPolarity.PositiveScan: return "MS:1000130";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
+public enum SpectrumType
+{
+    SpectrumType,
+    MassSpectrum,
+    PdaSpectrum,
+    ElectromagneticRadiationSpectrum,
+    EmissionSpectrum,
+    AbsorptionSpectrum,
+    CalibrationSpectrum,
+    ChargeInversionMassSpectrum,
+    ConstantNeutralGainSpectrum,
+    ConstantNeutralLossSpectrum,
+    E2MassSpectrum,
+    PrecursorIonSpectrum,
+    ProductIonSpectrum,
+    Ms1Spectrum,
+    MsnSpectrum,
+    CrmSpectrum,
+    SimSpectrum,
+    SrmSpectrum,
+    EnhancedMultiplyChargedSpectrum,
+    TimeDelayedFragmentationSpectrum,
+}
+
+public static class SpectrumTypeMethods
+{
+    public static readonly Dictionary<string, SpectrumType> FromCURIE = new Dictionary<string, SpectrumType>(
+        ((SpectrumType[])Enum.GetValues(typeof(SpectrumType))).Select((v) => new KeyValuePair<string, SpectrumType>(v.CURIE(), v))
+    );
+
+    public static string Name(this SpectrumType term)
+    {
+        switch (term)
+        {
+            case SpectrumType.SpectrumType: return "spectrum type";
+            case SpectrumType.MassSpectrum: return "mass spectrum";
+            case SpectrumType.PdaSpectrum: return "PDA spectrum";
+            case SpectrumType.ElectromagneticRadiationSpectrum: return "electromagnetic radiation spectrum";
+            case SpectrumType.EmissionSpectrum: return "emission spectrum";
+            case SpectrumType.AbsorptionSpectrum: return "absorption spectrum";
+            case SpectrumType.CalibrationSpectrum: return "calibration spectrum";
+            case SpectrumType.ChargeInversionMassSpectrum: return "charge inversion mass spectrum";
+            case SpectrumType.ConstantNeutralGainSpectrum: return "constant neutral gain spectrum";
+            case SpectrumType.ConstantNeutralLossSpectrum: return "constant neutral loss spectrum";
+            case SpectrumType.E2MassSpectrum: return "e/2 mass spectrum";
+            case SpectrumType.PrecursorIonSpectrum: return "precursor ion spectrum";
+            case SpectrumType.ProductIonSpectrum: return "product ion spectrum";
+            case SpectrumType.Ms1Spectrum: return "MS1 spectrum";
+            case SpectrumType.MsnSpectrum: return "MSn spectrum";
+            case SpectrumType.CrmSpectrum: return "CRM spectrum";
+            case SpectrumType.SimSpectrum: return "SIM spectrum";
+            case SpectrumType.SrmSpectrum: return "SRM spectrum";
+            case SpectrumType.EnhancedMultiplyChargedSpectrum: return "enhanced multiply charged spectrum";
+            case SpectrumType.TimeDelayedFragmentationSpectrum: return "time-delayed fragmentation spectrum";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this SpectrumType term)
+    {
+        switch (term)
+        {
+            case SpectrumType.SpectrumType: return "MS:1000559";
+            case SpectrumType.MassSpectrum: return "MS:1000294";
+            case SpectrumType.PdaSpectrum: return "MS:1000620";
+            case SpectrumType.ElectromagneticRadiationSpectrum: return "MS:1000804";
+            case SpectrumType.EmissionSpectrum: return "MS:1000805";
+            case SpectrumType.AbsorptionSpectrum: return "MS:1000806";
+            case SpectrumType.CalibrationSpectrum: return "MS:1000928";
+            case SpectrumType.ChargeInversionMassSpectrum: return "MS:1000322";
+            case SpectrumType.ConstantNeutralGainSpectrum: return "MS:1000325";
+            case SpectrumType.ConstantNeutralLossSpectrum: return "MS:1000326";
+            case SpectrumType.E2MassSpectrum: return "MS:1000328";
+            case SpectrumType.PrecursorIonSpectrum: return "MS:1000341";
+            case SpectrumType.ProductIonSpectrum: return "MS:1000343";
+            case SpectrumType.Ms1Spectrum: return "MS:1000579";
+            case SpectrumType.MsnSpectrum: return "MS:1000580";
+            case SpectrumType.CrmSpectrum: return "MS:1000581";
+            case SpectrumType.SimSpectrum: return "MS:1000582";
+            case SpectrumType.SrmSpectrum: return "MS:1000583";
+            case SpectrumType.EnhancedMultiplyChargedSpectrum: return "MS:1000789";
+            case SpectrumType.TimeDelayedFragmentationSpectrum: return "MS:1000790";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
+public enum ScanAttribute
+{
+    ScanAttribute,
+    MassResolution,
+    ScanRate,
+    ScanStartTime,
+    ZoomScan,
+    DwellTime,
+    FilterString,
+    PresetScanConfiguration,
+    MassResolvingPower,
+    AnalyzerScanOffset,
+    ElutionTime,
+    InterchannelDelay,
+    IonInjectionTime,
+    SourceOffsetVoltage,
+    FirstColumnElutionTime,
+    SecondColumnElutionTime,
+    InstrumentSpecificScanAttribute,
+    IonMobilityAttribute,
+    ScanNumber,
+    SynchronousPrefilterSelection,
+    FaimsCompensationVoltage,
+    IonMobilityDriftTime,
+    InverseReducedIonMobility,
+    SelexionCompensationVoltage,
+    SelexionSeparationVoltage,
+    FaimsCompensationVoltageRampStart,
+    FaimsCompensationVoltageRampEnd,
+}
+
+public static class ScanAttributeMethods
+{
+
+    public static string Name(this ScanAttribute term)
+    {
+        switch (term)
+        {
+            case ScanAttribute.ScanAttribute: return "scan attribute";
+            case ScanAttribute.MassResolution: return "mass resolution";
+            case ScanAttribute.ScanRate: return "scan rate";
+            case ScanAttribute.ScanStartTime: return "scan start time";
+            case ScanAttribute.ZoomScan: return "zoom scan";
+            case ScanAttribute.DwellTime: return "dwell time";
+            case ScanAttribute.FilterString: return "filter string";
+            case ScanAttribute.PresetScanConfiguration: return "preset scan configuration";
+            case ScanAttribute.MassResolvingPower: return "mass resolving power";
+            case ScanAttribute.AnalyzerScanOffset: return "analyzer scan offset";
+            case ScanAttribute.ElutionTime: return "elution time";
+            case ScanAttribute.InterchannelDelay: return "interchannel delay";
+            case ScanAttribute.IonInjectionTime: return "ion injection time";
+            case ScanAttribute.SourceOffsetVoltage: return "source offset voltage";
+            case ScanAttribute.FirstColumnElutionTime: return "first column elution time";
+            case ScanAttribute.SecondColumnElutionTime: return "second column elution time";
+            case ScanAttribute.InstrumentSpecificScanAttribute: return "instrument specific scan attribute";
+            case ScanAttribute.IonMobilityAttribute: return "ion mobility attribute";
+            case ScanAttribute.ScanNumber: return "scan number";
+            case ScanAttribute.SynchronousPrefilterSelection: return "synchronous prefilter selection";
+            case ScanAttribute.FaimsCompensationVoltage: return "FAIMS compensation voltage";
+            case ScanAttribute.IonMobilityDriftTime: return "ion mobility drift time";
+            case ScanAttribute.InverseReducedIonMobility: return "inverse reduced ion mobility";
+            case ScanAttribute.SelexionCompensationVoltage: return "SelexION compensation voltage";
+            case ScanAttribute.SelexionSeparationVoltage: return "SelexION separation voltage";
+            case ScanAttribute.FaimsCompensationVoltageRampStart: return "FAIMS compensation voltage ramp start";
+            case ScanAttribute.FaimsCompensationVoltageRampEnd: return "FAIMS compensation voltage ramp end";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this ScanAttribute term)
+    {
+        switch (term)
+        {
+            case ScanAttribute.ScanAttribute: return "MS:1000503";
+            case ScanAttribute.MassResolution: return "MS:1000011";
+            case ScanAttribute.ScanRate: return "MS:1000015";
+            case ScanAttribute.ScanStartTime: return "MS:1000016";
+            case ScanAttribute.ZoomScan: return "MS:1000497";
+            case ScanAttribute.DwellTime: return "MS:1000502";
+            case ScanAttribute.FilterString: return "MS:1000512";
+            case ScanAttribute.PresetScanConfiguration: return "MS:1000616";
+            case ScanAttribute.MassResolvingPower: return "MS:1000800";
+            case ScanAttribute.AnalyzerScanOffset: return "MS:1000803";
+            case ScanAttribute.ElutionTime: return "MS:1000826";
+            case ScanAttribute.InterchannelDelay: return "MS:1000880";
+            case ScanAttribute.IonInjectionTime: return "MS:1000927";
+            case ScanAttribute.SourceOffsetVoltage: return "MS:1001879";
+            case ScanAttribute.FirstColumnElutionTime: return "MS:1002082";
+            case ScanAttribute.SecondColumnElutionTime: return "MS:1002083";
+            case ScanAttribute.InstrumentSpecificScanAttribute: return "MS:1002527";
+            case ScanAttribute.IonMobilityAttribute: return "MS:1002892";
+            case ScanAttribute.ScanNumber: return "MS:1003057";
+            case ScanAttribute.SynchronousPrefilterSelection: return "MS:1002528";
+            case ScanAttribute.FaimsCompensationVoltage: return "MS:1001581";
+            case ScanAttribute.IonMobilityDriftTime: return "MS:1002476";
+            case ScanAttribute.InverseReducedIonMobility: return "MS:1002815";
+            case ScanAttribute.SelexionCompensationVoltage: return "MS:1003371";
+            case ScanAttribute.SelexionSeparationVoltage: return "MS:1003394";
+            case ScanAttribute.FaimsCompensationVoltageRampStart: return "MS:1003450";
+            case ScanAttribute.FaimsCompensationVoltageRampEnd: return "MS:1003451";
+            default: throw new InvalidOperationException();
+        }
+    }
 }
 
 public record ColumnParam

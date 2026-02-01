@@ -14,7 +14,19 @@ Prototype for reading [`mzPeak`](https://github.com/mobiusklein/mzpeak_prototypi
       - [x] Delta encoding
       - [ ] Numpress and opaque chunk transforms
   - [x] Chromatogram data arrays
-  - [ ] Spectrum peak arrays
+  - [x] Spectrum peak arrays
   - [ ] Auxiliary arrays
   - [ ] Slice queries
+  - [x] ZIP archive storage
+  - [x] Directory storage
 - [ ] Writing
+  - [x] File-level metadata
+  - [x] Spectrum metadata
+  - [x] Chromatogram metadata
+  - [ ] Data Arrays
+    - [x] Point Layout
+    - [ ] Chunked Layout
+  - [ ] Spectrum peak arrays
+  - [ ] Auxiliary arrays
+  - [x] ZIP archive storage
+  - [ ] Directory storage

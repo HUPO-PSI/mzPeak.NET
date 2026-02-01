@@ -1,5 +1,6 @@
 ﻿namespace MzPeakTests;
 
+using System.ComponentModel;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Apache.Arrow;

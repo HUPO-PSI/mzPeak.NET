@@ -198,9 +198,12 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     public SpectrumBuilder() : base(new()
     {
         // Required CV terms
-        new CustomBuilderFromParam("MS:1000511", "ms level", new Int64Type()),
-        new CustomBuilderFromParam("MS:1000525", "spectrum representation", new StringType()),
-        new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int64Type()),
+        new CustomBuilderFromParam("MS:1000511", "ms level", new Int8Type()),
+        new ChildTermParamBuilder("MS:1000525", "spectrum representation", [
+            SpectrumRepresentation.CentroidSpectrum.CURIE(),
+            SpectrumRepresentation.ProfileSpectrum.CURIE()
+        ]),
+        new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int8Type()),
         new CustomBuilderFromParam("MS:1000559", "spectrum type", new StringType()),
         // Optional spectrum properties (commonly present)
         new CustomBuilderFromParam("MS:1003060", "number of data points", new Int64Type()),
@@ -527,7 +530,7 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
     public ChromatogramBuilder() : base(new()
     {
         // Required CV terms
-        new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int64Type()),
+        new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int8Type()),
         new CustomBuilderFromParam("MS:1000626", "chromatogram type", new StringType()),
         // Optional properties (commonly present)
         new CustomBuilderFromParam("MS:1003060", "number of data points", new Int64Type()),

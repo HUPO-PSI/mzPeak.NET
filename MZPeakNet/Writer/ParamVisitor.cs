@@ -258,11 +258,16 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
     public string Name;
     public string? FixedUnit;
     public ArrowType ValueType;
-    IArrowArrayBuilder Value;
+    protected IArrowArrayBuilder Value;
 
     public int Length => Value.Length;
 
     public StringArray.Builder? UnitValue;
+
+    public virtual bool Matches(string? accessionCURIE)
+    {
+        return accessionCURIE == AccessionCURIE;
+    }
 
     public CustomBuilderFromParam(string accessionCURIE, string name, ArrowType arrowType, string? fixedUnit=null, bool includeUnitValue=false)
     {
@@ -282,6 +287,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Int32:
                 {
                     Value = new Int32Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    Value = new Int16Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    Value = new Int8Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    Value = new UInt64Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    Value = new UInt32Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    Value = new UInt16Array.Builder();
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    Value = new UInt8Array.Builder();
                     break;
                 }
             case ArrowTypeId.Double:
@@ -318,6 +353,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                     ((Int32Array.Builder)Value).AppendNull();
                     break;
                 }
+            case ArrowTypeId.Int16:
+                {
+                    ((Int16Array.Builder)Value).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    ((Int8Array.Builder)Value).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    ((UInt64Array.Builder)Value).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    ((UInt32Array.Builder)Value).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    ((UInt16Array.Builder)Value).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    ((UInt8Array.Builder)Value).AppendNull();
+                    break;
+                }
             case ArrowTypeId.Double:
                 {
                     ((DoubleArray.Builder)Value).AppendNull();
@@ -338,7 +403,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         }
     }
 
-    public void Append(Param param)
+    public virtual void Append(Param param)
     {
         if (param.IsNull())
         {
@@ -355,6 +420,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Int32:
                 {
                     ((Int32Array.Builder)Value).Append((int)param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    ((Int16Array.Builder)Value).Append((short)param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    ((Int8Array.Builder)Value).Append((sbyte)param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    ((UInt64Array.Builder)Value).Append((ulong)param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    ((UInt32Array.Builder)Value).Append((uint)param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    ((UInt16Array.Builder)Value).Append((ushort)param.AsLong());
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    ((UInt8Array.Builder)Value).Append((byte)param.AsLong());
                     break;
                 }
             case ArrowTypeId.Double:
@@ -391,6 +486,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Int32:
                 {
                     fields.Add(new Field(baseName, new Int32Type(), true));
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    fields.Add(new Field(baseName, new Int16Type(), true));
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    fields.Add(new Field(baseName, new Int8Type(), true));
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    fields.Add(new Field(baseName, new UInt64Type(), true));
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    fields.Add(new Field(baseName, new UInt32Type(), true));
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    fields.Add(new Field(baseName, new UInt16Type(), true));
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    fields.Add(new Field(baseName, new UInt8Type(), true));
                     break;
                 }
             case ArrowTypeId.Double:
@@ -433,6 +558,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                     cols.Add(((Int32Array.Builder)Value).Build());
                     break;
                 }
+            case ArrowTypeId.Int16:
+                {
+                    cols.Add(((Int16Array.Builder)Value).Build());
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    cols.Add(((Int8Array.Builder)Value).Build());
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    cols.Add(((UInt64Array.Builder)Value).Build());
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    cols.Add(((UInt32Array.Builder)Value).Build());
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    cols.Add(((UInt16Array.Builder)Value).Build());
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    cols.Add(((UInt8Array.Builder)Value).Build());
+                    break;
+                }
             case ArrowTypeId.Double:
                 {
                     cols.Add(((DoubleArray.Builder)Value).Build());
@@ -471,6 +626,36 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                     ((Int32Array.Builder)Value).Clear();
                     break;
                 }
+            case ArrowTypeId.Int16:
+                {
+                    ((Int16Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    ((Int8Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    ((UInt64Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    ((UInt32Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    ((UInt16Array.Builder)Value).Clear();
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    ((UInt8Array.Builder)Value).Clear();
+                    break;
+                }
             case ArrowTypeId.Double:
                 {
                     ((DoubleArray.Builder)Value).Clear();
@@ -493,6 +678,26 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
     }
 }
 
+public class ChildTermParamBuilder : CustomBuilderFromParam
+{
+    public List<string> ChildTermAccessionCURIEs;
+    public ChildTermParamBuilder(string accessionCURIE, string name, List<string> childTerms) : base(accessionCURIE, name, new StringType(), null, false)
+    {
+        ChildTermAccessionCURIEs = childTerms;
+    }
+
+    public override void Append(Param param)
+    {
+        ((StringArray.Builder)Value).Append(param.AccessionCURIE);
+    }
+
+    public override bool Matches(string? accessionCURIE)
+    {
+        if (accessionCURIE == null) return false;
+        return ChildTermAccessionCURIEs.Contains(accessionCURIE);
+    }
+}
+
 public class ParamVisitorCollection
 {
     public List<CustomBuilderFromParam> ParamVisitors;
@@ -510,13 +715,16 @@ public class ParamVisitorCollection
     {
         foreach (var par in @params)
         {
+            if (par.AccessionCURIE == null) continue;
             foreach (var vis in ParamVisitors)
             {
-                if (vis.AccessionCURIE == par.AccessionCURIE)
+                if (vis.Matches(par.AccessionCURIE))
                 {
-                    if (Visited.Contains(par.AccessionCURIE)) continue;
+                    if (Visited.Contains(vis.AccessionCURIE)) continue;
                     vis.Append(par);
+                    Visited.Add(vis.AccessionCURIE);
                     Visited.Add(par.AccessionCURIE);
+
                 }
             }
         }

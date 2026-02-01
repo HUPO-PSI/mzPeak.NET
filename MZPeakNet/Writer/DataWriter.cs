@@ -188,17 +188,12 @@ public abstract class BaseLayoutBuilder
 
 public class PointLayoutBuilder : BaseLayoutBuilder
 {
-
-
-    public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex)
-    {}
+    public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex){}
 
     public override string LayoutName()
     {
         return "point";
     }
-
-
 
     public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
@@ -382,5 +377,39 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         Index.Clear();
 
         return new RecordBatch(schema, [layer], layer.Length);
+    }
+}
+
+
+public class ChunkLayoutBuilder : BaseLayoutBuilder
+{
+    public string MainAxisEncodingCURIE;
+
+    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE) : base(arrayIndex)
+    {
+        MainAxisEncodingCURIE = mainAxisEncodingCURIE;
+    }
+
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    {
+        (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
+
+        return (deltaModel, auxiliaryArrays);
+    }
+
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    {
+        var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
+        return Add(entryIndex, kvs, isProfile);
+    }
+
+    public override RecordBatch GetRecordBatch()
+    {
+        throw new NotImplementedException();
+    }
+
+    public override string LayoutName()
+    {
+        return "chunk";
     }
 }

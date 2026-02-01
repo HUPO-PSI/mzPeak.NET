@@ -19,7 +19,57 @@
   limitations under the License.
 */
 
+using Apache.Arrow;
+
 namespace MZPeak.Numpress;
+
+
+public interface Accumulator<T>
+{
+    public void Append(T value);
+    public void Reserve(int size);
+}
+
+public class ListAccumulator<T> : Accumulator<T>
+{
+    List<T> Values;
+
+    ListAccumulator()
+    {
+        Values = new();
+    }
+
+    public void Append(T value)
+    {
+        Values.Add(value);
+    }
+    public void Reserve(int size)
+    {
+        Values.EnsureCapacity(size);
+    }
+}
+
+public class ArrowAccumulator : Accumulator<double>
+{
+    DoubleArray.Builder Values;
+
+    ArrowAccumulator()
+    {
+        Values = new();
+
+    }
+
+    public void Reserve(int size)
+    {
+        Values.Reserve(size);
+    }
+
+    public void Append(double value)
+    {
+        Values.Append(value);
+    }
+}
+
 
 /// <summary>
 /// Implementations of two compression schemes for numeric data from mass spectrometers.
@@ -68,7 +118,7 @@ public static class MSNumpress
     ///
     /// the corresponding decode function will be called.
     /// </remarks>
-    public static double[] decode(string cvAccession, byte[] data, int dataSize)
+    public static double[] decode(string cvAccession, ReadOnlySpan<byte> data, int dataSize)
     {
         if (cvAccession == ACC_NUMPRESS_LINEAR)
         {
@@ -76,12 +126,12 @@ public static class MSNumpress
                 throw new ArgumentException("Cannot decode numLin data, need at least 8 initial bytes for fixed point.");
 
             double[] buffer = new double[dataSize * 2];
-            int nbrOfDoubles = MSNumpress.decodeLinear(data, dataSize, buffer);
+            int nbrOfDoubles = decodeLinear(data, dataSize, buffer);
             if (nbrOfDoubles < 0)
                 throw new ArgumentException("Corrupt numLin data!");
 
             double[] result = new double[nbrOfDoubles];
-            Array.Copy(buffer, 0, result, 0, nbrOfDoubles);
+            System.Array.Copy(buffer, 0, result, 0, nbrOfDoubles);
 
             return result;
         }
@@ -105,7 +155,7 @@ public static class MSNumpress
                 throw new ArgumentException("Corrupt numPic data!");
 
             double[] result = new double[nbrOfDoubles];
-            Array.Copy(buffer, 0, result, 0, nbrOfDoubles);
+            System.Array.Copy(buffer, 0, result, 0, nbrOfDoubles);
             return result;
 
         }
@@ -140,7 +190,7 @@ public static class MSNumpress
     ///	@resOffset	position in res were halfbytes are written
     ///	@return		the number of resulting halfbytes
     /// </remarks>
-    public static int encodeInt(long x, byte[] res, int resOffset)
+    public static int encodeInt(long x, Span<byte> res, int resOffset)
     {
         byte i, l;
         long m;
@@ -196,7 +246,7 @@ public static class MSNumpress
         }
     }
 
-    public static void encodeFixedPoint(double fixedPoint, byte[] result)
+    public static void encodeFixedPoint(double fixedPoint, Span<byte> result)
     {
         //long fp = double.doubleToLongBits(fixedPoint);
         long fp = BitConverter.DoubleToInt64Bits(fixedPoint); // RTF
@@ -207,7 +257,7 @@ public static class MSNumpress
         }
     }
 
-    public static double decodeFixedPoint(byte[] data)
+    public static double decodeFixedPoint(ReadOnlySpan<byte> data)
     {
         long fp = 0;
         for (int i = 0; i < 8; i++)
@@ -257,7 +307,7 @@ public static class MSNumpress
     /// This encoding is suitable for typical m/z or retention time binary arrays.
     /// On a test set, the encoding was empirically show to be accurate to at least 0.002 ppm.
     /// </remarks>
-    public static int encodeLinear(double[] data, int dataSize, byte[] result, double fixedPoint)
+    public static int encodeLinear(double[] data, int dataSize, Span<byte> result, double fixedPoint)
     {
         long[] ints = new long[3];
         int i;
@@ -331,7 +381,7 @@ public static class MSNumpress
     /// the last encoded int need to use either the last halfbyte, or the second last followed by a
     /// 0x0 halfbyte.
     /// </remarks>
-    public static int decodeLinear(byte[] data, int dataSize, double[] result)
+    public static int decodeLinear(ReadOnlySpan<byte> data, int dataSize, double[] result)
     {
         int ri = 2;
         long[] ints = new long[3];
@@ -440,7 +490,7 @@ public static class MSNumpress
     /// the last encoded int need to use either the last halfbyte, or the second last followed by a
     /// 0x0 halfbyte.
     /// </remarks>
-    public static int decodePic(byte[] data, int dataSize, double[] result)
+    public static int decodePic(ReadOnlySpan<byte> data, int dataSize, double[] result)
     {
         int ri = 0;
         long count;
@@ -523,7 +573,7 @@ public static class MSNumpress
     /// The result vector will be exactly (|data| - 8) / 2 doubles.
     /// returns the number of doubles read, or -1 is there is a problem decoding.
     /// </remarks>
-    public static int decodeSlof(byte[] data, int dataSize, double[] result)
+    public static int decodeSlof(ReadOnlySpan<byte> data, int dataSize, double[] result)
     {
         int x;
         int ri = 0;
@@ -544,62 +594,63 @@ public static class MSNumpress
     /// <summary>
     /// Decodes ints from the half bytes in bytes. Lossless reverse of encodeInt, although not symmetrical in input arguments.
     /// </summary>
-    public class IntDecoder
+}
+
+public ref struct IntDecoder
+{
+    public ReadOnlySpan<byte> bytes;
+    public int pos = 0;
+    public bool half = false;
+
+    public IntDecoder(ReadOnlySpan<byte> _bytes, int _pos)
     {
-        public int pos = 0;
-        public bool half = false;
-        public byte[] bytes;
+        bytes = _bytes;
+        pos = _pos;
+    }
 
-        public IntDecoder(byte[] _bytes, int _pos)
+    public long next()
+    {
+        int head;
+        int i, n;
+        long res = 0;
+        long mask, m;
+        int hb;
+
+        if (!half)
+            head = (0xff & bytes[pos]) >> 4;
+        else
+            head = 0xf & bytes[pos++];
+
+        half = !half;
+
+        if (head <= 8)
+            n = head;
+        else
         {
-            bytes = _bytes;
-            pos = _pos;
+            // leading ones, fill in res
+            n = head - 8;
+            mask = unchecked((int)0xF0000000);
+
+            for (i = 0; i < n; i++)
+            {
+                m = mask >> (4 * i);
+                res = res | m;
+            }
         }
 
-        public long next()
-        {
-            int head;
-            int i, n;
-            long res = 0;
-            long mask, m;
-            int hb;
+        if (n == 8) return 0;
 
+        for (i = n; i < 8; i++)
+        {
             if (!half)
-                head = (0xff & bytes[pos]) >> 4;
+                hb = (0xff & bytes[pos]) >> 4;
             else
-                head = 0xf & bytes[pos++];
+                hb = 0xf & bytes[pos++];
 
+            res = (int)res | (hb << ((i - n) * 4));
             half = !half;
-
-            if (head <= 8)
-                n = head;
-            else
-            {
-                // leading ones, fill in res
-                n = head - 8;
-                mask = unchecked((int)0xF0000000);
-
-                for (i = 0; i < n; i++)
-                {
-                    m = mask >> (4 * i);
-                    res = res | m;
-                }
-            }
-
-            if (n == 8) return 0;
-
-            for (i = n; i < 8; i++)
-            {
-                if (!half)
-                    hb = (0xff & bytes[pos]) >> 4;
-                else
-                    hb = 0xf & bytes[pos++];
-
-                res = (int)res | (hb << ((i - n) * 4));
-                half = !half;
-            }
-
-            return res;
         }
+
+        return res;
     }
 }

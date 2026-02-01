@@ -15,9 +15,12 @@ public enum WriterState
 {
     Start = 0,
     SpectrumData = 1,
-    SpectrumMetadata = 2,
-    ChromatogramData = 3,
-    ChromatogramMetadata = 4,
+    SpectrumPeakData = 2,
+    SpectrumMetadata = 3,
+    ChromatogramData = 4,
+    ChromatogramMetadata = 5,
+    OtherData = 6,
+    OtherMetadata = 7,
     Done = 999,
 }
 
@@ -30,8 +33,10 @@ public class MZPeakWriter : IDisposable
     IMZPeakArchiveWriter Storage;
     Visitors.SpectrumMetadataBuilder SpectrumMetadata;
     Visitors.ChromatogramMetadataBuilder ChromatogramMetadata;
+
     BaseLayoutBuilder SpectrumData;
     BaseLayoutBuilder ChromatogramData;
+    BaseLayoutBuilder? SpectrumPeakData = null;
 
     FileIndexEntry? CurrentEntry;
     FileWriter? CurrentWriter;
@@ -101,20 +106,50 @@ public class MZPeakWriter : IDisposable
         }
     }
 
-    public MZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex spectrumArrayIndex)
+    public void StartSpectrumPeakData()
+    {
+        if (SpectrumPeakData == null) throw new InvalidOperationException();
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .EnableDictionary()
+            .EnableWritePageIndex()
+            .Encoding(
+                $"{SpectrumPeakData.LayoutName}.{SpectrumPeakData.BufferContext.IndexName()}",
+                ParquetSharp.Encoding.DeltaBinaryPacked
+            );
+
+        foreach (var arrayType in SpectrumPeakData.ArrayIndex.Entries)
+        {
+            if (arrayType.GetArrayType() == ArrayType.MZArray)
+                writerProps = writerProps.Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
+        }
+
+        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        var schema = SpectrumPeakData.ArrowSchema();
+        var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
+
+        State = WriterState.SpectrumPeakData;
+        CurrentWriter = writer;
+        CurrentEntry = entry;
+    }
+
+    public MZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex=null, ArrayIndex? chromatogramArrayIndex=null, bool includeSpectrumPeakData=false, ArrayIndex? spectrumPeakArrayIndex=null)
     {
         Storage = storage;
         MzPeakMetadata = new();
         SpectrumMetadata = new();
-        SpectrumData = new PointLayoutBuilder(spectrumArrayIndex);
+        SpectrumData = new PointLayoutBuilder(spectrumArrayIndex ?? DefaultSpectrumArrayIndex());
         ChromatogramMetadata = new();
-        ChromatogramData = new PointLayoutBuilder(DefaultChromatogramArrayIndex());
+        ChromatogramData = new PointLayoutBuilder(chromatogramArrayIndex ?? DefaultChromatogramArrayIndex());
         ChromatogramData.ShouldRemoveZeroRuns = false;
+        if (includeSpectrumPeakData)
+            SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
         StartSpectrumData();
     }
-
-    public MZPeakWriter(IMZPeakArchiveWriter storage) : this(storage, DefaultSpectrumArrayIndex())
-    { }
 
     public ulong CurrentSpectrum => SpectrumMetadata.SpectrumCounter;
     public ulong CurrentChromatogram => ChromatogramMetadata.ChromatogramCounter;
@@ -132,6 +167,24 @@ public class MZPeakWriter : IDisposable
     public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
         return SpectrumData.Add(entryIndex, arrays, isProfile);
+    }
+
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumPeakData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    {
+        if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
+        return SpectrumPeakData.Add(entryIndex, arrays, false);
+    }
+
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumPeakData(ulong entryIndex, IEnumerable<Array> arrays)
+    {
+        if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
+        return SpectrumPeakData.Add(entryIndex, arrays, false);
+    }
+
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumPeakData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    {
+        if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
+        return SpectrumPeakData.Add(entryIndex, arrays, false);
     }
 
     public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
@@ -159,6 +212,19 @@ public class MZPeakWriter : IDisposable
         else if (SpectrumData.BufferedRows > 0)
         {
             throw new InvalidOperationException($"Attempting to flush the spectrum data buffer while the current entry is {CurrentEntry}");
+        }
+    }
+
+    public void FlushSpectrumPeakData()
+    {
+        if (State == WriterState.SpectrumPeakData && SpectrumPeakData != null && CurrentWriter != null)
+        {
+            var batch = SpectrumPeakData.GetRecordBatch();
+            CurrentWriter?.WriteBufferedRecordBatch(batch);
+        }
+        else if (SpectrumData.BufferedRows > 0)
+        {
+            throw new InvalidOperationException($"Attempting to flush the spectrum peak data buffer while the current entry is {CurrentEntry}");
         }
     }
 
@@ -338,6 +404,10 @@ public class MZPeakWriter : IDisposable
         FlushSpectrumData();
         if (State == WriterState.SpectrumData)
             CloseCurrentWriter();
+        if (SpectrumPeakData != null)
+        {
+            StartSpectrumPeakData();
+        }
         WriteSpectrumMetadata();
         WriteChromatogramData();
         WriteChromatogramMetadata();

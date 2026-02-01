@@ -14,6 +14,8 @@ using MZPeak.Metadata;
 using Apache.Arrow.Types;
 using MZPeak.Compute;
 using Microsoft.Extensions.Logging;
+using MZPeak.ControlledVocabulary;
+using System.Security;
 
 public record struct GroupTagBounds<T> where T : IComparable<T>
 {
@@ -632,10 +634,25 @@ public class PointLayoutReader : BaseLayoutReader
     }
 }
 
+record TransformKey(ArrayType? ArrayType, string ArrayName, BinaryDataType BinaryDataType, Unit? Unit, string? DataProcessesingId)
+{
+    public override int GetHashCode()
+    {
+        return (ArrayType, ArrayName, BinaryDataType, Unit, DataProcessesingId).GetHashCode();
+    }
+
+    public static TransformKey FromArrayIndexEntry(ArrayIndexEntry entry)
+    {
+        BinaryDataType dataType;
+        if (!BinaryDataTypeMethods.FromCURIE.TryGetValue(entry.DataTypeCURIE, out dataType)) throw new InvalidDataException();
+        return new(entry.GetArrayType(), entry.ArrayName, dataType, entry.GetUnit(), entry.DataProcessesingId);
+    }
+}
 
 public class ChunkLayoutReader : BaseLayoutReader
 {
     const string NUMPRESS_LINEAR_CURIE = "MS:1002312";
+    const string NUMPRESS_SLOF_CURIE = "MS:1002314";
 
     ArrayIndexEntry? mainAxis;
     int chunkStartIndex;
@@ -643,6 +660,8 @@ public class ChunkLayoutReader : BaseLayoutReader
     int chunkEncodingIndex;
     int chunkValuesIndex;
     HashSet<ArrayIndexEntry> secondaryIndices;
+    Dictionary<TransformKey, List<ArrayIndexEntry>> transformMap;
+
 
     void ConfigureIndices()
     {
@@ -684,12 +703,16 @@ public class ChunkLayoutReader : BaseLayoutReader
                     }
                 case BufferFormat.ChunkTransform:
                     {
+                        var key = TransformKey.FromArrayIndexEntry(entry);
+                        if (transformMap.ContainsKey(key))
+                            transformMap[key].Add(entry);
+                        else
+                            transformMap[key] = [entry];
+                        secondaryIndices.Add(entry);
                         break;
                     }
                 default:
-                    {
-                        throw new NotImplementedException(string.Format("Unsupported buffer format {0} for the chunked layout", entry.BufferFormat));
-                    }
+                    throw new NotImplementedException(string.Format("Unsupported buffer format {0} for the chunked layout", entry.BufferFormat));
             }
         }
 
@@ -703,6 +726,7 @@ public class ChunkLayoutReader : BaseLayoutReader
     {
         mainAxis = null;
         secondaryIndices = new();
+        transformMap = new();
         ConfigureIndices();
     }
 
@@ -818,12 +842,21 @@ public class ChunkLayoutReader : BaseLayoutReader
         return result;
     }
 
+    ArrayIndexEntry FindEntryForTransform(ArrayIndexEntry query, string transform)
+    {
+        foreach(var ent in transformMap[TransformKey.FromArrayIndexEntry(query)])
+            if (ent.Transform == transform)
+                return ent;
+        throw new KeyNotFoundException($"No entry was found for {TransformKey.FromArrayIndexEntry(query)} with transform  = {transform}");
+    }
+
     protected override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
         var rows = base.ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
         var encodingMethod = (StringArray)rows.Fields[chunkEncodingIndex];
         var chunkStart = rows.Fields[chunkStartIndex];
-        var chunkValues = (LargeListArray)rows.Fields[chunkValuesIndex];
+        var chunkValues = rows.Fields[chunkValuesIndex];
+        var chunkValuesIsLarge = chunkValues.Data.DataType.TypeId == ArrowTypeId.LargeList;
 
         var chunkStartType = chunkStart.Data.DataType;
         if (!chunkStartType.IsFloatingPoint() || chunkStartType.TypeId == ArrowTypeId.HalfFloat)
@@ -833,8 +866,8 @@ public class ChunkLayoutReader : BaseLayoutReader
         var chunkStartDouble = chunkStartType.TypeId == ArrowTypeId.Double;
 
         if(mainAxis == null) throw new InvalidOperationException("mainAxis cannot be null");
-
-        List<IArrowArray> decodedValues = new();
+        var mainAxisKey = TransformKey.FromArrayIndexEntry(mainAxis);
+        List <IArrowArray> decodedValues = new();
         Dictionary<ArrayIndexEntry, List<IArrowArray>> secondaryValues = new();
         var nRows = encodingMethod.Length;
         for (var i = 0; i < nRows; i++)
@@ -844,7 +877,7 @@ public class ChunkLayoutReader : BaseLayoutReader
             {
                 continue;
             }
-            var valueList = chunkValues.GetSlicedValues(i);
+            var valueList = chunkValuesIsLarge ? ((LargeListArray)chunkValues).GetSlicedValues(i) : ((ListArray)chunkValues).GetSlicedValues(i);
             var method = encodingMethod.GetString(i);
             switch (method)
             {
@@ -860,25 +893,29 @@ public class ChunkLayoutReader : BaseLayoutReader
                     }
                 case NUMPRESS_LINEAR_CURIE:
                     {
-                        throw new NotImplementedException("Numpress decoding not yet implemented");
+                        var tfmEntry = FindEntryForTransform(mainAxis, NUMPRESS_LINEAR_CURIE);
+                        if (tfmEntry.SchemaIndex == null) throw new InvalidOperationException("Array index entry transform not mapped to column!");
+                        var arr = rows.Fields[(int)tfmEntry.SchemaIndex];
+                        if (arr.IsNull(i)) throw new InvalidOperationException("Transformed main axis array slot cannot be null");
+                        var values = (PrimitiveArray<byte>)((arr.Data.DataType.TypeId == ArrowTypeId.LargeList) ? ((LargeListArray)arr).GetSlicedValues(i) : ((ListArray)arr).GetSlicedValues(i));
+
+                        var valuesNat = Numpress.MSNumpress.decode(NUMPRESS_LINEAR_CURIE, values.ValueBuffer.Span, values.Length * 3);
+                        decodedValues.Add(valueList.Data.DataType.TypeId == ArrowTypeId.Float ? Compute.CastFloat(valuesNat) : Compute.CastDouble(valuesNat));
+                        break;
                     }
-                default:
-                    {
-                        throw new NotImplementedException("Unknown chunk encoding: " + method);
-                    }
+                default: throw new NotImplementedException("Unknown chunk encoding: " + method);
             }
         }
+
         foreach (var entry in secondaryIndices)
         {
             if (entry.SchemaIndex == null)
-            {
-                throw new InvalidOperationException(string.Format("ArrayIndexEntry schema index somehow made null!?: {0}", entry));
-            }
+                throw new InvalidOperationException($"ArrayIndexEntry schema index somehow made null!?: {entry}");
             List<IArrowArray> chunks = new();
             secondaryValues.Add(entry, chunks);
-            var col = (LargeListArray)rows.Fields[(int)entry.SchemaIndex];
-            var dType = (LargeListType)col.Data.DataType;
-            var eltType = dType.ValueDataType;
+            var col = rows.Fields[(int)entry.SchemaIndex];
+            var colIsLarge = col.Data.DataType.TypeId == ArrowTypeId.LargeList;
+            var eltType = colIsLarge ? ((LargeListType)col.Data.DataType).ValueDataType : ((ListType)col.Data.DataType).ValueDataType;
             switch (eltType.TypeId)
             {
                 case ArrowTypeId.Float:
@@ -886,17 +923,18 @@ public class ChunkLayoutReader : BaseLayoutReader
                         for (var i = 0; i < nRows; i++)
                         {
                             if (col.IsNull(i))
-                            {
                                 chunks.Add(new FloatArray.Builder().Build());
-                            }
                             else
                             {
-                                var valsAt = (FloatArray)col.GetSlicedValues(i);
+                                var valsAt = colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i);
                                 if (entry.Transform == NullInterpolation.NullZeroCURIE)
+                                    valsAt = (FloatArray)Compute.NullToZero((FloatArray)valsAt);
+                                else if (entry.Transform == NUMPRESS_SLOF_CURIE)
                                 {
-                                    valsAt = (FloatArray)Compute.NullToZero(valsAt);
+                                    var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
+                                    valsAt = Compute.CastFloat(decoded);
                                 }
-                                chunks.Add(valsAt);
+                                chunks.Add((FloatArray)valsAt);
                             }
                         }
                         break;
@@ -906,15 +944,16 @@ public class ChunkLayoutReader : BaseLayoutReader
                         for (var i = 0; i < nRows; i++)
                         {
                             if (col.IsNull(i))
-                            {
                                 chunks.Add(new DoubleArray.Builder().Build());
-                            }
                             else
                             {
-                                var valsAt = (DoubleArray)col.GetSlicedValues(i);
-                                if(entry.Transform == NullInterpolation.NullZeroCURIE)
+                                var valsAt = colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i);
+                                if (entry.Transform == NullInterpolation.NullZeroCURIE)
+                                    valsAt = Compute.NullToZero((DoubleArray)valsAt);
+                                else if (entry.Transform == NUMPRESS_SLOF_CURIE)
                                 {
-                                    valsAt = (DoubleArray)Compute.NullToZero(valsAt);
+                                    var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
+                                    valsAt = Compute.CastDouble(decoded);
                                 }
                                 chunks.Add(valsAt);
                             }
@@ -926,16 +965,12 @@ public class ChunkLayoutReader : BaseLayoutReader
                         for (var i = 0; i < nRows; i++)
                         {
                             if (col.IsNull(i))
-                            {
                                 chunks.Add(new Int32Array.Builder().Build());
-                            }
                             else
                             {
-                                var valsAt = (Int32Array)col.GetSlicedValues(i);
+                                var valsAt = (Int32Array)(colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i));
                                 if (entry.Transform == NullInterpolation.NullZeroCURIE)
-                                {
                                     valsAt = (Int32Array)Compute.NullToZero(valsAt);
-                                }
                                 chunks.Add(valsAt);
                             }
                         }
@@ -946,16 +981,12 @@ public class ChunkLayoutReader : BaseLayoutReader
                         for (var i = 0; i < nRows; i++)
                         {
                             if (col.IsNull(i))
-                            {
                                 chunks.Add(new Int64Array.Builder().Build());
-                            }
                             else
                             {
-                                var valsAt = (Int64Array)col.GetSlicedValues(i);
+                                var valsAt = (Int64Array)(colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i));
                                 if (entry.Transform == NullInterpolation.NullZeroCURIE)
-                                {
                                     valsAt = (Int64Array)Compute.NullToZero(valsAt);
-                                }
                                 chunks.Add(valsAt);
                             }
                         }
@@ -967,26 +998,22 @@ public class ChunkLayoutReader : BaseLayoutReader
         }
 
         if (mainAxis == null)
-        {
             throw new InvalidOperationException("Main axis cannot be null");
-        }
+
         var mainName = mainAxis.Path.Split(".").Last().Replace("_chunk_values", "");
         var fields = new List<Field>
         {
             new Field(mainAxis.Context.IndexName(), new UInt64Type(), true),
             new Field(mainName, mainAxis.GetArrowType(), true)
         };
+
         foreach (var ent in secondaryValues)
         {
             var name = ent.Key.Path.Split(".").Last();
             if (ent.Value.Count == 0)
-            {
                 fields.Add(new Field(name, ent.Key.GetArrowType(), true));
-            }
             else
-            {
                 fields.Add(new Field(name, ent.Value[0].Data.DataType, true));
-            }
         }
 
         var dataType = new StructType(fields);

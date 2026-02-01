@@ -1,2 +1,4 @@
 obj/
 bin/
+*.ipynb
+demo.mzpeak

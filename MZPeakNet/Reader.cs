@@ -64,6 +64,7 @@ public class MzPeakReader
 
     DataArraysReaderMeta? spectrumArraysMeta = null;
     DataArraysReaderMeta? chromatogramArraysMeta = null;
+    DataArraysReaderMeta? spectrumPeaksArraysMeta = null;
 
     public MzPeakReader(string path) : this(new LocalZipArchive(path))
     { }
@@ -141,7 +142,10 @@ public class MzPeakReader
         }
     }
 
+    public bool HasSpectrumPeaks => spectrumPeaksArraysMeta != null ? true : SpectrumPeaksDataReaderMeta != null;
+
     public DataArraysReaderMeta? SpectrumDataReaderMeta => OpenSpectrumDataReader()?.Metadata;
+    public DataArraysReaderMeta? SpectrumPeaksDataReaderMeta => OpenSpectrumPeaksDataReader()?.Metadata;
     public DataArraysReaderMeta? ChromatogramDataReaderMeta => OpenChromatogramDataReader()?.Metadata;
 
     public async IAsyncEnumerable<(SpectrumDescription, StructArray)> EnumerateSpectraAsync()
@@ -185,6 +189,27 @@ public class MzPeakReader
         return reader;
     }
 
+    DataArraysReader? OpenSpectrumPeaksDataReader()
+    {
+        var dataFacet = storage.SpectrumPeaks();
+        DataArraysReader reader;
+        if (dataFacet == null)
+        {
+            return null;
+        }
+        if (spectrumPeaksArraysMeta == null)
+        {
+            reader = new DataArraysReader(dataFacet, BufferContext.Spectrum);
+            reader.SpacingModels = spectrumMetadata?.GetSpacingModelIndex();
+            spectrumPeaksArraysMeta = reader.Metadata;
+        }
+        else
+        {
+            reader = new DataArraysReader(dataFacet, spectrumPeaksArraysMeta);
+        }
+        return reader;
+    }
+
     DataArraysReader? OpenChromatogramDataReader()
     {
         var dataFacet = storage.ChromatogramData();
@@ -208,6 +233,13 @@ public class MzPeakReader
     public async Task<ChunkedArray?> GetSpectrumData(ulong index)
     {
         var reader = OpenSpectrumDataReader();
+        if (reader == null) return null;
+        return await reader.ReadForIndex(index);
+    }
+
+    public async Task<ChunkedArray?> GetSpectrumPeaks(ulong index)
+    {
+        var reader = OpenSpectrumPeaksDataReader();
         if (reader == null) return null;
         return await reader.ReadForIndex(index);
     }

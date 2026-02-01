@@ -314,10 +314,10 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             RecordBatch batch = await reader.ReadNextRecordBatchAsync();
             if(batch == null)
             {
-                Logger?.LogInformation($"Read {ctr} batches from {this}");
+                Logger?.LogDebug($"Read {ctr} batches from {this}");
                 break;
             }
-            Logger?.LogInformation("batch {ctr}, {batch.Length} items", batch, ctr);
+            Logger?.LogDebug("batch {ctr}, {batch.Length} items", batch, ctr);
             ctr++;
             var arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("spectrum"));
             if (arr != null) spectra.Add(arr);
@@ -512,10 +512,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             RecordBatch batch = await reader.ReadNextRecordBatchAsync();
             if (batch == null)
             {
-                Logger?.LogInformation($"Read {ctr} batches from {this}");
+                Logger?.LogDebug($"Read {ctr} batches from {this}");
                 break;
             }
-            Logger?.LogInformation("batch {ctr}, {batch.Length} items", batch, ctr);
+            Logger?.LogDebug("batch {ctr}, {batch.Length} items", batch, ctr);
             ctr++;
             var arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("chromatogram"));
             if (arr != null) chromatograms.Add(arr);
