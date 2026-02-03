@@ -66,7 +66,6 @@ public class ActivationBuilder : ParamVisitorCollection, IArrowBuilder<List<Para
 
     public void Append(List<Param> value)
     {
-        Visited.Clear();
         VisitParameters(value);
     }
 
@@ -253,7 +252,6 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             // MzDeltaModel.AppendNull();
             MzDeltaModel.Append();
         }
-        Visited.Clear();
         VisitParameters(parameters);
     }
 
@@ -332,12 +330,13 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     }
 }
 
-public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, List<Param>)>
+public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, List<Param>, List<List<Param>>)>
 {
     UInt64Array.Builder SourceIndex;
     UInt32Array.Builder InstrumentConfigurationRef;
     DoubleArray.Builder IonMobility;
     StringArray.Builder IonMobilityType;
+    ScanWindowListBuilder ScanWindowListBuilder;
 
     public int Length => SourceIndex.Length;
 
@@ -353,14 +352,15 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         InstrumentConfigurationRef = new();
         IonMobility = new();
         IonMobilityType = new();
+        ScanWindowListBuilder = new(fixedUnit: Unit.MZ);
     }
 
-    public void Append((ulong, uint?, double?, string?, List<Param>) value)
+    public void Append((ulong, uint?, double?, string?, List<Param>, List<List<Param>>) value)
     {
-        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5);
+        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6);
     }
 
-    public void Append(ulong sourceIndex, uint? instrumentConfigurationRef, double? ionMobility, string? ionMobilityType, List<Param> parameters)
+    public void Append(ulong sourceIndex, uint? instrumentConfigurationRef, double? ionMobility, string? ionMobilityType, List<Param> parameters, List<List<Param>>? scanWindows=null)
     {
         SourceIndex.Append(sourceIndex);
         if (instrumentConfigurationRef != null) InstrumentConfigurationRef.Append(instrumentConfigurationRef);
@@ -369,7 +369,7 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         else IonMobility.AppendNull();
         if (ionMobilityType != null) IonMobilityType.Append(ionMobilityType);
         else IonMobilityType.AppendNull();
-        Visited.Clear();
+        ScanWindowListBuilder.Append(scanWindows ?? new());
         VisitParameters(parameters);
     }
 
@@ -380,6 +380,7 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         IonMobility.AppendNull();
         IonMobilityType.AppendNull();
         base.AppendNull();
+        ScanWindowListBuilder.Append();
     }
 
     public List<Field> ArrowType()
@@ -388,25 +389,34 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         {
             new Field("source_index", new UInt64Type(), true),
             new Field("instrument_configuration_ref", new UInt32Type(), true),
-            new Field("ion_mobility", new DoubleType(), true),
+            new Field("ion_mobility_value", new DoubleType(), true),
             new Field("ion_mobility_type", new StringType(), true)
         };
+
         foreach (var vis in ParamVisitors)
         {
             fields.AddRange(vis.ArrowType());
         }
         fields.AddRange(ParamList.ArrowType());
+        fields.AddRange(ScanWindowListBuilder.ArrowType());
         return new() { new Field("scan", new StructType(fields), true) };
     }
 
     public List<IArrowArray> Build()
     {
-        List<IArrowArray> fields = new() { SourceIndex.Build(), InstrumentConfigurationRef.Build(), IonMobility.Build(), IonMobilityType.Build() };
+        List<IArrowArray> fields =
+        [
+            SourceIndex.Build(),
+            InstrumentConfigurationRef.Build(),
+            IonMobility.Build(),
+            IonMobilityType.Build(),
+        ];
+
         foreach (var vis in ParamVisitors)
-        {
             fields.AddRange(vis.Build());
-        }
+
         fields.AddRange(ParamList.Build());
+        fields.AddRange(ScanWindowListBuilder.Build());
         var size = SourceIndex.Length;
         return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
     }
@@ -417,11 +427,133 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         InstrumentConfigurationRef.Clear();
         IonMobility.Clear();
         IonMobilityType.Clear();
+        ScanWindowListBuilder.Clear();
+        foreach (var vis in ParamVisitors)
+            vis.Clear();
+        ParamList.Clear();
+    }
+}
+
+public class ScanWindowBuilder : ParamVisitorCollection, IArrowBuilder<List<Param>>
+{
+    public ScanWindowBuilder(List<CustomBuilderFromParam>? paramVisitors=null, Unit? fixedUnit=null) : base([
+        new CustomBuilderFromParam("MS:1000501", "scan window lower limit", new DoubleType(), fixedUnit?.CURIE()),
+        new CustomBuilderFromParam("MS:1000500", "scan window upper limit", new DoubleType(), fixedUnit?.CURIE()),
+    ])
+    {
+        ParamVisitors.AddRange(paramVisitors ?? new());
+    }
+
+    public int Length => ParamList.Length;
+
+    public void Append(List<Param> value)
+    {
+        VisitParameters(value);
+    }
+
+    public List<Field> ArrowType()
+    {
+        var fields = new List<Field>()
+        {};
         foreach (var vis in ParamVisitors)
         {
-            vis.Clear();
+            fields.AddRange(vis.ArrowType());
         }
+        fields.AddRange(ParamList.ArrowType());
+        return new() { new Field("scanWindow", new StructType(fields), true) };
+    }
+
+    public List<IArrowArray> Build()
+    {
+        var size = ParamList.Length;
+        List<IArrowArray> fields = new();
+        foreach (var vis in ParamVisitors)
+        {
+            fields.AddRange(vis.Build());
+        }
+        fields.AddRange(ParamList.Build());
+        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
+    }
+
+    public void Clear()
+    {
+        foreach (var vis in ParamVisitors)
+            vis.Clear();
         ParamList.Clear();
+    }
+}
+
+public class ScanWindowListBuilder : IArrowBuilder<List<List<Param>>>
+{
+    public ScanWindowBuilder ValueBuilder { get; }
+    private ArrowBuffer.Builder<int> ValueOffsetsBufferBuilder { get; }
+
+    private ArrowBuffer.BitmapBuilder ValidityBufferBuilder { get; }
+    public int NullCount { get; protected set; }
+
+    public int Length => ValueOffsetsBufferBuilder.Length;
+
+    public ScanWindowListBuilder(List<CustomBuilderFromParam>? paramVisitors = null, Unit? fixedUnit = null)
+    {
+        ValueBuilder = new(paramVisitors, fixedUnit);
+        ValueOffsetsBufferBuilder = new();
+        ValidityBufferBuilder = new();
+        NullCount = 0;
+        Append();
+    }
+
+    public void AppendNull()
+    {
+        ValueOffsetsBufferBuilder.Append(ValueBuilder.Length);
+        ValidityBufferBuilder.Append(false);
+        NullCount++;
+    }
+
+    public void Append(List<List<Param>> arrays)
+    {
+        foreach (var par in arrays)
+        {
+            ValueBuilder.Append(par);
+        }
+        Append();
+    }
+
+    public void Append()
+    {
+        ValueOffsetsBufferBuilder.Append(ValueBuilder.Length);
+        ValidityBufferBuilder.Append(true);
+    }
+
+    public List<Field> ArrowType()
+    {
+        return new(){
+            new Field("scan_windows", new ListType(ValueBuilder.ArrowType()[0].DataType), true)
+        };
+    }
+
+    public List<IArrowArray> Build()
+    {
+        ValueOffsetsBufferBuilder.Append(ValueBuilder.Length);
+        ArrowBuffer validityBuffer = NullCount > 0
+                                ? ValidityBufferBuilder.Build(default)
+                                : ArrowBuffer.Empty;
+        var dtype = ValueBuilder.ArrowType()[0];
+        var dataType = new ListType(dtype.DataType);
+        var values = ValueBuilder.Build()[0];
+        var listy = new ListArray(
+            dataType,
+            Length - 1,
+            ValueOffsetsBufferBuilder.Build(default), values,
+            validityBuffer, NullCount, 0
+        );
+        return [listy];
+    }
+
+    public void Clear()
+    {
+        ValueBuilder.Clear();
+        ValidityBufferBuilder.Clear();
+        ValueOffsetsBufferBuilder.Clear();
     }
 }
 
@@ -460,7 +592,6 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         else IonMobility.AppendNull();
         if (ionMobilityType != null) IonMobilityType.Append(ionMobilityType);
         else IonMobilityType.AppendNull();
-        Visited.Clear();
         VisitParameters(parameters);
     }
 
@@ -479,7 +610,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         {
             new Field("source_index", new UInt64Type(), true),
             new Field("precursor_index", new UInt64Type(), true),
-            new Field("ion_mobility", new DoubleType(), true),
+            new Field("ion_mobility_value", new DoubleType(), true),
             new Field("ion_mobility_type", new StringType(), true)
         };
         foreach(var vis in ParamVisitors)
@@ -556,7 +687,6 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         else DataProcessingRef.AppendNull();
         NumberOfAuxiliaryArrays.Append(auxiliaryArrays?.Count ?? 0);
         AuxiliaryArrays.Append(auxiliaryArrays ?? []);
-        Visited.Clear();
         VisitParameters(parameters);
     }
 

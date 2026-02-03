@@ -179,7 +179,7 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
     }
 }
 
-public class ParamListVisitor : IArrowArrayVisitor<LargeListArray>
+public class ParamListVisitor : IArrowArrayVisitor<LargeListArray>, IArrowArrayVisitor<ListArray>
 {
     public List<List<Param>> ParamsLists;
 

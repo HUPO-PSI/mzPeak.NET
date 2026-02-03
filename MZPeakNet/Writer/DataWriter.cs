@@ -9,6 +9,9 @@ using Array = Apache.Arrow.Array;
 
 namespace MZPeak.Writer.Data;
 
+using ComputeFn = Compute.Compute;
+
+
 
 public abstract class BaseLayoutBuilder
 {
@@ -33,6 +36,11 @@ public abstract class BaseLayoutBuilder
         Index = new();
         Arrays = new();
         DataTypes = new();
+        InitializeBuilders();
+    }
+
+    protected virtual void InitializeBuilders()
+    {
         int i = 1;
         foreach (var entry in ArrayIndex.Entries)
         {
@@ -73,14 +81,110 @@ public abstract class BaseLayoutBuilder
         }
     }
 
-    public (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    protected Dictionary<ArrayIndexEntry, Array> RemoveZeroIntensityRuns(Dictionary<ArrayIndexEntry, Array> arrays, IArrowArray intensityArrayVal)
+    {
+        switch (intensityArrayVal.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Float:
+                {
+                    var indices = ZeroRunRemoval.WhereNotZeroRun((FloatArray)intensityArrayVal);
+                    arrays = ComputeFn.Take(arrays, indices);
+                    break;
+                }
+            case ArrowTypeId.Double:
+                {
+                    var indices = ZeroRunRemoval.WhereNotZeroRun((DoubleArray)intensityArrayVal);
+                    arrays = ComputeFn.Take(arrays, indices);
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    var indices = ZeroRunRemoval.WhereNotZeroRun((Int8Array)intensityArrayVal);
+                    arrays = ComputeFn.Take(arrays, indices);
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    var indices = ZeroRunRemoval.WhereNotZeroRun((Int16Array)intensityArrayVal);
+                    arrays = ComputeFn.Take(arrays, indices);
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    var indices = ZeroRunRemoval.WhereNotZeroRun((Int32Array)intensityArrayVal);
+                    arrays = ComputeFn.Take(arrays, indices);
+                    break;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    var indices = ZeroRunRemoval.WhereNotZeroRun((Int64Array)intensityArrayVal);
+                    arrays = ComputeFn.Take(arrays, indices);
+                    break;
+                }
+            default:
+                throw new NotImplementedException();
+        }
+        return arrays;
+    }
+
+    protected Dictionary<ArrayIndexEntry, Array> MarkNulls(Dictionary<ArrayIndexEntry, Array> arrays, ArrayIndexEntry intensityEntry, ArrayIndexEntry coordinateEntry)
+    {
+        BooleanArray mask;
+        var weights = arrays[intensityEntry];
+        if (weights.Data.DataType.TypeId == ArrowTypeId.Float)
+        {
+            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((FloatArray)weights));
+            arrays[intensityEntry] = ComputeFn.NullifyAt((FloatArray)weights, mask);
+        }
+        else if (weights.Data.DataType.TypeId == ArrowTypeId.Double)
+        {
+            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((DoubleArray)weights));
+            arrays[intensityEntry] = ComputeFn.NullifyAt((DoubleArray)weights, mask);
+        }
+        else if (weights.Data.DataType.TypeId == ArrowTypeId.Int32)
+        {
+            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((Int32Array)weights));
+            arrays[intensityEntry] = ComputeFn.NullifyAt((Int32Array)weights, mask);
+        }
+        else if (weights.Data.DataType.TypeId == ArrowTypeId.Int64)
+        {
+            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((Int64Array)weights));
+            arrays[intensityEntry] = ComputeFn.NullifyAt((Int64Array)weights, mask);
+        }
+        else
+        {
+            var v = ComputeFn.CastFloat(weights);
+            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask(v));
+            arrays[intensityEntry] = ComputeFn.NullifyAt(v, mask);
+        }
+
+        var coordinatesToNull = arrays[coordinateEntry];
+        if (coordinatesToNull.Data.DataType.TypeId == ArrowTypeId.Float)
+        {
+            arrays[coordinateEntry] = ComputeFn.NullifyAt((FloatArray)coordinatesToNull, mask);
+        }
+        else if (coordinatesToNull.Data.DataType.TypeId == ArrowTypeId.Double)
+        {
+            arrays[coordinateEntry] = ComputeFn.NullifyAt((DoubleArray)coordinatesToNull, mask);
+        }
+        else throw new InvalidDataException($"Unsupported data type {coordinatesToNull.Data.DataType.Name}");
+        return arrays;
+    }
+
+    protected record _ArrayFilterResult(
+        Dictionary<ArrayIndexEntry, Array> arrays,
+        List<(ArrayIndexEntry, Array)> notCoveredArrays,
+        ArrayIndexEntry? nullInterpolate = null,
+        ArrayIndexEntry? nullZero = null,
+        ArrayIndexEntry? intensityArray = null
+    ) { }
+
+    protected virtual _ArrayFilterResult FilterArrays(Dictionary<ArrayIndexEntry, Array> arrays)
     {
         List<(ArrayIndexEntry, Array)> notCoveredArrays = new();
         ArrayIndexEntry? nullInterpolate = null;
         ArrayIndexEntry? nullZero = null;
         ArrayIndexEntry? intensityArray = null;
-        SpacingInterpolationModel<double>? deltaModel = null;
-        List<AuxiliaryArray> auxiliaryArrays = [];
         foreach (var col in arrays)
         {
             if (!ArrayIndex.Entries.Contains(col.Key))
@@ -92,6 +196,15 @@ public abstract class BaseLayoutBuilder
             if (col.Key.Transform == NullInterpolation.NullInterpolateCURIE) nullInterpolate = col.Key;
             else if (col.Key.Transform == NullInterpolation.NullZeroCURIE) nullZero = col.Key;
         }
+        return new _ArrayFilterResult(arrays, notCoveredArrays, nullInterpolate, nullZero, intensityArray);
+    }
+
+    public (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    {
+        SpacingInterpolationModel<double>? deltaModel = null;
+        List<AuxiliaryArray> auxiliaryArrays = [];
+
+        (arrays, var notCoveredArrays, var nullInterpolate, var nullZero, var intensityArray) = FilterArrays(arrays);
 
         foreach (var (k, v) in notCoveredArrays)
         {
@@ -103,56 +216,17 @@ public abstract class BaseLayoutBuilder
         if (intensityArray != null && ShouldRemoveZeroRuns && (isProfile ?? true))
         {
             var intensityArrayVal = arrays[intensityArray];
-            switch (intensityArrayVal.Data.DataType.TypeId)
-            {
-                case ArrowTypeId.Float:
-                    {
-                        var indices = ZeroRunRemoval.WhereNotZeroRun((FloatArray)intensityArrayVal);
-                        arrays = Compute.Compute.Take(arrays, indices);
-                        break;
-                    }
-                case ArrowTypeId.Double:
-                    {
-                        var indices = ZeroRunRemoval.WhereNotZeroRun((DoubleArray)intensityArrayVal);
-                        arrays = Compute.Compute.Take(arrays, indices);
-                        break;
-                    }
-                case ArrowTypeId.Int8:
-                    {
-                        var indices = ZeroRunRemoval.WhereNotZeroRun((Int8Array)intensityArrayVal);
-                        arrays = Compute.Compute.Take(arrays, indices);
-                        break;
-                    }
-                case ArrowTypeId.Int16:
-                    {
-                        var indices = ZeroRunRemoval.WhereNotZeroRun((Int16Array)intensityArrayVal);
-                        arrays = Compute.Compute.Take(arrays, indices);
-                        break;
-                    }
-                case ArrowTypeId.Int32:
-                    {
-                        var indices = ZeroRunRemoval.WhereNotZeroRun((Int32Array)intensityArrayVal);
-                        arrays = Compute.Compute.Take(arrays, indices);
-                        break;
-                    }
-                case ArrowTypeId.Int64:
-                    {
-                        var indices = ZeroRunRemoval.WhereNotZeroRun((Int64Array)intensityArrayVal);
-                        arrays = Compute.Compute.Take(arrays, indices);
-                        break;
-                    }
-                default:
-                    throw new NotImplementedException();
-            }
+            arrays = RemoveZeroIntensityRuns(arrays, intensityArrayVal);
         }
 
         if (isProfile ?? false)
         {
             if (nullInterpolate != null && nullZero != null)
             {
-                var coordinates = Compute.Compute.CastDouble(arrays[nullInterpolate]);
+                var coordinates = ComputeFn.CastDouble(arrays[nullInterpolate]);
                 var weights = arrays[nullZero];
                 deltaModel = SpacingInterpolationModel<double>.Fit(coordinates, weights);
+                arrays = MarkNulls(arrays, nullZero, nullInterpolate);
             }
             else if (nullInterpolate != null || nullZero != null) throw new InvalidOperationException();
         }
@@ -169,7 +243,7 @@ public abstract class BaseLayoutBuilder
 
     public abstract RecordBatch GetRecordBatch();
 
-    public Schema ArrowSchema()
+    public virtual Schema ArrowSchema()
     {
         List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
 
@@ -182,6 +256,100 @@ public abstract class BaseLayoutBuilder
         Dictionary<string, string> meta = new();
         meta[$"{BufferContext.Name()}_array_index"] = JsonSerializer.Serialize(ArrayIndex);
         return new Schema([root], meta);
+    }
+
+    protected void AppendNullsTo(IArrowArrayBuilder builder, IArrowType dtype, int k)
+    {
+        switch (dtype.TypeId)
+        {
+            case ArrowTypeId.Double:
+                {
+                    for (var j = 0; j < k; j++)
+                        ((DoubleArray.Builder)builder).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Float:
+                {
+                    for (var j = 0; j < k; j++)
+                        ((FloatArray.Builder)builder).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    for (var j = 0; j < k; j++)
+                        ((Int8Array.Builder)builder).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    for (var j = 0; j < k; j++)
+                        ((Int16Array.Builder)builder).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    for (var j = 0; j < k; j++)
+                        ((Int32Array.Builder)builder).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    for (var j = 0; j < k; j++)
+                        ((Int64Array.Builder)builder).AppendNull();
+                    break;
+                }
+            default: throw new NotImplementedException();
+        }
+    }
+
+    protected void AppendArrayTo(IArrowArrayBuilder builder, IArrowType dtype, IArrowArray array)
+    {
+        switch (dtype.TypeId)
+        {
+            case ArrowTypeId.Double:
+                {
+                    DoubleArray valArray = (DoubleArray)array;
+                    DoubleArray.Builder valBuilder = (DoubleArray.Builder)builder;
+                    foreach (var v in valArray) valBuilder.Append(v);
+                    break;
+                }
+            case ArrowTypeId.Float:
+                {
+                    FloatArray valArray = (FloatArray)array;
+                    FloatArray.Builder valBuilder = (FloatArray.Builder)builder;
+                    foreach (var v in valArray) valBuilder.Append(v);
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    Int8Array valArray = (Int8Array)array;
+                    Int8Array.Builder valBuilder = (Int8Array.Builder)builder;
+                    foreach (var v in valArray) valBuilder.Append(v);
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    Int16Array valArray = (Int16Array)array;
+                    Int16Array.Builder valBuilder = (Int16Array.Builder)builder;
+                    foreach (var v in valArray) valBuilder.Append(v);
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    Int32Array valArray = (Int32Array)array;
+                    Int32Array.Builder valBuilder = (Int32Array.Builder)builder;
+                    foreach (var v in valArray) valBuilder.Append(v);
+                    break;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    Int64Array valArray = (Int64Array)array;
+                    Int64Array.Builder valBuilder = (Int64Array.Builder)builder;
+                    foreach (var v in valArray) valBuilder.Append(v);
+                    break;
+                }
+            default: throw new NotImplementedException();
+        }
     }
 }
 
@@ -214,97 +382,13 @@ public class PointLayoutBuilder : BaseLayoutBuilder
             {
                 var builder = Arrays[(int)entry.SchemaIndex - 1];
                 var dtype = DataTypes[(int)entry.SchemaIndex - 1];
-                switch (dtype.TypeId)
-                {
-                    case ArrowTypeId.Double:
-                        {
-                            DoubleArray valArray = (DoubleArray)array;
-                            DoubleArray.Builder valBuilder = (DoubleArray.Builder)builder;
-                            foreach(var v in valArray) valBuilder.Append(v);
-                            break;
-                        }
-                    case ArrowTypeId.Float:
-                        {
-                            FloatArray valArray = (FloatArray)array;
-                            FloatArray.Builder valBuilder = (FloatArray.Builder)builder;
-                            foreach (var v in valArray) valBuilder.Append(v);
-                            break;
-                        }
-                    case ArrowTypeId.Int8:
-                        {
-                            Int8Array valArray = (Int8Array)array;
-                            Int8Array.Builder valBuilder = (Int8Array.Builder)builder;
-                            foreach (var v in valArray) valBuilder.Append(v);
-                            break;
-                        }
-                    case ArrowTypeId.Int16:
-                        {
-                            Int16Array valArray = (Int16Array)array;
-                            Int16Array.Builder valBuilder = (Int16Array.Builder)builder;
-                            foreach (var v in valArray) valBuilder.Append(v);
-                            break;
-                        }
-                    case ArrowTypeId.Int32:
-                        {
-                            Int32Array valArray = (Int32Array)array;
-                            Int32Array.Builder valBuilder = (Int32Array.Builder)builder;
-                            foreach (var v in valArray) valBuilder.Append(v);
-                            break;
-                        }
-                    case ArrowTypeId.Int64:
-                        {
-                            Int64Array valArray = (Int64Array)array;
-                            Int64Array.Builder valBuilder = (Int64Array.Builder)builder;
-                            foreach (var v in valArray) valBuilder.Append(v);
-                            break;
-                        }
-                    default: throw new NotImplementedException();
-                }
+                AppendArrayTo(builder, dtype, array);
             }
             else
             {
                 var builder = Arrays[(int)entry.SchemaIndex - 1];
                 var dtype = DataTypes[(int)entry.SchemaIndex - 1];
-                switch (dtype.TypeId)
-                {
-                    case ArrowTypeId.Double:
-                        {
-                            for(var j = 0; j < k; j++)
-                                ((DoubleArray.Builder)builder).AppendNull();
-                            break;
-                        }
-                    case ArrowTypeId.Float:
-                        {
-                            for (var j = 0; j < k; j++)
-                                ((FloatArray.Builder)builder).AppendNull();
-                            break;
-                        }
-                    case ArrowTypeId.Int8:
-                        {
-                            for (var j = 0; j < k; j++)
-                                ((Int8Array.Builder)builder).AppendNull();
-                            break;
-                        }
-                    case ArrowTypeId.Int16:
-                        {
-                            for (var j = 0; j < k; j++)
-                                ((Int16Array.Builder)builder).AppendNull();
-                            break;
-                        }
-                    case ArrowTypeId.Int32:
-                        {
-                            for (var j = 0; j < k; j++)
-                                ((Int32Array.Builder)builder).AppendNull();
-                            break;
-                        }
-                    case ArrowTypeId.Int64:
-                        {
-                            for (var j = 0; j < k; j++)
-                                ((Int64Array.Builder)builder).AppendNull();
-                            break;
-                        }
-                    default: throw new NotImplementedException();
-                }
+                AppendNullsTo(builder, dtype, k);
             }
         }
         NumberOfPoints += (ulong)k;
@@ -383,16 +467,116 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 
 public class ChunkLayoutBuilder : BaseLayoutBuilder
 {
-    public string MainAxisEncodingCURIE;
+    public string MainAxisEncodingCURIE {get; set;}
 
     public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE) : base(arrayIndex)
     {
         MainAxisEncodingCURIE = mainAxisEncodingCURIE;
     }
 
+    protected override void InitializeBuilders()
+    {
+        int i = 1;
+        foreach (var entry in ArrayIndex.Entries)
+        {
+            entry.SchemaIndex = i;
+            i++;
+            BufferContext = entry.Context;
+            switch (entry.BufferFormat)
+            {
+                case BufferFormat.ChunkEncoding:
+                    {
+                        DataTypes.Add(new StringType());
+                        Arrays.Add(new StringArray.Builder());
+                        break;
+                    }
+                case BufferFormat.ChunkStart:
+                case BufferFormat.ChunkEnd:
+                    {
+                        switch (entry.DataTypeCURIE)
+                        {
+                            case "MS:1000523":
+                                {
+                                    DataTypes.Add(new DoubleType());
+                                    Arrays.Add(new DoubleArray.Builder());
+                                    break;
+                                }
+                            case "MS:1000521":
+                                {
+                                    DataTypes.Add(new FloatType());
+                                    Arrays.Add(new FloatArray.Builder());
+                                    break;
+                                }
+                            default: throw new NotImplementedException($"{entry.DataTypeCURIE} not supported for {entry.BufferFormat}");
+                        }
+                        break;
+                    }
+                case BufferFormat.ChunkSecondary:
+                case BufferFormat.ChunkValues:
+                    {
+                        DataTypes.Add(entry.GetArrowType());
+                        Arrays.Add(new ListArray.Builder(entry.GetArrowType()));
+                        break;
+                    }
+                case BufferFormat.ChunkTransform:
+                    {
+                        DataTypes.Add(new UInt8Type());
+                        Arrays.Add(new ListArray.Builder(new UInt8Type()));
+                        break;
+                    }
+                default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
+            }
+        }
+    }
+
+    protected override _ArrayFilterResult FilterArrays(Dictionary<ArrayIndexEntry, Array> arrays)
+    {
+        List<(ArrayIndexEntry, Array)> notCoveredArrays = new();
+        ArrayIndexEntry? nullInterpolate = null;
+        ArrayIndexEntry? nullZero = null;
+        ArrayIndexEntry? intensityArray = null;
+        foreach (var col in arrays)
+        {
+            if (!ArrayIndex.Entries.Contains(col.Key))
+            {
+                notCoveredArrays.Add((col.Key, col.Value));
+                continue;
+            }
+            if (col.Key.ArrayTypeCURIE == ArrayType.IntensityArray.CURIE()) intensityArray = col.Key;
+            if (col.Key.Transform == NullInterpolation.NullInterpolateCURIE) nullInterpolate = col.Key;
+            else if (col.Key.Transform == NullInterpolation.NullZeroCURIE) nullZero = col.Key;
+        }
+        return new _ArrayFilterResult(arrays, notCoveredArrays, nullInterpolate, nullZero, intensityArray);
+    }
+
     public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
+        int k = 0;
+        foreach (var val in arrays.Values)
+        {
+            if (k > 0 && k != val.Length) throw new InvalidDataException("Arrays do not have equal lengths");
+            else k = val.Length;
+        }
+        Index.AppendRange(Enumerable.Repeat(entryIndex, k));
+        foreach (var entry in ArrayIndex.Entries)
+        {
+            if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
+            Array? array;
+            if (arrays.TryGetValue(entry, out array))
+            {
+                var builder = Arrays[(int)entry.SchemaIndex - 1];
+                var dtype = DataTypes[(int)entry.SchemaIndex - 1];
+                AppendArrayTo(builder, dtype, array);
+            }
+            else
+            {
+                var builder = Arrays[(int)entry.SchemaIndex - 1];
+                var dtype = DataTypes[(int)entry.SchemaIndex - 1];
+                AppendNullsTo(builder, dtype, k);
+            }
+        }
+        NumberOfPoints += (ulong)k;
 
         return (deltaModel, auxiliaryArrays);
     }
@@ -403,9 +587,98 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
         return Add(entryIndex, kvs, isProfile);
     }
 
+    public override Schema ArrowSchema()
+    {
+        List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
+
+        foreach (var entry in ArrayIndex.Entries)
+        {
+            var name = entry.CreateColumnName();
+            switch (entry.BufferFormat)
+            {
+                case BufferFormat.ChunkEncoding:
+                    {
+                        fields.Add(new Field(name, new StringType(), true));
+                        break;
+                    }
+                case BufferFormat.ChunkStart:
+                case BufferFormat.ChunkEnd:
+                    {
+                        fields.Add(new Field(name, entry.GetArrowType(), true));
+                        break;
+                    }
+                case BufferFormat.ChunkSecondary:
+                case BufferFormat.ChunkValues:
+                    {
+                        fields.Add(new Field(name, new ListType(entry.GetArrowType()), true));
+                        break;
+                    }
+                case BufferFormat.ChunkTransform:
+                    {
+                        fields.Add(new Field(name, new ListType(new UInt8Type()), true));
+                        break;
+                    }
+                default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
+            }
+        }
+        var root = new Field(LayoutName(), new StructType(fields), true);
+        Dictionary<string, string> meta = new();
+        meta[$"{BufferContext.Name()}_array_index"] = JsonSerializer.Serialize(ArrayIndex);
+        return new Schema([root], meta);
+    }
+
     public override RecordBatch GetRecordBatch()
     {
-        throw new NotImplementedException();
+        List<Array> cols = [Index.Build()];
+        foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
+        {
+            switch (entry.BufferFormat)
+            {
+                case BufferFormat.ChunkEncoding:
+                    {
+                        cols.Add(((StringArray.Builder)builder).Build());
+                        break;
+                    }
+                case BufferFormat.ChunkStart:
+                case BufferFormat.ChunkEnd:
+                    {
+                        switch (dtype.TypeId)
+                        {
+                            case ArrowTypeId.Double:
+                                {
+                                    var builderOf = (DoubleArray.Builder)builder;
+                                    cols.Add(builderOf.Build());
+                                    builderOf.Clear();
+                                    break;
+                                }
+                            case ArrowTypeId.Float:
+                                {
+                                    var builderOf = (FloatArray.Builder)builder;
+                                    cols.Add(builderOf.Build());
+                                    builderOf.Clear();
+                                    break;
+                                }
+                            default: throw new InvalidDataException($"{dtype.Name} is not supported as a chunk boundary");
+                        }
+                        break;
+                    }
+                case BufferFormat.ChunkSecondary:
+                case BufferFormat.ChunkValues:
+                case BufferFormat.ChunkTransform:
+                    {
+                        cols.Add(((ListArray.Builder)builder).Build());
+                        break;
+                    }
+                default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
+            }
+        }
+
+        var schema = ArrowSchema();
+        var dtypeOf = schema.GetFieldByIndex(0).DataType;
+        var layer = new StructArray(dtypeOf, Index.Length, cols, cols[0].NullBitmapBuffer, cols[0].NullCount);
+        Index.Clear();
+
+        return new RecordBatch(schema, [layer], layer.Length);
     }
 
     public override string LayoutName()

@@ -107,4 +107,30 @@ public class NullInterpolationTest
             Assert.True(Math.Abs(model.Coefficients[i]) < 1e-6);
         }
     }
+
+    [Fact]
+    public async Task TestChunking()
+    {
+        var reader = new MzPeakReader(PointArchive);
+        var specData = await reader.GetSpectrumData(0);
+        Assert.NotNull(specData);
+
+        var chunk = (StructArray)specData.Array(0);
+        Assert.Equal(0, chunk.NullCount);
+
+        var mzsArr = (DoubleArray)chunk.Fields[1];
+        Assert.Equal(0, mzsArr.NullCount);
+        var intensitiesArr = (FloatArray)chunk.Fields[2];
+
+        var splits = Chunking.ChunkEvery(mzsArr, 50.0);
+
+        var mask = Compute.Invert(ZeroRunRemoval.IsZeroPairMask(intensitiesArr));
+        var maskedMzs = Compute.NullifyAt(mzsArr, mask);
+        Assert.Equal(11213, maskedMzs.NullCount);
+        var splitsMasked = Chunking.ChunkEvery(maskedMzs, 50.0);
+        foreach (var (ii, jj) in splitsMasked.Zip(splits))
+        {
+            Assert.Equal(ii, jj);
+        }
+    }
 }

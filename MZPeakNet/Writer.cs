@@ -252,7 +252,8 @@ public class MZPeakWriter : IDisposable
         uint? instrumentConfigurationRef,
         List<Param> scanParams,
         double? ionMobility=null,
-        string? ionMobilityType=null
+        string? ionMobilityType=null,
+        List<List<Param>>? scanWindows=null
     )
     {
         SpectrumMetadata.AppendScan(
@@ -260,7 +261,8 @@ public class MZPeakWriter : IDisposable
             instrumentConfigurationRef,
             ionMobility,
             ionMobilityType,
-            scanParams
+            scanParams,
+            scanWindows
         );
     }
 

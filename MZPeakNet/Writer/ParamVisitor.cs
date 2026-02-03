@@ -706,7 +706,7 @@ public class ParamVisitorCollection
 
     public ParamVisitorCollection(List<CustomBuilderFromParam> paramVisitors)
     {
-        ParamVisitors = paramVisitors;
+        ParamVisitors = [.. paramVisitors];
         ParamList = new();
         Visited = new();
     }
@@ -733,6 +733,7 @@ public class ParamVisitorCollection
             if (!Visited.Contains(vis.AccessionCURIE)) vis.AppendNull();
         }
         ParamList.Append(@params.Where((v) => v.AccessionCURIE == null || !Visited.Contains(v.AccessionCURIE)).ToList());
+        Visited.Clear();
     }
 
     public virtual void AppendNull()

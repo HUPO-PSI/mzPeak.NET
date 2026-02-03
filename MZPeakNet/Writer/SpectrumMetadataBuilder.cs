@@ -66,11 +66,12 @@ public class SpectrumMetadataBuilder
         uint? instrumentConfigurationRef,
         double? ionMobility,
         string? ionMobilityType,
-        List<Param> scanParams
+        List<Param> scanParams,
+        List<List<Param>>? scanWindows = null
     )
     {
-        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
-        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanParams);
+        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException($"Source index {sourceIndex} is greater than {SpectrumCounter - 1}");
+        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanParams, scanWindows);
     }
 
     /// <summary>
@@ -84,8 +85,8 @@ public class SpectrumMetadataBuilder
         List<Param> activationParams
     )
     {
-        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
-        if (precursorIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Precursor index {0} is greater than {1}", precursorIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
+        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException($"Source index {sourceIndex} is greater than {SpectrumCounter - 1}");
+        if (precursorIndex >= SpectrumCounter) throw new InvalidOperationException($"Precursor index {precursorIndex} is greater than {SpectrumCounter - 1}");
         Precursor.Append(sourceIndex, precursorIndex, precursorId, isolationWindowParams, activationParams);
     }
 
@@ -100,8 +101,8 @@ public class SpectrumMetadataBuilder
         List<Param> selectedIonParams
     )
     {
-        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
-        if (precursorIndex >= SpectrumCounter) throw new InvalidOperationException(string.Format("Precursor index {0} is greater than {1}", precursorIndex, SpectrumCounter == 0 ? 0 : SpectrumCounter - 1));
+        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException($"Source index {sourceIndex} is greater than {SpectrumCounter - 1}");
+        if (precursorIndex >= SpectrumCounter) throw new InvalidOperationException($"Precursor index {precursorIndex} is greater than {SpectrumCounter - 1}");
         SelectedIon.Append(sourceIndex, precursorIndex, ionMobility, ionMobilityType, selectedIonParams);
     }
 

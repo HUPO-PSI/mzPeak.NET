@@ -123,7 +123,8 @@ internal class Program
                         scan.InstrumentConfigurationRef,
                         scan.Parameters,
                         scan.IonMobility,
-                        scan.IonMobilityTypeCURIE
+                        scan.IonMobilityTypeCURIE,
+                        scanWindows: scan.ScanWindows?.Select(w => w.AsParamList()).ToList()
                     );
                 }
                 foreach(var precursor in descr.Precursors)

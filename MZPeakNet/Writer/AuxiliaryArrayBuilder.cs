@@ -39,6 +39,7 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
         Compression.Append(value.Compression.CURIE());
         Unit.Append(value.Unit?.CURIE());
         DataProcessingRef.AppendNull();
+        Parameters.Append(value.Parameters);
     }
 
     public void AppendNull()

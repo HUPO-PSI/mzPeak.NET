@@ -7,7 +7,6 @@ using Apache.Arrow.Types;
 
 using MathNet.Numerics.LinearAlgebra;
 using Microsoft.Extensions.Logging;
-using MZPeak.Reader.Visitors;
 
 public class SpacingInterpolationModel<T> where T : struct, INumber<T>
 {
@@ -52,7 +51,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
     {
         var acc = T.Zero;
         var n = T.Zero;
-        foreach(var (x, y) in coordinates.Zip(deltas))
+        foreach (var (x, y) in coordinates.Zip(deltas))
         {
             if (x == null) continue;
             var e = y - Predict((T)x);
@@ -97,10 +96,10 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return coefs.Count > 0 ? new SpacingInterpolationModel<double>(coefs) : null;
     }
 
-    public static SpacingInterpolationModel<U> FitMedian<U>(IReadOnlyList<U?> coordinates) where U: struct, INumber<U>
+    public static SpacingInterpolationModel<U> FitMedian<U>(IReadOnlyList<U?> coordinates) where U : struct, INumber<U>
     {
         var value = NullInterpolation.LocalMedianDelta(coordinates);
-        return new(new(){value});
+        return new(new() { value });
     }
 
     static (Matrix<U> data, MathNet.Numerics.LinearAlgebra.Vector<U> y, MathNet.Numerics.LinearAlgebra.Vector<U> cholWeights) ComputeFitArgs<U>(IReadOnlyList<U?> coordinates, List<U> deltas, IReadOnlyList<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
@@ -140,7 +139,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
 
     public static SpacingInterpolationModel<U> FitRegression<U>(IReadOnlyList<U?> coordinates, List<U> deltas, IReadOnlyList<U?>? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
-        var (data, y, cholWeights)  = ComputeFitArgs(coordinates, deltas, weights, deltaThreshold, rank);
+        var (data, y, cholWeights) = ComputeFitArgs(coordinates, deltas, weights, deltaThreshold, rank);
         var QR = data.MapIndexed((i, j, v) => cholWeights[i] * v).QR();
         var cholY = cholWeights.PointwiseMultiply(y);
         var V = QR.Q.Transpose().Multiply(cholY);
@@ -150,7 +149,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
         return model;
     }
 
-    public static SpacingInterpolationModel<U> Fit<U>(PrimitiveArray<U> coordinates, Array? weights = null, U? deltaThreshold = null, int rank = 2) where U: struct, INumber<U>, IRootFunctions<U>
+    public static SpacingInterpolationModel<U> Fit<U>(PrimitiveArray<U> coordinates, Array? weights = null, U? deltaThreshold = null, int rank = 2) where U : struct, INumber<U>, IRootFunctions<U>
     {
         var deltas = NullInterpolation.CollectDeltas(coordinates, false);
         if (weights != null)
@@ -188,7 +187,7 @@ public class SpacingInterpolationModel<T> where T : struct, INumber<T>
 
 public static class ZeroRunRemoval
 {
-    public static List<int> WhereNotZeroRun<T>(IList<T?> data) where T: INumber<T>
+    public static List<int> WhereNotZeroRun<T>(IList<T?> data) where T : INumber<T>
     {
         List<int> acc = new();
 
@@ -196,7 +195,7 @@ public static class ZeroRunRemoval
         int n1 = n - 1;
         bool wasZero = false;
         int i = 0;
-        while(i < n)
+        while (i < n)
         {
             var v = data[i];
             if (v != null)
@@ -204,7 +203,7 @@ public static class ZeroRunRemoval
                 if (v == T.Zero)
                 {
                     if (wasZero || (acc.Count == 0 && i < n1 && data[i + 1] == T.Zero) || i == n1)
-                    {}
+                    { }
                     else
                     {
                         acc.Add(i);
@@ -256,13 +255,13 @@ public static class ZeroRunRemoval
         return acc;
     }
 
-    public static BooleanArray IsZeroPairMask<T>(IList<T?> data) where T: INumber<T>
+    public static BooleanArray IsZeroPairMask<T>(IList<T?> data) where T : INumber<T>
     {
         int n = data.Count;
         int n1 = n - 1;
         bool wasZero = false;
         var acc = new BooleanArray.Builder();
-        for(var i = 0; i < data.Count; i++)
+        for (var i = 0; i < data.Count; i++)
         {
             var v = data[i];
             if (v == null)
@@ -336,7 +335,7 @@ public static class NullInterpolation
     public const string NullInterpolateCURIE = "MS:1003901";
     public const string NullZeroCURIE = "MS:1003902";
 
-    public static List<T> CollectDeltas<T>(IEnumerable<T?> values, bool sort=true) where T : struct, INumber<T>
+    public static List<T> CollectDeltas<T>(IEnumerable<T?> values, bool sort = true) where T : struct, INumber<T>
     {
         List<T> deltas = new();
         T last = default;
@@ -481,7 +480,8 @@ public static class NullInterpolation
                     if (vAt == null) throw new InvalidDataException("Cannot both be null");
                     var vFill = (T)vAt - delta;
                     builder.Append(vFill);
-                } else
+                }
+                else
                 {
                     var vAt = chunk.GetValue(0);
                     if (vAt == null) throw new InvalidOperationException("This should not happen");
@@ -499,7 +499,8 @@ public static class NullInterpolation
                     var vAt = chunk.GetValue(chunk.Length - 2);
                     if (vAt == null) throw new InvalidDataException("Cannot both be null");
                     builder.Append((T)vAt + delta);
-                } else
+                }
+                else
                 {
                     var vAt = chunk.GetValue(chunk.Length - 1);
                     if (vAt == null) throw new InvalidOperationException("This should not happen");
@@ -683,7 +684,7 @@ public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrow
         var newFields = new List<Field>();
         var newVals = new List<IArrowArray>();
         int size = 0;
-        foreach(var(field, arr) in dtype.Fields.Zip(array.Fields))
+        foreach (var (field, arr) in dtype.Fields.Zip(array.Fields))
         {
             var visitor = new ArrowCompatibilityVisitor();
             visitor.Visit(arr);
@@ -694,7 +695,7 @@ public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrow
             size = visitor.Result.Length;
         }
         var result = new StructArray(new StructType(newFields), size, newVals, array.NullBitmapBuffer);
-        if (result.Fields.Count > 0) {}
+        if (result.Fields.Count > 0) { }
         return result;
     }
 
@@ -740,7 +741,7 @@ public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrow
         ArrowCompatibilityVisitor visitor = new();
         visitor.Visit(array.Values);
         var offsetsBuffer = new ArrowBuffer.Builder<int>();
-        foreach(var v in array.ValueOffsets)
+        foreach (var v in array.ValueOffsets)
         {
             offsetsBuffer.Append((int)v);
         }
@@ -779,17 +780,132 @@ public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrow
     }
 }
 
+public static class Chunking
+{
+    public static List<(int, int)> ChunkEvery<T>(PrimitiveArray<T> data, T width) where T : struct, INumber<T>
+    {
+        var chunks = new List<(int, int)>();
+        T? start = null;
+        var n = data.Length;
+        var i = 0;
+        while (i < n)
+        {
+            var v = data.GetValue(i);
+            if (v != null)
+            {
+                start = v;
+                break;
+            }
+            else
+                i++;
+        }
+        if (start == null)
+        {
+            chunks.Add((0, n));
+            return chunks;
+        }
+        var offset = 0;
+        var threshold = (start ?? default) + width;
+        i = 0;
+        while (i < n)
+        {
+            var v = data.GetValue(i);
+            if (v != null)
+            {
+                if (v > threshold)
+                {
+                    if ((i + 1) < n && data.IsNull(i + 1))
+                    {
+                        while ((i + 1) < n && data.IsNull(i + 1))
+                            i++;
+                    }
+                    if (i - offset > 1)
+                    {
+                        chunks.Add((offset, i));
+                        offset = i;
+                    }
+                    while (threshold < v)
+                    {
+                        threshold += width;
+                    }
+                }
+            }
+            else if (((i + 1) < n) && data.IsValid(i + 1))
+            {
+                i++;
+                v = data.GetValue(i);
+                if (v != null && v > threshold)
+                {
+                    i--;
+                    chunks.Add((offset, i));
+                    offset = i;
+                    while (threshold < v)
+                    {
+                        threshold += width;
+                    }
+                }
+            }
+            i++;
+        }
+        if (offset != n)
+            chunks.Add((offset, n));
+        return chunks;
+    }
+
+    public static List<(int, int)> ChunkEvery(Array data, double width)
+    {
+        switch (data.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return ChunkEvery((DoubleArray)data, width);
+            case ArrowTypeId.Float:
+                return ChunkEvery((FloatArray)data, width);
+            case ArrowTypeId.Int32:
+                return ChunkEvery((Int32Array)data, width);
+            case ArrowTypeId.Int64:
+                return ChunkEvery((Int64Array)data, width);
+            default: throw new NotImplementedException($"{data.Data.DataType.Name} not supported");
+        }
+    }
+}
 
 public static class Compute
 {
     public static ILogger? Logger = null;
 
-    static void NullToZero<T, TBuilder>(PrimitiveArray<T> array, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator) where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
+    static void NullToZero<T, TBuilder>(PrimitiveArray<T> array, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator)
+        where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
         foreach (var value in array)
         {
             accumulator.Append(value == null ? T.Zero : (T)value);
         }
+    }
+
+    public static BooleanArray Invert(BooleanArray mask)
+    {
+        var builder = new BooleanArray.Builder();
+        foreach (var val in mask)
+        {
+            if (val != null)
+            {
+                builder.Append(!(bool)val);
+            }
+            else
+            {
+                builder.AppendNull();
+            }
+        }
+        return builder.Build();
+    }
+
+    public static PrimitiveArray<T> NullifyAt<T>(PrimitiveArray<T> array, BooleanArray mask)
+        where T : struct, INumber<T>
+    {
+        var nullCount = mask.Sum(v => (v != null && (bool)v) ? 1 : 0);
+        return (PrimitiveArray<T>)ArrowArrayFactory.BuildArray(
+            new ArrayData(array.Data.DataType, array.Length, nullCount, offset: array.Data.Offset, [mask.ValueBuffer, array.ValueBuffer], [])
+        );
     }
 
     public static Array IndicesToMask(IList<int> indices, int n)
@@ -798,7 +914,7 @@ public static class Compute
         int j = 0;
         int m = indices.Count;
         int i = 0;
-        for(i = 0; i < n && j < m; i++)
+        for (i = 0; i < n && j < m; i++)
         {
             if (i < indices[j])
             {
@@ -820,12 +936,12 @@ public static class Compute
         return acc.Build();
     }
 
-    public static List<(T, T)> IndicesToSpans<T>(IList<T> indices) where T: struct, INumber<T>
+    public static List<(T, T)> IndicesToSpans<T>(IList<T> indices) where T : struct, INumber<T>
     {
         List<(T, T)> acc = new();
         T? start = null;
         T? last = null;
-        foreach(var i in indices)
+        foreach (var i in indices)
         {
             if (last == null)
             {
@@ -852,6 +968,7 @@ public static class Compute
         }
         return acc;
     }
+
     public static Array NullToZero<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
     {
         switch (array.Data.DataType.TypeId)
@@ -921,10 +1038,10 @@ public static class Compute
         }
     }
 
-    public static Int64Array CastInt64<T>(PrimitiveArray<T> array) where T: struct, INumber<T>
+    public static Int64Array CastInt64<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
     {
         var builder = new Int64Array.Builder();
-        foreach(var val in array)
+        foreach (var val in array)
         {
             if (val != null) builder.Append(long.CreateChecked((T)val));
             else builder.AppendNull();
@@ -1097,7 +1214,7 @@ public static class Compute
         }
     }
 
-    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs) where T: struct, INumber<T>
+    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         for (int i = 0; i < lhs.Length; i++)
@@ -1109,11 +1226,11 @@ public static class Compute
         return cmp.Build();
     }
 
-    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T: struct, INumber<T>
+    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
-        if(lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
-        for(int i = 0; i < lhs.Length; i++)
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
             var b = rhs.GetValue(i);
@@ -1128,14 +1245,15 @@ public static class Compute
         if (array.Length != mask.Length) throw new InvalidOperationException("Array and mask must have the same length");
         List<(int, int)> spans = new();
         int? start = null;
-        for(int i = 0; i < mask.Length; i++)
+        for (int i = 0; i < mask.Length; i++)
         {
             var v = mask.GetValue(i);
-            if(v != null && (bool)v)
+            if (v != null && (bool)v)
             {
-                if (start != null) {}
+                if (start != null) { }
                 else start = i;
-            } else if (v != null && !(bool)v)
+            }
+            else if (v != null && !(bool)v)
             {
                 if (start != null)
                 {
@@ -1143,10 +1261,10 @@ public static class Compute
                     spans.Add(((int)start, i - 1));
                     start = null;
                 }
-                else {}
+                else { }
             }
         }
-        if(start != null)
+        if (start != null)
         {
             spans.Add(((int)start, mask.Length - 1));
         }
@@ -1160,7 +1278,7 @@ public static class Compute
             return array.Slice(0, 0);
         }
         List<Array> chunks = new();
-        foreach(var (start, end) in spans)
+        foreach (var (start, end) in spans)
         {
             if (end < start || end < 0 || start < 0) throw new InvalidOperationException(string.Format("Invalid span: {0} {1}", start, end));
             chunks.Add(array.Slice(start, end - start + 1));
@@ -1202,10 +1320,10 @@ public static class Compute
         return result;
     }
 
-    public static Dictionary<T, Array> Filter<T>(Dictionary<T, Array> arrays, BooleanArray mask) where T: notnull
+    public static Dictionary<T, Array> Filter<T>(Dictionary<T, Array> arrays, BooleanArray mask) where T : notnull
     {
         Dictionary<T, Array> result = new();
-        foreach(var kv in arrays)
+        foreach (var kv in arrays)
         {
             result[kv.Key] = Filter(kv.Value, mask);
         }
@@ -1251,7 +1369,7 @@ public static class Compute
         }
         List<Array> columns = new();
         var size = 0;
-        foreach(var col in batch.Arrays)
+        foreach (var col in batch.Arrays)
         {
             columns.Add(Take((Array)col, spans));
             size = columns.Last().Length;

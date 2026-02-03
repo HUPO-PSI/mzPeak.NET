@@ -15,7 +15,7 @@ Prototype for reading [`mzPeak`](https://github.com/mobiusklein/mzpeak_prototypi
       - [ ] Numpress and opaque chunk transforms
   - [x] Chromatogram data arrays
   - [x] Spectrum peak arrays
-  - [ ] Auxiliary arrays
+  - [x] Auxiliary arrays
   - [ ] Slice queries
   - [x] ZIP archive storage
   - [x] Directory storage
@@ -26,7 +26,7 @@ Prototype for reading [`mzPeak`](https://github.com/mobiusklein/mzpeak_prototypi
   - [ ] Data Arrays
     - [x] Point Layout
     - [ ] Chunked Layout
-  - [ ] Spectrum peak arrays
-  - [ ] Auxiliary arrays
+  - [x] Spectrum peak arrays
+  - [x] Auxiliary arrays
   - [x] ZIP archive storage
   - [ ] Directory storage
