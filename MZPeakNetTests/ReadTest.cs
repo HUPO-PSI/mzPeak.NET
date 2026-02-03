@@ -16,7 +16,8 @@ public class ArchiveTest
     IMZPeakArchiveStorage PointArchive;
     IMZPeakArchiveStorage ChunkArchive;
 
-    public ArchiveTest() {
+    public ArchiveTest()
+    {
         string fileName = "small.mzpeak";
         string baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
         string fullPath = Path.Combine(baseDirectory, fileName);
@@ -125,7 +126,7 @@ public class ArchiveTest
         Assert.NotNull(col);
         Assert.Equal(48, col.Length);
         var schema = meta.SpectrumMetadata.Schema;
-        for(var i = 0; i < schema.FieldsList.Count; i++)
+        for (var i = 0; i < schema.FieldsList.Count; i++)
         {
             // Console.WriteLine("{0} => {1} : {2}", i, schema.FieldsList[i].Name, schema.FieldsList[i].DataType);
         }
@@ -139,7 +140,8 @@ public class ArchiveTest
         builder.Visit(col);
         var paramsList = builder.ParamsLists;
         var k = 0;
-        foreach(var pars in paramsList) {
+        foreach (var pars in paramsList)
+        {
             k += pars.Count;
         }
         Assert.True(k > 0);

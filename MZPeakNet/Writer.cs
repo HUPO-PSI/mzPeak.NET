@@ -79,9 +79,9 @@ public class MZPeakWriter : IDisposable
                 ParquetSharp.Encoding.DeltaBinaryPacked
             );
 
-        foreach(var arrayType in SpectrumData.ArrayIndex.Entries)
+        foreach (var arrayType in SpectrumData.ArrayIndex.Entries)
         {
-            if(arrayType.GetArrayType() == ArrayType.MZArray)
+            if (arrayType.GetArrayType() == ArrayType.MZArray)
             {
                 writerProps = writerProps.Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
             }
@@ -137,7 +137,7 @@ public class MZPeakWriter : IDisposable
         CurrentEntry = entry;
     }
 
-    public MZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex=null, ArrayIndex? chromatogramArrayIndex=null, bool includeSpectrumPeakData=false, ArrayIndex? spectrumPeakArrayIndex=null)
+    public MZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex = null, ArrayIndex? chromatogramArrayIndex = null, bool includeSpectrumPeakData = false, ArrayIndex? spectrumPeakArrayIndex = null)
     {
         Storage = storage;
         MzPeakMetadata = new();
@@ -232,8 +232,8 @@ public class MZPeakWriter : IDisposable
         string id,
         double time,
         string? dataProcessingRef,
-        List<double>? mzDeltaModel=null,
-        List<Param>? spectrumParams=null,
+        List<double>? mzDeltaModel = null,
+        List<Param>? spectrumParams = null,
         List<AuxiliaryArray>? auxiliaryArrays = null
     )
     {
@@ -251,9 +251,9 @@ public class MZPeakWriter : IDisposable
         ulong sourceIndex,
         uint? instrumentConfigurationRef,
         List<Param> scanParams,
-        double? ionMobility=null,
-        string? ionMobilityType=null,
-        List<List<Param>>? scanWindows=null
+        double? ionMobility = null,
+        string? ionMobilityType = null,
+        List<List<Param>>? scanWindows = null
     )
     {
         SpectrumMetadata.AppendScan(

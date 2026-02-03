@@ -59,7 +59,7 @@ public abstract class MetadataReaderBase<T>
         return nativeIds;
     }
 
-    public abstract int Length {get;}
+    public abstract int Length { get; }
 
     public abstract List<T> BulkLoad();
     public abstract T Get(ulong index);
@@ -79,16 +79,19 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     RecordBatch? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
-    public override int Length { get
+    public override int Length
+    {
+        get
         {
-            if (SpectrumMetadata == null) {
+            if (SpectrumMetadata == null)
+            {
                 InitializeTables().Wait();
             }
             return SpectrumMetadata == null ? 0 : SpectrumMetadata.Length;
         }
     }
 
-    public SpectrumMetadataReader(ParquetSharp.Arrow.FileReader fileReader, bool initializeFacets=true) : base(MzPeakMetadata.FromParquet(fileReader.ParquetReader))
+    public SpectrumMetadataReader(ParquetSharp.Arrow.FileReader fileReader, bool initializeFacets = true) : base(MzPeakMetadata.FromParquet(fileReader.ParquetReader))
     {
         FileReader = fileReader;
 
@@ -158,7 +161,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             return new();
         }
         var fieldIdx = SpectrumMetadata.Schema.GetFieldIndex("mz_delta_model");
-        if(fieldIdx < 0)
+        if (fieldIdx < 0)
         {
             return new();
         }
@@ -172,7 +175,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         else if (modelArr.Data.DataType.TypeId == ArrowTypeId.LargeList)
         {
             return loadSpectrumInterpolationModels((LargeListArray)modelArr, indexArr);
-        } else
+        }
+        else
         {
             throw new NotImplementedException($"{modelArr.Data.DataType.Name} not supported");
         }
@@ -182,20 +186,30 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         return GetNativeIdsFrom(SpectrumMetadata);
     }
 
-    public RecordBatch? SpectrumMetadata { get {
-        if (spectrumMetadata == null)
+    public RecordBatch? SpectrumMetadata
+    {
+        get
+        {
+            if (spectrumMetadata == null)
             {
                 InitializeTables().Wait();
             }
-        return spectrumMetadata;
-    } set => spectrumMetadata = value; }
-    public RecordBatch? ScanMetadata { get {
+            return spectrumMetadata;
+        }
+        set => spectrumMetadata = value;
+    }
+    public RecordBatch? ScanMetadata
+    {
+        get
+        {
             if (scanMetadata == null)
             {
                 InitializeTables().Wait();
             }
             return scanMetadata;
-        } set => scanMetadata = value; }
+        }
+        set => scanMetadata = value;
+    }
     public RecordBatch? PrecursorMetadata
     {
         get
@@ -231,7 +245,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         {
             var visitor = new ScanVisitor();
             visitor.Visit(ScanMetadata);
-            foreach(var rec in visitor.Values)
+            foreach (var rec in visitor.Values)
             {
                 descrs[(int)rec.SourceIndex].Scans.Add(rec);
             }
@@ -310,9 +324,10 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         List<IArrowArray> scans = [];
         List<IArrowArray> precursors = [];
         List<IArrowArray> selectedIons = [];
-        while (true) {
+        while (true)
+        {
             RecordBatch batch = await reader.ReadNextRecordBatchAsync();
-            if(batch == null)
+            if (batch == null)
             {
                 Logger?.LogDebug($"Read {ctr} batches from {this}");
                 break;

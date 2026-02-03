@@ -15,6 +15,6 @@ public interface IArrowBuilder<T>
 
     public void Clear();
 
-    public int Length {get;}
+    public int Length { get; }
 }
 

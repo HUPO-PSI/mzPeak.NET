@@ -4,7 +4,8 @@ using MZPeak.Reader.Visitors;
 namespace MZPeak.Util;
 
 
-public static class LoggingConfig {
+public static class LoggingConfig
+{
     public static void ConfigureLogging(ILoggerFactory loggerFactory)
     {
         Writer.MZPeakWriter.Logger = loggerFactory.CreateLogger("MZPeak.Writer");

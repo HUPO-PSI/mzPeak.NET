@@ -299,7 +299,7 @@ public class DataArraysReader
         List<Field> fields = new();
         List<Array> arrays = new();
         HashSet<Field> arrayTypes = new();
-        foreach(var arrType in ArrayIndex.Entries)
+        foreach (var arrType in ArrayIndex.Entries)
         {
             var dtype = arrType.GetArrowType();
             var name = arrType.CreateColumnName();
@@ -518,7 +518,7 @@ public class PointLayoutReader : BaseLayoutReader
         var fields = ((StructType)rows.Data.DataType).Fields;
         var columnsAfter = new List<IArrowArray?>(fields.Count);
         Dictionary<int, IArrowArray> converted = new();
-        foreach(var entry in ArrayIndex.Entries)
+        foreach (var entry in ArrayIndex.Entries)
         {
             var name = entry.Path.Split(".").Last();
             IArrowArray? column = null;
@@ -532,7 +532,7 @@ public class PointLayoutReader : BaseLayoutReader
                 }
             }
 
-            if(column == null)
+            if (column == null)
             {
                 continue;
             }
@@ -566,7 +566,7 @@ public class PointLayoutReader : BaseLayoutReader
                         }
                 }
             }
-            else if(entry.Transform == NullInterpolation.NullZeroCURIE)
+            else if (entry.Transform == NullInterpolation.NullZeroCURIE)
             {
                 switch (column.Data.DataType.TypeId)
                 {
@@ -622,7 +622,7 @@ public class PointLayoutReader : BaseLayoutReader
             }
         }
 
-        for(var i = 0; i < fields.Count; i++)
+        for (var i = 0; i < fields.Count; i++)
         {
             var column = rows.Fields[i];
             if (converted.TryGetValue(i, out column))
@@ -844,7 +844,7 @@ public class ChunkLayoutReader : BaseLayoutReader
 
     ArrayIndexEntry FindEntryForTransform(ArrayIndexEntry query, string transform)
     {
-        foreach(var ent in transformMap[TransformKey.FromArrayIndexEntry(query)])
+        foreach (var ent in transformMap[TransformKey.FromArrayIndexEntry(query)])
             if (ent.Transform == transform)
                 return ent;
         throw new KeyNotFoundException($"No entry was found for {TransformKey.FromArrayIndexEntry(query)} with transform  = {transform}");
@@ -865,9 +865,9 @@ public class ChunkLayoutReader : BaseLayoutReader
         }
         var chunkStartDouble = chunkStartType.TypeId == ArrowTypeId.Double;
 
-        if(mainAxis == null) throw new InvalidOperationException("mainAxis cannot be null");
+        if (mainAxis == null) throw new InvalidOperationException("mainAxis cannot be null");
         var mainAxisKey = TransformKey.FromArrayIndexEntry(mainAxis);
-        List <IArrowArray> decodedValues = new();
+        List<IArrowArray> decodedValues = new();
         Dictionary<ArrayIndexEntry, List<IArrowArray>> secondaryValues = new();
         var nRows = encodingMethod.Length;
         for (var i = 0; i < nRows; i++)

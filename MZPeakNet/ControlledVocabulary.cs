@@ -47,7 +47,7 @@ public static class ArrayTypeMethods
         ((ArrayType[])Enum.GetValues(typeof(ArrayType))).Select((v) => new KeyValuePair<string, ArrayType>(v.CURIE(), v))
     );
 
-    public static Param Param(this ArrayType arrayType, string? nonStandardName=null)
+    public static Param Param(this ArrayType arrayType, string? nonStandardName = null)
     {
         if (arrayType == ArrayType.NonStandardDataArray) return new Param(arrayType.Name(), rawValue: nonStandardName, accession: arrayType.CURIE());
         else return new Param(arrayType.Name(), rawValue: null, accession: arrayType.CURIE());
@@ -55,7 +55,7 @@ public static class ArrayTypeMethods
 
     public static string Name(this ArrayType arrayType)
     {
-        switch(arrayType)
+        switch (arrayType)
         {
             case ArrayType.BinaryDataArray:
                 {
@@ -396,7 +396,7 @@ public static class UnitMethods
 
     public static string Name(this Unit unit)
     {
-        switch(unit)
+        switch (unit)
         {
             case Unit.Unit:
                 {
@@ -632,7 +632,7 @@ public static class UnitMethods
 
     public static string CURIE(this Unit unit)
     {
-        switch(unit)
+        switch (unit)
         {
             case Unit.Unit:
                 {
@@ -1582,6 +1582,252 @@ public static class ScanAttributeMethods
     }
 }
 
+public enum IsolationWindowProperties
+{
+    IsolationWindowAttribute,
+    IsolationWindowUpperLimit,
+    IsolationWindowLowerLimit,
+    IsolationWindowTargetMZ,
+    IsolationWindowLowerOffset,
+    IsolationWindowUpperOffset,
+    NoIsolation,
+}
+
+public static class IsolationWindowPropertiesMethods
+{
+
+    public static readonly Dictionary<string, IsolationWindowProperties> FromCURIE = new Dictionary<string, IsolationWindowProperties>(
+        ((IsolationWindowProperties[])Enum.GetValues(typeof(IsolationWindowProperties))).Select((v) => new KeyValuePair<string, IsolationWindowProperties>(v.CURIE(), v))
+    );
+
+
+    public static string Name(this IsolationWindowProperties term)
+    {
+        switch (term)
+        {
+            case IsolationWindowProperties.IsolationWindowAttribute: return "isolation window attribute";
+            case IsolationWindowProperties.IsolationWindowUpperLimit: return "isolation window upper limit";
+            case IsolationWindowProperties.IsolationWindowLowerLimit: return "isolation window lower limit";
+            case IsolationWindowProperties.IsolationWindowTargetMZ: return "isolation window target m/z";
+            case IsolationWindowProperties.IsolationWindowLowerOffset: return "isolation window lower offset";
+            case IsolationWindowProperties.IsolationWindowUpperOffset: return "isolation window upper offset";
+            case IsolationWindowProperties.NoIsolation: return "no isolation";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this IsolationWindowProperties term)
+    {
+        switch (term)
+        {
+            case IsolationWindowProperties.IsolationWindowAttribute: return "MS:1000792";
+            case IsolationWindowProperties.IsolationWindowUpperLimit: return "MS:1000793";
+            case IsolationWindowProperties.IsolationWindowLowerLimit: return "MS:1000794";
+            case IsolationWindowProperties.IsolationWindowTargetMZ: return "MS:1000827";
+            case IsolationWindowProperties.IsolationWindowLowerOffset: return "MS:1000828";
+            case IsolationWindowProperties.IsolationWindowUpperOffset: return "MS:1000829";
+            case IsolationWindowProperties.NoIsolation: return "MS:1003159";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
+public enum DissociationMethod
+{
+    DissociationMethod,
+    CollisionInducedDissociation,
+    PlasmaDesorption,
+    PostSourceDecay,
+    SurfaceInducedDissociation,
+    BlackbodyInfraredRadiativeDissociation,
+    ElectronCaptureDissociation,
+    SustainedOffResonanceIrradiation,
+    LowEnergyCollisionInducedDissociation,
+    Photodissociation,
+    ElectronTransferDissociation,
+    PulsedQDissociation,
+    InSourceCollisionInducedDissociation,
+    Lift,
+    NegativeElectronTransferDissociation,
+    BeamTypeCollisionInducedDissociation,
+    TrapTypeCollisionInducedDissociation,
+    SupplementalCollisionInducedDissociation,
+    ElectronActivatedDissociation,
+    InfraredMultiphotonDissociation,
+    UltravioletPhotodissociation,
+    HigherEnergyBeamTypeCollisionInducedDissociation,
+    SupplementalBeamTypeCollisionInducedDissociation,
+}
+
+public static class DissociationMethodMethods
+{
+
+    public static readonly Dictionary<string, DissociationMethod> FromCURIE = new Dictionary<string, DissociationMethod>(
+        ((DissociationMethod[])Enum.GetValues(typeof(DissociationMethod))).Select((v) => new KeyValuePair<string, DissociationMethod>(v.CURIE(), v))
+    );
+
+
+    public static string Name(this DissociationMethod term)
+    {
+        switch (term)
+        {
+            case DissociationMethod.DissociationMethod: return "dissociation method";
+            case DissociationMethod.CollisionInducedDissociation: return "collision-induced dissociation";
+            case DissociationMethod.PlasmaDesorption: return "plasma desorption";
+            case DissociationMethod.PostSourceDecay: return "post-source decay";
+            case DissociationMethod.SurfaceInducedDissociation: return "surface-induced dissociation";
+            case DissociationMethod.BlackbodyInfraredRadiativeDissociation: return "blackbody infrared radiative dissociation";
+            case DissociationMethod.ElectronCaptureDissociation: return "electron capture dissociation";
+            case DissociationMethod.SustainedOffResonanceIrradiation: return "sustained off-resonance irradiation";
+            case DissociationMethod.LowEnergyCollisionInducedDissociation: return "low-energy collision-induced dissociation";
+            case DissociationMethod.Photodissociation: return "photodissociation";
+            case DissociationMethod.ElectronTransferDissociation: return "electron transfer dissociation";
+            case DissociationMethod.PulsedQDissociation: return "pulsed q dissociation";
+            case DissociationMethod.InSourceCollisionInducedDissociation: return "in-source collision-induced dissociation";
+            case DissociationMethod.Lift: return "LIFT";
+            case DissociationMethod.NegativeElectronTransferDissociation: return "negative electron transfer dissociation";
+            case DissociationMethod.BeamTypeCollisionInducedDissociation: return "beam-type collision-induced dissociation";
+            case DissociationMethod.TrapTypeCollisionInducedDissociation: return "trap-type collision-induced dissociation";
+            case DissociationMethod.SupplementalCollisionInducedDissociation: return "supplemental collision-induced dissociation";
+            case DissociationMethod.ElectronActivatedDissociation: return "electron activated dissociation";
+            case DissociationMethod.InfraredMultiphotonDissociation: return "infrared multiphoton dissociation";
+            case DissociationMethod.UltravioletPhotodissociation: return "ultraviolet photodissociation";
+            case DissociationMethod.HigherEnergyBeamTypeCollisionInducedDissociation: return "higher energy beam-type collision-induced dissociation";
+            case DissociationMethod.SupplementalBeamTypeCollisionInducedDissociation: return "supplemental beam-type collision-induced dissociation";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this DissociationMethod term)
+    {
+        switch (term)
+        {
+            case DissociationMethod.DissociationMethod: return "MS:1000044";
+            case DissociationMethod.CollisionInducedDissociation: return "MS:1000133";
+            case DissociationMethod.PlasmaDesorption: return "MS:1000134";
+            case DissociationMethod.PostSourceDecay: return "MS:1000135";
+            case DissociationMethod.SurfaceInducedDissociation: return "MS:1000136";
+            case DissociationMethod.BlackbodyInfraredRadiativeDissociation: return "MS:1000242";
+            case DissociationMethod.ElectronCaptureDissociation: return "MS:1000250";
+            case DissociationMethod.SustainedOffResonanceIrradiation: return "MS:1000282";
+            case DissociationMethod.LowEnergyCollisionInducedDissociation: return "MS:1000433";
+            case DissociationMethod.Photodissociation: return "MS:1000435";
+            case DissociationMethod.ElectronTransferDissociation: return "MS:1000598";
+            case DissociationMethod.PulsedQDissociation: return "MS:1000599";
+            case DissociationMethod.InSourceCollisionInducedDissociation: return "MS:1001880";
+            case DissociationMethod.Lift: return "MS:1002000";
+            case DissociationMethod.NegativeElectronTransferDissociation: return "MS:1003247";
+            case DissociationMethod.BeamTypeCollisionInducedDissociation: return "MS:1000422";
+            case DissociationMethod.TrapTypeCollisionInducedDissociation: return "MS:1002472";
+            case DissociationMethod.SupplementalCollisionInducedDissociation: return "MS:1002679";
+            case DissociationMethod.ElectronActivatedDissociation: return "MS:1003294";
+            case DissociationMethod.InfraredMultiphotonDissociation: return "MS:1000262";
+            case DissociationMethod.UltravioletPhotodissociation: return "MS:1003246";
+            case DissociationMethod.HigherEnergyBeamTypeCollisionInducedDissociation: return "MS:1002481";
+            case DissociationMethod.SupplementalBeamTypeCollisionInducedDissociation: return "MS:1002678";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
+public enum IonSelectionProperties
+{
+    IonSelectionAttribute,
+    ChargeState,
+    PeakIntensity,
+    PossibleChargeState,
+    SelectedIonMZ,
+    PeakIntensityRank,
+    PeakTargetingSuitabilityRank,
+    FaimsCompensationVoltage,
+    SrmTransitionAttribute,
+    SelectedPrecursorMZ,
+    IonMobilityDriftTime,
+    InverseReducedIonMobility,
+    CollisionalCrossSectionalArea,
+    ExperimentalPrecursorMonoisotopicMZ,
+    SelexionCompensationVoltage,
+    SelexionSeparationVoltage,
+    FaimsCompensationVoltageRampStart,
+    FaimsCompensationVoltageRampEnd,
+    ProductIonDriftTime,
+    PrecursorIonDetectionProbability,
+    ProductIonDetectionProbability,
+    NumberOfProductIonObservations,
+    NumberOfPrecursorIonObservations,
+}
+
+public static class IonSelectionPropertiesMethods
+{
+
+    public static readonly Dictionary<string, IonSelectionProperties> FromCURIE = new Dictionary<string, IonSelectionProperties>(
+        ((IonSelectionProperties[])Enum.GetValues(typeof(IonSelectionProperties))).Select((v) => new KeyValuePair<string, IonSelectionProperties>(v.CURIE(), v))
+    );
+
+
+    public static string Name(this IonSelectionProperties term)
+    {
+        switch (term)
+        {
+            case IonSelectionProperties.IonSelectionAttribute: return "ion selection attribute";
+            case IonSelectionProperties.ChargeState: return "charge state";
+            case IonSelectionProperties.PeakIntensity: return "peak intensity";
+            case IonSelectionProperties.PossibleChargeState: return "possible charge state";
+            case IonSelectionProperties.SelectedIonMZ: return "selected ion m/z";
+            case IonSelectionProperties.PeakIntensityRank: return "peak intensity rank";
+            case IonSelectionProperties.PeakTargetingSuitabilityRank: return "peak targeting suitability rank";
+            case IonSelectionProperties.FaimsCompensationVoltage: return "FAIMS compensation voltage";
+            case IonSelectionProperties.SrmTransitionAttribute: return "SRM transition attribute";
+            case IonSelectionProperties.SelectedPrecursorMZ: return "selected precursor m/z";
+            case IonSelectionProperties.IonMobilityDriftTime: return "ion mobility drift time";
+            case IonSelectionProperties.InverseReducedIonMobility: return "inverse reduced ion mobility";
+            case IonSelectionProperties.CollisionalCrossSectionalArea: return "collisional cross sectional area";
+            case IonSelectionProperties.ExperimentalPrecursorMonoisotopicMZ: return "experimental precursor monoisotopic m/z";
+            case IonSelectionProperties.SelexionCompensationVoltage: return "SelexION compensation voltage";
+            case IonSelectionProperties.SelexionSeparationVoltage: return "SelexION separation voltage";
+            case IonSelectionProperties.FaimsCompensationVoltageRampStart: return "FAIMS compensation voltage ramp start";
+            case IonSelectionProperties.FaimsCompensationVoltageRampEnd: return "FAIMS compensation voltage ramp end";
+            case IonSelectionProperties.ProductIonDriftTime: return "product ion drift time";
+            case IonSelectionProperties.PrecursorIonDetectionProbability: return "precursor ion detection probability";
+            case IonSelectionProperties.ProductIonDetectionProbability: return "product ion detection probability";
+            case IonSelectionProperties.NumberOfProductIonObservations: return "number of product ion observations";
+            case IonSelectionProperties.NumberOfPrecursorIonObservations: return "number of precursor ion observations";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this IonSelectionProperties term)
+    {
+        switch (term)
+        {
+            case IonSelectionProperties.IonSelectionAttribute: return "MS:1000455";
+            case IonSelectionProperties.ChargeState: return "MS:1000041";
+            case IonSelectionProperties.PeakIntensity: return "MS:1000042";
+            case IonSelectionProperties.PossibleChargeState: return "MS:1000633";
+            case IonSelectionProperties.SelectedIonMZ: return "MS:1000744";
+            case IonSelectionProperties.PeakIntensityRank: return "MS:1000906";
+            case IonSelectionProperties.PeakTargetingSuitabilityRank: return "MS:1000907";
+            case IonSelectionProperties.FaimsCompensationVoltage: return "MS:1001581";
+            case IonSelectionProperties.SrmTransitionAttribute: return "MS:1002222";
+            case IonSelectionProperties.SelectedPrecursorMZ: return "MS:1002234";
+            case IonSelectionProperties.IonMobilityDriftTime: return "MS:1002476";
+            case IonSelectionProperties.InverseReducedIonMobility: return "MS:1002815";
+            case IonSelectionProperties.CollisionalCrossSectionalArea: return "MS:1002954";
+            case IonSelectionProperties.ExperimentalPrecursorMonoisotopicMZ: return "MS:1003208";
+            case IonSelectionProperties.SelexionCompensationVoltage: return "MS:1003371";
+            case IonSelectionProperties.SelexionSeparationVoltage: return "MS:1003394";
+            case IonSelectionProperties.FaimsCompensationVoltageRampStart: return "MS:1003450";
+            case IonSelectionProperties.FaimsCompensationVoltageRampEnd: return "MS:1003451";
+            case IonSelectionProperties.ProductIonDriftTime: return "MS:1001967";
+            case IonSelectionProperties.PrecursorIonDetectionProbability: return "MS:1002223";
+            case IonSelectionProperties.ProductIonDetectionProbability: return "MS:1002224";
+            case IonSelectionProperties.NumberOfProductIonObservations: return "MS:1002227";
+            case IonSelectionProperties.NumberOfPrecursorIonObservations: return "MS:1002228";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
 public record ColumnParam
 {
     public string Name;
@@ -1625,7 +1871,7 @@ public record ColumnParam
         }
     }
 
-    public static string Inflect(string accessionCURIE, string name, string? unit=null)
+    public static string Inflect(string accessionCURIE, string name, string? unit = null)
     {
         var tokens = accessionCURIE.Split(":").ToList();
         tokens.AddRange(name.Split(" ").Select((v) => v.Replace("m/z", "mz")));
@@ -1642,7 +1888,7 @@ public record ColumnParam
         List<ColumnParam> cols = new();
 
         int i = 0;
-        foreach(var f in fields)
+        foreach (var f in fields)
         {
             cols.Add(FromFieldIndex(f, i));
             i += 1;
@@ -1651,7 +1897,7 @@ public record ColumnParam
         return cols;
     }
 
-    public ColumnParam(string name, string? curie, string? unit, int index, string originalName, bool isUnitOnly=false)
+    public ColumnParam(string name, string? curie, string? unit, int index, string originalName, bool isUnitOnly = false)
     {
         Name = name;
         CURIE = curie;

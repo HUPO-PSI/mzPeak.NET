@@ -32,14 +32,14 @@ public record FileDescription
     /// Analogous to mzML fileContent.
     /// </summary>
     [JsonPropertyName("contents")]
-    public List<Param> Contents {get; set;}
+    public List<Param> Contents { get; set; }
 
     /// <summary>
     /// List of all files used as data sources for this mzPeak file.
     /// Analogous to mzML sourceFileList.
     /// </summary>
     [JsonPropertyName("source_files")]
-    public List<SourceFile> SourceFiles {get; set;}
+    public List<SourceFile> SourceFiles { get; set; }
 }
 
 
@@ -62,25 +62,25 @@ public record SourceFile
     /// A unique identifier for this source file.
     /// </summary>
     [JsonPropertyName("id")]
-    public required string Id {get; set;}
+    public required string Id { get; set; }
 
     /// <summary>
     /// The name of the source file, not including parent directory.
     /// </summary>
     [JsonPropertyName("name")]
-    public required string Name {get; set;}
+    public required string Name { get; set; }
 
     /// <summary>
     /// The path to the source file, URI encoded. May include file:// protocols and UNC paths.
     /// </summary>
     [JsonPropertyName("location")]
-    public required string Location {get; set;}
+    public required string Location { get; set; }
 
     /// <summary>
     /// Additional parameters describing this source file, like checksums, nativeID format, or file format.
     /// </summary>
     [JsonPropertyName("parameters")]
-    public required List<Param> Parameters {get; set;}
+    public required List<Param> Parameters { get; set; }
 }
 
 /// <summary>
@@ -177,13 +177,13 @@ public record Software
     /// A unique identifier for this software, even amongst different versions of the same software.
     /// </summary>
     [JsonPropertyName("id")]
-    public required string Id {get; set;}
+    public required string Id { get; set; }
 
     /// <summary>
     /// The version of the software.
     /// </summary>
     [JsonPropertyName("version")]
-    public required string Version {get; set;}
+    public required string Version { get; set; }
 
     /// <summary>
     /// Additional parameters describing this software, such as its controlled vocabulary identifier.
@@ -303,7 +303,7 @@ public record MSRun
     [JsonPropertyName("parameters")]
     public List<Param> Parameters { get; set; }
 
-    public MSRun(string id, string defaultDataProcessingId, int defaultInstrumentId, string defaultSourceFileId, DateTime? startTime=null, List<Param>? parameters=null)
+    public MSRun(string id, string defaultDataProcessingId, int defaultInstrumentId, string defaultSourceFileId, DateTime? startTime = null, List<Param>? parameters = null)
     {
         Id = id;
         DefaultDataProcessingId = defaultDataProcessingId;
@@ -343,12 +343,12 @@ public class MzPeakMetadata
     /// <summary>
     /// List of software used to acquire or process the data.
     /// </summary>
-    public List<Software> Softwares {get; set;}
+    public List<Software> Softwares { get; set; }
 
     /// <summary>
     /// List of samples used in this experiment.
     /// </summary>
-    public List<Sample> Samples {get; set;}
+    public List<Sample> Samples { get; set; }
 
     /// <summary>
     /// List of data processing workflows applied to the data.
@@ -404,7 +404,7 @@ public class MzPeakMetadata
         if (meta.TryGetValue("instrument_configuration_list", out buf))
         {
             instrumentConfigurations = JsonSerializer.Deserialize<List<InstrumentConfiguration>>(buf);
-            if(instrumentConfigurations == null) throw new InvalidDataException("instrument_configuration_list failed to deserialize");
+            if (instrumentConfigurations == null) throw new InvalidDataException("instrument_configuration_list failed to deserialize");
         }
 
         List<Software>? softwares = new();

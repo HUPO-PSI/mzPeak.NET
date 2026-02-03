@@ -177,7 +177,8 @@ public abstract class BaseLayoutBuilder
         ArrayIndexEntry? nullInterpolate = null,
         ArrayIndexEntry? nullZero = null,
         ArrayIndexEntry? intensityArray = null
-    ) { }
+    )
+    { }
 
     protected virtual _ArrayFilterResult FilterArrays(Dictionary<ArrayIndexEntry, Array> arrays)
     {
@@ -247,7 +248,7 @@ public abstract class BaseLayoutBuilder
     {
         List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
 
-        foreach(var entry in ArrayIndex.Entries)
+        foreach (var entry in ArrayIndex.Entries)
         {
             var name = entry.CreateColumnName();
             fields.Add(new Field(name, entry.GetArrowType(), true));
@@ -356,7 +357,7 @@ public abstract class BaseLayoutBuilder
 
 public class PointLayoutBuilder : BaseLayoutBuilder
 {
-    public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex){}
+    public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex) { }
 
     public override string LayoutName()
     {
@@ -368,13 +369,13 @@ public class PointLayoutBuilder : BaseLayoutBuilder
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
 
         int k = 0;
-        foreach(var val in arrays.Values)
+        foreach (var val in arrays.Values)
         {
-            if(k > 0 && k != val.Length) throw new InvalidDataException("Arrays do not have equal lengths");
+            if (k > 0 && k != val.Length) throw new InvalidDataException("Arrays do not have equal lengths");
             else k = val.Length;
         }
         Index.AppendRange(Enumerable.Repeat(entryIndex, k));
-        foreach(var entry in ArrayIndex.Entries)
+        foreach (var entry in ArrayIndex.Entries)
         {
             if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
             Array? array;
@@ -405,7 +406,7 @@ public class PointLayoutBuilder : BaseLayoutBuilder
     public override RecordBatch GetRecordBatch()
     {
         List<Array> cols = [Index.Build()];
-        foreach(var (dtype, builder) in DataTypes.Zip(Arrays))
+        foreach (var (dtype, builder) in DataTypes.Zip(Arrays))
         {
             switch (dtype.TypeId)
             {
@@ -467,7 +468,7 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 
 public class ChunkLayoutBuilder : BaseLayoutBuilder
 {
-    public string MainAxisEncodingCURIE {get; set;}
+    public string MainAxisEncodingCURIE { get; set; }
 
     public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE) : base(arrayIndex)
     {

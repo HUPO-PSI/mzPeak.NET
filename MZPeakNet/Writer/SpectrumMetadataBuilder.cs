@@ -38,7 +38,7 @@ public class SpectrumMetadataBuilder
         string? dataProcessingRef,
         List<double>? mzDeltaModel,
         List<Param> spectrumParams,
-        List<AuxiliaryArray>? auxiliaryArrays=null
+        List<AuxiliaryArray>? auxiliaryArrays = null
     )
     {
         Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, mzDeltaModel, spectrumParams, auxiliaryArrays);
@@ -109,7 +109,7 @@ public class SpectrumMetadataBuilder
     /// <summary>
     /// Get the Arrow schema for the packed parallel metadata table.
     /// </summary>
-    public Schema ArrowSchema(IReadOnlyDictionary<string, string>? metadata=null)
+    public Schema ArrowSchema(IReadOnlyDictionary<string, string>? metadata = null)
     {
         var fields = new List<Field>();
         fields.AddRange(Spectrum.ArrowType());
@@ -149,7 +149,7 @@ public class SpectrumMetadataBuilder
             Math.Max(spectrumLength, scanLength),
             Math.Max(precursorLength, selectedIonLength)
         );
-        while(spectrumLength < nMax)
+        while (spectrumLength < nMax)
         {
             Spectrum.AppendNull();
             spectrumLength += 1;

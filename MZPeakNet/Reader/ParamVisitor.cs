@@ -44,14 +44,16 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
         if (arr.Data.DataType.TypeId == ArrowTypeId.String)
         {
             var accs = (StringArray)arr;
-            for (var i = 0; i < accs.Length; i++) {
+            for (var i = 0; i < accs.Length; i++)
+            {
                 Params[i].AccessionCURIE = accs.GetString(i);
             }
         }
         else if (arr.Data.DataType.TypeId == ArrowTypeId.LargeString)
         {
             var accs = (LargeStringArray)arr;
-            for (var i = 0; i < accs.Length; i++) {
+            for (var i = 0; i < accs.Length; i++)
+            {
                 Params[i].AccessionCURIE = accs.GetString(i);
             }
         }
@@ -78,12 +80,12 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
         if (arr.Data.DataType.TypeId != ArrowTypeId.Struct) throw new InvalidDataException("Parameter values must be a StructArray");
         StructArray array = (StructArray)arr;
         var dtype = (StructType)arr.Data.DataType;
-        foreach(var (f, facet) in dtype.Fields.Zip(array.Fields))
+        foreach (var (f, facet) in dtype.Fields.Zip(array.Fields))
         {
             if (f.Name == "integer")
             {
                 var vals = (Int64Array)facet;
-                for(var i = 0; i < vals.Length; i++)
+                for (var i = 0; i < vals.Length; i++)
                 {
                     var v = vals.GetValue(i);
                     if (v != null)
@@ -135,7 +137,7 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
             else if (f.Name == "boolean")
             {
                 var vals = (BooleanArray)facet;
-                for(var i = 0; i < vals.Length; i++)
+                for (var i = 0; i < vals.Length; i++)
                 {
                     var v = vals.GetValue(i);
                     if (v != null)
@@ -153,9 +155,10 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
         var n = array.Length;
         var dtype = (StructType)array.Data.DataType;
 
-        foreach(var (f, arr) in dtype.Fields.Zip(array.Fields))
+        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
-            if(f.Name == "name") {
+            if (f.Name == "name")
+            {
                 VisitName(arr);
                 break;
             }
@@ -208,7 +211,7 @@ public class ParamListVisitor : IArrowArrayVisitor<LargeListArray>, IArrowArrayV
     {
         var dtype = (LargeListType)array.Data.DataType;
         if (dtype.ValueDataType.TypeId != ArrowTypeId.Struct) throw new InvalidDataException();
-        for(var i = 0; i < array.Length; i++)
+        for (var i = 0; i < array.Length; i++)
         {
             if (array.IsNull(i)) ParamsLists.Add(new());
             else

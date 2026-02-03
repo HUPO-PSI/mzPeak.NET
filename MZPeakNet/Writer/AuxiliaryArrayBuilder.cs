@@ -31,7 +31,7 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
     public void Append(AuxiliaryArray value)
     {
         var dataBuilder = (UInt8Array.Builder)Data.ValueBuilder;
-        for(var i = 0; i < value.Data.Length; i++)
+        for (var i = 0; i < value.Data.Length; i++)
             dataBuilder.Append(value.Data.Span[i]);
         Data.Append();
         Name.Append(value.Name);

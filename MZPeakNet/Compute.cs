@@ -3,6 +3,7 @@ namespace MZPeak.Compute;
 using System.Numerics;
 
 using Apache.Arrow;
+using Apache.Arrow.Memory;
 using Apache.Arrow.Types;
 
 using MathNet.Numerics.LinearAlgebra;
@@ -882,7 +883,7 @@ public static class Compute
         }
     }
 
-    public static BooleanArray Invert(BooleanArray mask)
+    public static BooleanArray Invert(BooleanArray mask, MemoryAllocator? allocator = null)
     {
         var builder = new BooleanArray.Builder();
         foreach (var val in mask)
@@ -896,7 +897,7 @@ public static class Compute
                 builder.AppendNull();
             }
         }
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
     public static PrimitiveArray<T> NullifyAt<T>(PrimitiveArray<T> array, BooleanArray mask)
@@ -908,7 +909,7 @@ public static class Compute
         );
     }
 
-    public static Array IndicesToMask(IList<int> indices, int n)
+    public static Array IndicesToMask(IList<int> indices, int n, MemoryAllocator? allocator = null)
     {
         BooleanArray.Builder acc = new();
         int j = 0;
@@ -933,7 +934,7 @@ public static class Compute
         }
         while (i < n) acc.Append(false);
         if (acc.Length != n) throw new InvalidOperationException();
-        return acc.Build();
+        return acc.Build(allocator);
     }
 
     public static List<(T, T)> IndicesToSpans<T>(IList<T> indices) where T : struct, INumber<T>
@@ -969,7 +970,7 @@ public static class Compute
         return acc;
     }
 
-    public static Array NullToZero<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    public static Array NullToZero<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         switch (array.Data.DataType.TypeId)
         {
@@ -977,68 +978,68 @@ public static class Compute
                 {
                     var builder = new DoubleArray.Builder();
                     NullToZero((DoubleArray)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.Float:
                 {
                     var builder = new FloatArray.Builder();
                     NullToZero((FloatArray)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.Int32:
                 {
                     var builder = new Int32Array.Builder();
                     NullToZero((Int32Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.Int64:
                 {
                     var builder = new Int64Array.Builder();
                     NullToZero((Int64Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.UInt32:
                 {
                     var builder = new UInt32Array.Builder();
                     NullToZero((UInt32Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.UInt64:
                 {
                     var builder = new UInt64Array.Builder();
                     NullToZero((UInt64Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.Int16:
                 {
                     var builder = new Int16Array.Builder();
                     NullToZero((Int16Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.Int8:
                 {
                     var builder = new Int8Array.Builder();
                     NullToZero((Int8Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.UInt16:
                 {
                     var builder = new UInt16Array.Builder();
                     NullToZero((UInt16Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             case ArrowTypeId.UInt8:
                 {
                     var builder = new UInt8Array.Builder();
                     NullToZero((UInt8Array)(IArrowArray)array, builder);
-                    return builder.Build();
+                    return builder.Build(allocator);
                 }
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }
     }
 
-    public static Int64Array CastInt64<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    public static Int64Array CastInt64<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new Int64Array.Builder();
         foreach (var val in array)
@@ -1046,10 +1047,10 @@ public static class Compute
             if (val != null) builder.Append(long.CreateChecked((T)val));
             else builder.AppendNull();
         }
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
-    public static Int32Array CastInt32<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    public static Int32Array CastInt32<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new Int32Array.Builder();
         foreach (var val in array)
@@ -1057,10 +1058,10 @@ public static class Compute
             if (val != null) builder.Append(int.CreateChecked((T)val));
             else builder.AppendNull();
         }
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
-    public static FloatArray CastFloat<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    public static FloatArray CastFloat<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new FloatArray.Builder();
         foreach (var val in array)
@@ -1068,10 +1069,10 @@ public static class Compute
             if (val != null) builder.Append(float.CreateChecked((T)val));
             else builder.AppendNull();
         }
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
-    public static DoubleArray CastDouble<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    public static DoubleArray CastDouble<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new DoubleArray.Builder();
         foreach (var val in array)
@@ -1079,142 +1080,142 @@ public static class Compute
             if (val != null) builder.Append(double.CreateChecked((T)val));
             else builder.AppendNull();
         }
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
-    public static DoubleArray CastDouble<T>(T[] array) where T : struct, INumber<T>
+    public static DoubleArray CastDouble<T>(T[] array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new DoubleArray.Builder();
         foreach (var val in array)
             builder.Append(double.CreateChecked(val));
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
-    public static FloatArray CastFloat<T>(T[] array) where T : struct, INumber<T>
+    public static FloatArray CastFloat<T>(T[] array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new FloatArray.Builder();
         foreach (var val in array)
             builder.Append(float.CreateChecked(val));
-        return builder.Build();
+        return builder.Build(allocator);
     }
 
-    public static Int64Array CastInt64(IArrowArray array)
+    public static Int64Array CastInt64(IArrowArray array, MemoryAllocator? allocator = null)
     {
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Double:
-                return CastInt64((DoubleArray)array);
+                return CastInt64((DoubleArray)array, allocator);
             case ArrowTypeId.Float:
-                return CastInt64((FloatArray)array);
+                return CastInt64((FloatArray)array, allocator);
             case ArrowTypeId.Int32:
-                return CastInt64((Int32Array)array);
+                return CastInt64((Int32Array)array, allocator);
             case ArrowTypeId.Int64:
                 return (Int64Array)array;
             case ArrowTypeId.UInt32:
-                return CastInt64((UInt32Array)array);
+                return CastInt64((UInt32Array)array, allocator);
             case ArrowTypeId.UInt64:
-                return CastInt64((UInt64Array)array);
+                return CastInt64((UInt64Array)array, allocator);
             case ArrowTypeId.Int16:
-                return CastInt64((Int16Array)array);
+                return CastInt64((Int16Array)array, allocator);
             case ArrowTypeId.Int8:
-                return CastInt64((Int8Array)array);
+                return CastInt64((Int8Array)array, allocator);
             case ArrowTypeId.UInt16:
-                return CastInt64((UInt16Array)array);
+                return CastInt64((UInt16Array)array, allocator);
             case ArrowTypeId.UInt8:
-                return CastInt64((UInt8Array)array);
+                return CastInt64((UInt8Array)array, allocator);
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }
     }
 
-    public static Int32Array CastInt32(IArrowArray array)
+    public static Int32Array CastInt32(IArrowArray array, MemoryAllocator? allocator = null)
     {
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Double:
-                return CastInt32((DoubleArray)array);
+                return CastInt32((DoubleArray)array, allocator);
             case ArrowTypeId.Float:
-                return CastInt32((FloatArray)array);
+                return CastInt32((FloatArray)array, allocator);
             case ArrowTypeId.Int32:
                 return (Int32Array)array;
             case ArrowTypeId.Int64:
-                return CastInt32((Int64Array)array);
+                return CastInt32((Int64Array)array, allocator);
             case ArrowTypeId.UInt32:
-                return CastInt32((UInt32Array)array);
+                return CastInt32((UInt32Array)array, allocator);
             case ArrowTypeId.UInt64:
-                return CastInt32((UInt64Array)array);
+                return CastInt32((UInt64Array)array, allocator);
             case ArrowTypeId.Int16:
-                return CastInt32((Int16Array)array);
+                return CastInt32((Int16Array)array, allocator);
             case ArrowTypeId.Int8:
-                return CastInt32((Int8Array)array);
+                return CastInt32((Int8Array)array, allocator);
             case ArrowTypeId.UInt16:
-                return CastInt32((UInt16Array)array);
+                return CastInt32((UInt16Array)array, allocator);
             case ArrowTypeId.UInt8:
-                return CastInt32((UInt8Array)array);
+                return CastInt32((UInt8Array)array, allocator);
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }
     }
 
-    public static FloatArray CastFloat(IArrowArray array)
+    public static FloatArray CastFloat(IArrowArray array, MemoryAllocator? allocator = null)
     {
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Double:
-                return CastFloat((DoubleArray)array);
+                return CastFloat((DoubleArray)array, allocator);
             case ArrowTypeId.Float:
                 return (FloatArray)array;
             case ArrowTypeId.Int32:
-                return CastFloat((Int32Array)array);
+                return CastFloat((Int32Array)array, allocator);
             case ArrowTypeId.Int64:
-                return CastFloat((Int64Array)array);
+                return CastFloat((Int64Array)array, allocator);
             case ArrowTypeId.UInt32:
-                return CastFloat((UInt32Array)array);
+                return CastFloat((UInt32Array)array, allocator);
             case ArrowTypeId.UInt64:
-                return CastFloat((UInt64Array)array);
+                return CastFloat((UInt64Array)array, allocator);
             case ArrowTypeId.Int16:
-                return CastFloat((Int16Array)array);
+                return CastFloat((Int16Array)array, allocator);
             case ArrowTypeId.Int8:
-                return CastFloat((Int8Array)array);
+                return CastFloat((Int8Array)array, allocator);
             case ArrowTypeId.UInt16:
-                return CastFloat((UInt16Array)array);
+                return CastFloat((UInt16Array)array, allocator);
             case ArrowTypeId.UInt8:
-                return CastFloat((UInt8Array)array);
+                return CastFloat((UInt8Array)array, allocator);
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }
     }
 
-    public static DoubleArray CastDouble(IArrowArray array)
+    public static DoubleArray CastDouble(IArrowArray array, MemoryAllocator? allocator = null)
     {
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Double:
                 return (DoubleArray)array;
             case ArrowTypeId.Float:
-                return CastDouble((FloatArray)array);
+                return CastDouble((FloatArray)array, allocator);
             case ArrowTypeId.Int32:
-                return CastDouble((Int32Array)array);
+                return CastDouble((Int32Array)array, allocator);
             case ArrowTypeId.Int64:
-                return CastDouble((Int64Array)array);
+                return CastDouble((Int64Array)array, allocator);
             case ArrowTypeId.UInt32:
-                return CastDouble((UInt32Array)array);
+                return CastDouble((UInt32Array)array, allocator);
             case ArrowTypeId.UInt64:
-                return CastDouble((UInt64Array)array);
+                return CastDouble((UInt64Array)array, allocator);
             case ArrowTypeId.Int16:
-                return CastDouble((Int16Array)array);
+                return CastDouble((Int16Array)array, allocator);
             case ArrowTypeId.Int8:
-                return CastDouble((Int8Array)array);
+                return CastDouble((Int8Array)array, allocator);
             case ArrowTypeId.UInt16:
-                return CastDouble((UInt16Array)array);
+                return CastDouble((UInt16Array)array, allocator);
             case ArrowTypeId.UInt8:
-                return CastDouble((UInt8Array)array);
+                return CastDouble((UInt8Array)array, allocator);
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }
     }
 
-    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs) where T : struct, INumber<T>
+    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         for (int i = 0; i < lhs.Length; i++)
@@ -1223,10 +1224,10 @@ public static class Compute
             var flag = a == rhs;
             cmp.Append(flag);
         }
-        return cmp.Build();
+        return cmp.Build(allocator);
     }
 
-    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs) where T : struct, INumber<T>
+    public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
@@ -1237,10 +1238,10 @@ public static class Compute
             var flag = a == b;
             cmp.Append(flag);
         }
-        return cmp.Build();
+        return cmp.Build(allocator);
     }
 
-    public static Array Filter(Array array, BooleanArray mask)
+    public static Array Filter(Array array, BooleanArray mask, MemoryAllocator? allocator = null)
     {
         if (array.Length != mask.Length) throw new InvalidOperationException("Array and mask must have the same length");
         List<(int, int)> spans = new();
@@ -1268,10 +1269,10 @@ public static class Compute
         {
             spans.Add(((int)start, mask.Length - 1));
         }
-        return Take(array, spans);
+        return Take(array, spans, allocator);
     }
 
-    public static Array Take(Array array, IList<(int, int)> spans)
+    public static Array Take(Array array, IList<(int, int)> spans, MemoryAllocator? allocator = null)
     {
         if (spans.Count == 0)
         {
@@ -1283,10 +1284,10 @@ public static class Compute
             if (end < start || end < 0 || start < 0) throw new InvalidOperationException(string.Format("Invalid span: {0} {1}", start, end));
             chunks.Add(array.Slice(start, end - start + 1));
         }
-        return (Array)ArrowArrayConcatenator.Concatenate(chunks);
+        return (Array)ArrowArrayConcatenator.Concatenate(chunks, allocator);
     }
 
-    public static Array Take(Array array, IList<int> indices)
+    public static Array Take(Array array, IList<int> indices, MemoryAllocator? allocator = null)
     {
         if (indices.Count == 0)
         {
@@ -1297,40 +1298,40 @@ public static class Compute
         {
             chunks.Add(array.Slice(i, 1));
         }
-        return (Array)ArrowArrayConcatenator.Concatenate(chunks);
+        return (Array)ArrowArrayConcatenator.Concatenate(chunks, allocator);
     }
 
-    public static List<Array> Take(List<Array> batch, IList<int> indices)
+    public static List<Array> Take(List<Array> batch, IList<int> indices, MemoryAllocator? allocator = null)
     {
-        return batch.Select(arr => Take(arr, indices)).ToList();
+        return batch.Select(arr => Take(arr, indices, allocator)).ToList();
     }
 
-    public static List<Array> Filter(List<Array> batch, BooleanArray mask)
+    public static List<Array> Filter(List<Array> batch, BooleanArray mask, MemoryAllocator? allocator = null)
     {
-        return batch.Select(arr => Filter(arr, mask)).ToList();
+        return batch.Select(arr => Filter(arr, mask, allocator)).ToList();
     }
 
-    public static Dictionary<T, Array> Take<T>(Dictionary<T, Array> arrays, IList<int> indices) where T : notnull
-    {
-        Dictionary<T, Array> result = new();
-        foreach (var kv in arrays)
-        {
-            result[kv.Key] = Take(kv.Value, indices);
-        }
-        return result;
-    }
-
-    public static Dictionary<T, Array> Filter<T>(Dictionary<T, Array> arrays, BooleanArray mask) where T : notnull
+    public static Dictionary<T, Array> Take<T>(Dictionary<T, Array> arrays, IList<int> indices, MemoryAllocator? allocator = null) where T : notnull
     {
         Dictionary<T, Array> result = new();
         foreach (var kv in arrays)
         {
-            result[kv.Key] = Filter(kv.Value, mask);
+            result[kv.Key] = Take(kv.Value, indices, allocator);
         }
         return result;
     }
 
-    public static RecordBatch Filter(RecordBatch batch, BooleanArray mask)
+    public static Dictionary<T, Array> Filter<T>(Dictionary<T, Array> arrays, BooleanArray mask, MemoryAllocator? allocator = null) where T : notnull
+    {
+        Dictionary<T, Array> result = new();
+        foreach (var kv in arrays)
+        {
+            result[kv.Key] = Filter(kv.Value, mask, allocator);
+        }
+        return result;
+    }
+
+    public static RecordBatch Filter(RecordBatch batch, BooleanArray mask, MemoryAllocator? allocator = null)
     {
         if (batch.Length != mask.Length) throw new InvalidOperationException("Array and mask must have the same length");
         List<(int, int)> spans = new();
@@ -1358,10 +1359,10 @@ public static class Compute
         {
             spans.Add(((int)start, mask.Length - 1));
         }
-        return Take(batch, spans);
+        return Take(batch, spans, allocator);
     }
 
-    public static RecordBatch Take(RecordBatch batch, IList<(int, int)> spans)
+    public static RecordBatch Take(RecordBatch batch, IList<(int, int)> spans, MemoryAllocator? allocator = null)
     {
         if (spans.Count == 0)
         {
@@ -1371,15 +1372,15 @@ public static class Compute
         var size = 0;
         foreach (var col in batch.Arrays)
         {
-            columns.Add(Take((Array)col, spans));
+            columns.Add(Take((Array)col, spans, allocator));
             size = columns.Last().Length;
         }
         return new RecordBatch(batch.Schema, columns, size);
     }
 
-    public static RecordBatch Take(RecordBatch batch, IList<int> indices)
+    public static RecordBatch Take(RecordBatch batch, IList<int> indices, MemoryAllocator? allocator = null)
     {
         var spans = IndicesToSpans(indices);
-        return Take(batch, spans);
+        return Take(batch, spans, allocator);
     }
 }

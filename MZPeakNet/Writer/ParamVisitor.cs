@@ -90,7 +90,7 @@ public class ParamValueBuilder : IArrowBuilder<string>, IArrowBuilder<long>, IAr
 
     public List<IArrowArray> Build()
     {
-        List<IArrowArray> values = new(){new StructArray(ArrowType()[0].DataType, String.Length, [String.Build(), Integer.Build(), Float.Build(), Boolean.Build()], default)};
+        List<IArrowArray> values = new() { new StructArray(ArrowType()[0].DataType, String.Length, [String.Build(), Integer.Build(), Float.Build(), Boolean.Build()], default) };
         Clear();
         return values;
     }
@@ -200,7 +200,7 @@ public class ParamListBuilder : IArrowBuilder<List<Param>>
 
     public void Append(List<Param> @params)
     {
-        foreach(var par in @params)
+        foreach (var par in @params)
         {
             ValueBuilder.Append(par);
         }
@@ -215,7 +215,7 @@ public class ParamListBuilder : IArrowBuilder<List<Param>>
 
     public List<Field> ArrowType()
     {
-        return new (){
+        return new(){
             new Field("parameters", new ListType(ValueBuilder.ArrowType()[0].DataType), true)
         };
     }
@@ -269,7 +269,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         return accessionCURIE == AccessionCURIE;
     }
 
-    public CustomBuilderFromParam(string accessionCURIE, string name, ArrowType arrowType, string? fixedUnit=null, bool includeUnitValue=false)
+    public CustomBuilderFromParam(string accessionCURIE, string name, ArrowType arrowType, string? fixedUnit = null, bool includeUnitValue = false)
     {
         AccessionCURIE = accessionCURIE;
         Name = name;
@@ -277,7 +277,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         FixedUnit = fixedUnit;
         if (fixedUnit != null && includeUnitValue) throw new InvalidOperationException("May only specify one of fixedUnit or includingUnitValue");
         UnitValue = includeUnitValue ? new StringArray.Builder() : null;
-        switch(arrowType.TypeId)
+        switch (arrowType.TypeId)
         {
             case ArrowTypeId.Int64:
                 {
@@ -606,7 +606,8 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             default:
                 throw new InvalidOperationException("CustomBuilderFromParam does not support " + ValueType.Name);
         }
-        if (UnitValue != null) {
+        if (UnitValue != null)
+        {
             cols.Add(UnitValue.Build());
         }
         return cols;
@@ -700,15 +701,35 @@ public class ChildTermParamBuilder : CustomBuilderFromParam
 
 public class ParamVisitorCollection
 {
-    public List<CustomBuilderFromParam> ParamVisitors;
+    protected List<CustomBuilderFromParam> ParamVisitors;
     public ParamListBuilder ParamList;
     public HashSet<string> Visited;
+
+    public bool Frozen { get; protected set;}
+
+    protected void FreezeSchema()
+    {
+        Frozen = true;
+    }
 
     public ParamVisitorCollection(List<CustomBuilderFromParam> paramVisitors)
     {
         ParamVisitors = [.. paramVisitors];
         ParamList = new();
         Visited = new();
+        Frozen = false;
+    }
+
+    public void AddParamVisitor(CustomBuilderFromParam visitor)
+    {
+        if (Frozen) throw new InvalidOperationException($"Cannot add new visitor after the schema has been frozen");
+        ParamVisitors.Add(visitor);
+    }
+
+    public void AddParamVisitorRange(IEnumerable<CustomBuilderFromParam> visitors)
+    {
+        if (Frozen) throw new InvalidOperationException($"Cannot add new visitor after the schema has been frozen");
+        ParamVisitors.AddRange(visitors);
     }
 
     public void VisitParameters(List<Param> @params)
@@ -739,7 +760,7 @@ public class ParamVisitorCollection
     public virtual void AppendNull()
     {
         ParamList.AppendNull();
-        foreach(var vis in ParamVisitors)
+        foreach (var vis in ParamVisitors)
         {
             vis.AppendNull();
         }

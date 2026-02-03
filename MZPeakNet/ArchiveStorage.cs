@@ -202,7 +202,7 @@ public class StreamSegment : Stream
 
     bool LeaveOpen;
 
-    public StreamSegment(Stream stream, long offset, long length, bool leaveOpen=false)
+    public StreamSegment(Stream stream, long offset, long length, bool leaveOpen = false)
     {
         Stream = stream;
         Offset = offset;
@@ -212,9 +212,11 @@ public class StreamSegment : Stream
 
     public new void Dispose()
     {
-        if (!LeaveOpen) {
+        if (!LeaveOpen)
+        {
             Stream.Dispose();
-        };
+        }
+        ;
     }
 
     public override bool CanRead => true;
@@ -225,7 +227,8 @@ public class StreamSegment : Stream
 
     public override long Length => _length;
 
-    public override long Position {
+    public override long Position
+    {
         get => Stream.Position - Offset;
         set => Stream.Position = Offset + value;
     }
@@ -247,21 +250,22 @@ public class StreamSegment : Stream
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        switch (origin) {
+        switch (origin)
+        {
             case SeekOrigin.Begin:
-            {
-                Position = offset < _length ? offset : _length;
-                break;
-            }
+                {
+                    Position = offset < _length ? offset : _length;
+                    break;
+                }
             case SeekOrigin.Current:
-            {
-                Position = Position + offset < _length ? Position + offset : _length;
-                break;
-            }
+                {
+                    Position = Position + offset < _length ? Position + offset : _length;
+                    break;
+                }
             case SeekOrigin.End:
-            {
-                throw new NotImplementedException();
-            }
+                {
+                    throw new NotImplementedException();
+                }
         }
         return Position;
     }
@@ -399,7 +403,7 @@ public class LocalZipArchive : BaseZipArchive
     }
 }
 
-public class ZipArchiveStream<T> : BaseZipArchive where T: Stream
+public class ZipArchiveStream<T> : BaseZipArchive where T : Stream
 {
     T Stream;
 
@@ -495,7 +499,7 @@ public class DirectoryArchive : IMZPeakArchiveStorage
 
         foreach (var entry in Directory.EnumerateFileSystemEntries(Path))
         {
-            if(!File.Exists(entry)) continue;
+            if (!File.Exists(entry)) continue;
 
             fileNames.Add(entry);
             var fName = System.IO.Path.GetFileName(entry);
@@ -573,7 +577,7 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 }
 
 
-public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T: Stream
+public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
 {
 
     public static ILogger? Logger = null;
@@ -584,7 +588,8 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T: Stream
     ZipArchiveEntry? CurrentEntry;
     public FileIndex FileIndex;
 
-    public ZipStreamArchiveWriter(T stream) {
+    public ZipStreamArchiveWriter(T stream)
+    {
         OuterStream = stream;
         Archive = new(OuterStream, ZipArchiveMode.Create, true, Encoding.UTF8);
         CurrentStream = null;

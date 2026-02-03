@@ -69,7 +69,7 @@ public class NullInterpolationTest
         var vals = builder.Build();
         var subset = (Int32Array)Compute.Take(vals, spans);
 
-        foreach(var i in v)
+        foreach (var i in v)
         {
             var j = vals.GetValue(i);
             Assert.NotNull(j);

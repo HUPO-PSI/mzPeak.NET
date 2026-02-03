@@ -51,36 +51,43 @@ public class BufferFormatConverter : JsonConverter<BufferFormat>
 
     public override void Write(Utf8JsonWriter writer, BufferFormat value, JsonSerializerOptions options)
     {
-    switch (value)
+        switch (value)
         {
-            case BufferFormat.Point: {
-                writer.WriteStringValue("point");
-                break;
-            }
-            case BufferFormat.ChunkValues: {
-                writer.WriteStringValue("chunk_values");
-                break;
-            }
-            case BufferFormat.ChunkStart: {
-                writer.WriteStringValue("chunk_start");
-                break;
-            }
-            case BufferFormat.ChunkEnd: {
-                writer.WriteStringValue("chunk_end");
-                break;
-            }
-            case BufferFormat.ChunkEncoding: {
-                writer.WriteStringValue("chunk_encoding");
-                break;
-            }
-            case BufferFormat.ChunkSecondary: {
-                writer.WriteStringValue("chunk_secondary");
-                break;
-            }
-            case BufferFormat.ChunkTransform: {
-                writer.WriteStringValue("chunk_transform");
-                break;
-            }
+            case BufferFormat.Point:
+                {
+                    writer.WriteStringValue("point");
+                    break;
+                }
+            case BufferFormat.ChunkValues:
+                {
+                    writer.WriteStringValue("chunk_values");
+                    break;
+                }
+            case BufferFormat.ChunkStart:
+                {
+                    writer.WriteStringValue("chunk_start");
+                    break;
+                }
+            case BufferFormat.ChunkEnd:
+                {
+                    writer.WriteStringValue("chunk_end");
+                    break;
+                }
+            case BufferFormat.ChunkEncoding:
+                {
+                    writer.WriteStringValue("chunk_encoding");
+                    break;
+                }
+            case BufferFormat.ChunkSecondary:
+                {
+                    writer.WriteStringValue("chunk_secondary");
+                    break;
+                }
+            case BufferFormat.ChunkTransform:
+                {
+                    writer.WriteStringValue("chunk_transform");
+                    break;
+                }
 
         }
     }
@@ -146,7 +153,7 @@ static class BufferContexteMethods
 
     public static ArrayType DefaultPrimaryAxis(this BufferContext bufferContext)
     {
-        switch(bufferContext)
+        switch (bufferContext)
         {
             case BufferContext.Spectrum:
                 {
@@ -253,7 +260,8 @@ public record ArrayIndexEntry
         if (BufferPriority == Metadata.BufferPriority.Primary)
         {
             return arrayName;
-        } else
+        }
+        else
         {
             var dtypeName = BinaryDataTypeMethods.FromCURIE[DataTypeCURIE].NameForColumn();
             var unitName = UnitCURIE != null ? UnitMethods.FromCURIE[UnitCURIE].NameForColumn() : null;
@@ -316,7 +324,7 @@ public class ArrayIndexBuilder
         return new("chunk", context, BufferFormat.ChunkValues);
     }
 
-    public ArrayIndexBuilder Add(ArrayType arrayType, BinaryDataType dataType, Unit? unit=null, uint? sortingRank=null, string? transform=null, BufferPriority? priority=null)
+    public ArrayIndexBuilder Add(ArrayType arrayType, BinaryDataType dataType, Unit? unit = null, uint? sortingRank = null, string? transform = null, BufferPriority? priority = null)
     {
         var entry = new ArrayIndexEntry()
         {
@@ -352,7 +360,7 @@ public class ArrayIndexBuilder
                 indexOfFirst[tp] = i;
             }
         }
-        foreach(var kv in indexOfFirst)
+        foreach (var kv in indexOfFirst)
         {
             bool hadPriorityFor;
             if (!hadPriority.TryGetValue(kv.Key, out hadPriorityFor))
@@ -362,7 +370,7 @@ public class ArrayIndexBuilder
             if (hadPriorityFor) continue;
             Entries[kv.Value].BufferPriority = BufferPriority.Primary;
         }
-        foreach(var entry in Entries)
+        foreach (var entry in Entries)
         {
             entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
         }
@@ -376,7 +384,7 @@ public class ArrayIndexBuilder
 }
 
 
-public class AuxiliaryArray :  IHasParameters
+public class AuxiliaryArray : IHasParameters
 {
     public Memory<byte> Data;
     public Param Name;
@@ -388,7 +396,7 @@ public class AuxiliaryArray :  IHasParameters
 
     List<Param> IHasParameters.Parameters { get => Parameters; set => Parameters = value; }
 
-    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression=Compression.NoCompression, List<Param>? parameters=null)
+    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression = Compression.NoCompression, List<Param>? parameters = null)
     {
         Data = data;
         Name = name;
@@ -398,7 +406,7 @@ public class AuxiliaryArray :  IHasParameters
         Parameters = parameters ?? new();
     }
 
-    public ReadOnlySpan<T> View<T>() where T: struct
+    public ReadOnlySpan<T> View<T>() where T : struct
     {
         if (Compression == Compression.NoCompression) return Data.Span.CastTo<T>();
         switch (Compression)

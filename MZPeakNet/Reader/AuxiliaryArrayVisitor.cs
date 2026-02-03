@@ -6,7 +6,7 @@ using MZPeak.Metadata;
 namespace MZPeak.Reader.Visitors;
 
 
-public class AuxiliaryArrayVisitor: IArrowArrayVisitor<StructArray>
+public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
 {
     public List<AuxiliaryArray> Values;
     public List<Memory<byte>> DataArrays;
@@ -77,9 +77,10 @@ public class AuxiliaryArrayVisitor: IArrowArrayVisitor<StructArray>
             var arr = (ListArray)array;
             if (((ListType)arr.Data.DataType).ValueDataType.TypeId != ArrowTypeId.UInt8)
                 throw new InvalidDataException($"Invalid data type {array.Data.DataType.Name} for auxiliary array data");
-            for(var i = 0; i < arr.Length; i++)
+            for (var i = 0; i < arr.Length; i++)
             {
-                if (arr.IsNull(i)) {
+                if (arr.IsNull(i))
+                {
                     DataArrays.Add(new());
                     continue;
                 }
@@ -113,7 +114,7 @@ public class AuxiliaryArrayVisitor: IArrowArrayVisitor<StructArray>
         if (array.Data.DataType.TypeId == ArrowTypeId.String)
         {
             var arr = (StringArray)array;
-            for(var i = 0; i < array.Length; i++)
+            for (var i = 0; i < array.Length; i++)
             {
                 if (arr.IsNull(i)) throw new InvalidDataException("Data type cannot be null");
                 var curie = arr.GetString(i);
@@ -237,7 +238,7 @@ public class AuxiliaryArrayVisitor: IArrowArrayVisitor<StructArray>
 
     void Build()
     {
-        for(var i = 0; i < DataArrays.Count; i++)
+        for (var i = 0; i < DataArrays.Count; i++)
         {
             Values.Add(
                 new AuxiliaryArray(DataArrays[i], Names[i], DataTypes[i], Units[i], Compressions[i], ParameterLists.ParamsLists[i])

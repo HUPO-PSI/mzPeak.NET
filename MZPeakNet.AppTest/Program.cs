@@ -27,7 +27,8 @@ internal class Program
 
     static void ConfigureLogging()
     {
-        var loggerFactory = LoggerFactory.Create(builder => {
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
             builder.AddSimpleConsole(options =>
             {
                 options.IncludeScopes = true;
@@ -48,7 +49,8 @@ internal class Program
         cmd.SetAction(parseResult =>
         {
             var fp = parseResult.GetValue(filePath);
-            if (fp == null) {
+            if (fp == null)
+            {
                 parseResult.RootCommandResult.AddError("File argument was missing");
             }
             else
@@ -103,7 +105,7 @@ internal class Program
             writer.Run = reader.Run;
             writer.Softwares = reader.Softwares;
 
-            await foreach(var(descr, data) in reader.EnumerateSpectraAsync())
+            await foreach (var (descr, data) in reader.EnumerateSpectraAsync())
             {
                 Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
                 var index = writer.CurrentSpectrum;
@@ -116,7 +118,7 @@ internal class Program
                     descr.Parameters,
                     auxArrays
                 );
-                foreach(var scan in descr.Scans)
+                foreach (var scan in descr.Scans)
                 {
                     writer.AddScan(
                         index,
@@ -127,7 +129,7 @@ internal class Program
                         scanWindows: scan.ScanWindows?.Select(w => w.AsParamList()).ToList()
                     );
                 }
-                foreach(var precursor in descr.Precursors)
+                foreach (var precursor in descr.Precursors)
                 {
                     writer.AddPrecursor(
                         index,
@@ -137,7 +139,7 @@ internal class Program
                         precursor.ActivationParameters
                     );
                 }
-                foreach(var selectedIon in descr.SelectedIons)
+                foreach (var selectedIon in descr.SelectedIons)
                 {
                     writer.AddSelectedIon(
                         index,
@@ -149,7 +151,7 @@ internal class Program
                 }
             }
             writer.FlushSpectrumData();
-            await foreach(var(descr, data) in reader.EnumerateChromatogramsAsync())
+            await foreach (var (descr, data) in reader.EnumerateChromatogramsAsync())
             {
                 Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
                 var index = writer.CurrentChromatogram;
@@ -177,7 +179,7 @@ internal class Program
         var isProfile = 0;
         var isCentroid = 0;
         var i = 0;
-        await foreach(var (descr, spec) in reader.EnumerateSpectraAsync())
+        await foreach (var (descr, spec) in reader.EnumerateSpectraAsync())
         {
             i++;
             if (i % 1000 == 0) Logger?.LogInformation($"{i} spectra read...");

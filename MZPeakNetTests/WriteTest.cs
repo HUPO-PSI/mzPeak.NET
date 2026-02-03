@@ -14,7 +14,8 @@ namespace MzPeakTests;
 public class WriteTest
 {
     IMZPeakArchiveStorage PointArchive;
-    public WriteTest() {
+    public WriteTest()
+    {
         string fileName = "small.mzpeak";
         string baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
         string fullPath = Path.Combine(baseDirectory, fileName);
