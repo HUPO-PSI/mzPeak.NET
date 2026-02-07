@@ -1,7 +1,13 @@
-﻿using MZPeak;
-using MZPeak.Storage;
-using System.CommandLine;
+﻿using System.CommandLine;
 using Microsoft.Extensions.Logging;
+
+using ThermoFisher.CommonCore.Data.Business;
+using ThermoFisher.CommonCore.RandomAccessReaderPlugin;
+using ThermoFisher.CommonCore.RawFileReader;
+
+using MZPeak.Storage;
+using MZPeak.Thermo;
+
 
 namespace MZPeakCliConverter;
 
@@ -19,6 +25,7 @@ internal class Program
         {
             CreateReadCommand(),
             CreateTranscodeCommand(),
+            CreateThermoTranslateCommand(),
         };
 
         var opts = rootCommand.Parse(args);
@@ -80,7 +87,110 @@ internal class Program
         return cmd;
     }
 
-    static async Task TranscodeFile(FileInfo sourceFile, FileInfo destinationFile)
+    static Command CreateThermoTranslateCommand()
+    {
+        var cmd = new Command("thermo", "Read a Thermo RAW file and write mzPeak file");
+        Argument<FileInfo> filePath = new Argument<FileInfo>("file").AcceptExistingOnly();
+        cmd.Arguments.Add(filePath);
+
+        Argument<FileInfo> outPath = new Argument<FileInfo>("out").AcceptLegalFilePathsOnly();
+        cmd.Arguments.Add(outPath);
+
+        cmd.SetAction(parseResult =>
+        {
+            var fp = parseResult.GetRequiredValue(filePath);
+            var outp = parseResult.GetRequiredValue(outPath);
+            ThermoTranslate(fp, outp).Wait();
+        });
+
+        return cmd;
+    }
+
+    static async Task ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile)
+    {
+        var readerManager = RawFileReaderAdapter.RandomAccessThreadedFileFactory(sourceFile.FullName, RandomAccessFileManager.Instance);
+        var accessor = readerManager.CreateThreadAccessor();
+        accessor.SelectInstrument(Device.MS, 1);
+        accessor.IncludeReferenceAndExceptionData = true;
+
+        using (var fileStream = File.Create(destinationFile.FullName))
+        {
+            var writerStorage = new ZipStreamArchiveWriter<FileStream>(fileStream);
+
+            var writer = new ThermoMZPeakWriter(
+                writerStorage,
+                spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, true)
+            );
+            writer.InitializeHelper(accessor);
+
+            var startScan = accessor.RunHeader.FirstSpectrum;
+            var lastScan = accessor.RunHeader.LastSpectrum;
+
+            for (var scanNumber = startScan; scanNumber < lastScan; scanNumber++)
+            {
+                var scanFilter = accessor.GetFilterForScanNumber(scanNumber);
+                var segments = accessor.GetSegmentedScanFromScanNumber(scanNumber);
+                var statistics = accessor.GetScanStatsForScanNumber(scanNumber);
+                var time = accessor.RetentionTimeFromScanNumber(scanNumber);
+
+                Logger?.LogInformation(
+                    $"Writing {scanNumber} with {segments.PositionCount} points in profile mode? {!statistics.IsCentroidScan}"
+                );
+
+                var (spacingModel, auxArrays) = writer.AddSpectrumData(
+                    writer.CurrentSpectrum,
+                    segments,
+                    statistics);
+
+                if (!statistics.IsCentroidScan)
+                {
+                    auxArrays.AddRange(
+                        writer.AddSpectrumPeakData(
+                            writer.CurrentSpectrum,
+                            accessor.GetCentroidStream(scanNumber, true)
+                        )
+                    );
+                }
+
+                var key = writer.AddSpectrum(
+                    scanNumber,
+                    time,
+                    scanFilter,
+                    statistics,
+                    spacingModel?.Coefficients,
+                    auxiliaryArrays: auxArrays);
+
+                var (precursorProps, acquisitionProperties) = writer.ExtractPrecursorAndTrailerMetadata(scanNumber, accessor, scanFilter, statistics);
+
+                writer.AddScan(
+                    key,
+                    scanNumber,
+                    time,
+                    scanFilter,
+                    statistics,
+                    acquisitionProperties
+                );
+
+                if (precursorProps != null)
+                {
+                    Logger?.LogInformation(
+                        $"{precursorProps}"
+                    );
+                    writer.AddPrecursor(
+                        key,
+                        precursorProps
+                    );
+                    writer.AddSelectedIon(
+                        key,
+                        precursorProps
+                    );
+                }
+            }
+            writer.Close();
+        }
+    }
+
+        static async Task TranscodeFile(FileInfo sourceFile, FileInfo destinationFile)
     {
         var reader = new MZPeak.Reader.MzPeakReader(sourceFile.FullName);
         var spectrumArrays = reader.SpectrumDataReaderMeta?.ArrayIndex;

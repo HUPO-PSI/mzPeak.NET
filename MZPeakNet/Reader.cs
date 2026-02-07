@@ -8,20 +8,30 @@ using Microsoft.Extensions.Logging;
 
 namespace MZPeak.Reader;
 
+/// <summary>
+/// Combines metadata and data array readers for unified access.
+/// </summary>
+/// <typeparam name="T">The metadata type (e.g., SpectrumDescription).</typeparam>
 public class DataFacet<T>
 {
     MetadataReaderBase<T> MetadataReader;
     DataArraysReader DataReader;
 
 
+    /// <summary>Creates a data facet combining metadata and data readers.</summary>
+    /// <param name="metadataReader">The metadata reader.</param>
+    /// <param name="dataReader">The data arrays reader.</param>
     public DataFacet(MetadataReaderBase<T> metadataReader, DataArraysReader dataReader)
     {
         MetadataReader = metadataReader;
         DataReader = dataReader;
     }
 
+    /// <summary>Gets the number of entries in the facet.</summary>
     public int Length => MetadataReader.Length;
 
+    /// <summary>Gets the metadata and data arrays for a specific index.</summary>
+    /// <param name="index">The entry index.</param>
     public async Task<(T, ChunkedArray)> Get(ulong index)
     {
         var meta = MetadataReader.Get(index);
@@ -31,6 +41,7 @@ public class DataFacet<T>
         return (meta, data);
     }
 
+    /// <summary>Asynchronously enumerates all entries with their metadata and data.</summary>
     public async IAsyncEnumerable<(T, StructArray)> EnumerateAsync()
     {
         var metaRecs = MetadataReader.BulkLoad();
@@ -53,6 +64,9 @@ public class DataFacet<T>
 }
 
 
+/// <summary>
+/// Reader for mzPeak archive files containing mass spectrometry data.
+/// </summary>
 public class MzPeakReader
 {
     internal static ILogger? Logger = null;
@@ -66,9 +80,13 @@ public class MzPeakReader
     DataArraysReaderMeta? chromatogramArraysMeta = null;
     DataArraysReaderMeta? spectrumPeaksArraysMeta = null;
 
+    /// <summary>Creates a reader for the mzPeak file at the specified path.</summary>
+    /// <param name="path">The file path to the mzPeak archive.</param>
     public MzPeakReader(string path) : this(new LocalZipArchive(path))
     { }
 
+    /// <summary>Creates a reader using the specified storage backend.</summary>
+    /// <param name="storage">The archive storage implementation.</param>
     public MzPeakReader(IMZPeakArchiveStorage storage)
     {
         this.storage = storage;
@@ -78,42 +96,63 @@ public class MzPeakReader
         chromatogramMetadata = stream == null ? null : new ChromatogramMetadataReader(stream);
     }
 
+    /// <summary>Gets the number of spectra (alias for SpectrumCount).</summary>
     public int Length => spectrumMetadata?.Length ?? 0;
+    /// <summary>Gets the number of spectra in the file.</summary>
     public int SpectrumCount => spectrumMetadata?.Length ?? 0;
+    /// <summary>Gets the number of chromatograms in the file.</summary>
     public int ChromatogramCount => chromatogramMetadata?.Length ?? 0;
+    /// <summary>Gets the file description metadata.</summary>
     public FileDescription FileDescription => spectrumMetadata?.FileDescription ?? chromatogramMetadata?.FileDescription ?? FileDescription.Empty();
+    /// <summary>Gets the list of instrument configurations.</summary>
     public List<InstrumentConfiguration> InstrumentConfigurations => spectrumMetadata?.InstrumentConfigurations ?? chromatogramMetadata?.InstrumentConfigurations ?? new();
+    /// <summary>Gets the list of software used.</summary>
     public List<Software> Softwares => spectrumMetadata?.Softwares ?? chromatogramMetadata?.Softwares ?? new();
+    /// <summary>Gets the list of samples.</summary>
     public List<Sample> Samples => spectrumMetadata?.Samples ?? chromatogramMetadata?.Samples ?? new();
+    /// <summary>Gets the list of data processing methods.</summary>
     public List<DataProcessingMethod> DataProcessingMethods => spectrumMetadata?.DataProcessingMethods ?? chromatogramMetadata?.DataProcessingMethods ?? new();
+    /// <summary>Gets the run-level metadata.</summary>
     public MSRun Run => spectrumMetadata?.Run ?? chromatogramMetadata?.Run ?? new();
 
+    /// <summary>Gets the spectrum metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? SpectrumTable => spectrumMetadata?.SpectrumMetadata;
 
+    /// <summary>Gets the scan metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? ScanTable => spectrumMetadata?.ScanMetadata;
 
+    /// <summary>Gets the precursor metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? PrecursorTable => spectrumMetadata?.PrecursorMetadata;
 
+    /// <summary>Gets the selected ion metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? SelectedIonTable => spectrumMetadata?.PrecursorMetadata;
 
+    /// <summary>Gets the chromatogram metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? ChromatogramTable => chromatogramMetadata?.ChromatogramMetadata;
 
+    /// <summary>Gets the chromatogram precursor metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? ChromatogramPrecursorTable => chromatogramMetadata?.PrecursorMetadata;
 
+    /// <summary>Gets the chromatogram selected ion metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? ChromatogramSelectedIonTable => chromatogramMetadata?.PrecursorMetadata;
 
+    /// <summary>Gets the spectrum description for the specified index.</summary>
+    /// <param name="index">The spectrum index.</param>
     public SpectrumDescription GetSpectrumDescription(ulong index)
     {
         if (spectrumMetadata == null) throw new InvalidOperationException("Spectrum metadata table is absent");
         return spectrumMetadata.Get(index);
     }
 
+    /// <summary>Gets the chromatogram description for the specified index.</summary>
+    /// <param name="index">The chromatogram index.</param>
     public ChromatogramDescription GetChromatogramDescription(ulong index)
     {
         if (chromatogramMetadata == null) throw new InvalidOperationException("Chromatogram metadata table is absent");
         return chromatogramMetadata.Get(index);
     }
 
+    /// <summary>Gets the buffer format used for spectrum data arrays.</summary>
     public BufferFormat? SpectrumDataFormat
     {
         get
@@ -128,6 +167,7 @@ public class MzPeakReader
         }
     }
 
+    /// <summary>Gets the buffer format used for chromatogram data arrays.</summary>
     public BufferFormat? ChromatogramDataFormat
     {
         get
@@ -142,12 +182,17 @@ public class MzPeakReader
         }
     }
 
+    /// <summary>Gets whether the file contains spectrum peak data.</summary>
     public bool HasSpectrumPeaks => spectrumPeaksArraysMeta != null ? true : SpectrumPeaksDataReaderMeta != null;
 
+    /// <summary>Gets the metadata for the spectrum data reader.</summary>
     public DataArraysReaderMeta? SpectrumDataReaderMeta => OpenSpectrumDataReader()?.Metadata;
+    /// <summary>Gets the metadata for the spectrum peaks data reader.</summary>
     public DataArraysReaderMeta? SpectrumPeaksDataReaderMeta => OpenSpectrumPeaksDataReader()?.Metadata;
+    /// <summary>Gets the metadata for the chromatogram data reader.</summary>
     public DataArraysReaderMeta? ChromatogramDataReaderMeta => OpenChromatogramDataReader()?.Metadata;
 
+    /// <summary>Asynchronously enumerates all spectra with their descriptions and data.</summary>
     public async IAsyncEnumerable<(SpectrumDescription, StructArray)> EnumerateSpectraAsync()
     {
         var dataReader = OpenSpectrumDataReader();
@@ -158,6 +203,7 @@ public class MzPeakReader
         }
     }
 
+    /// <summary>Asynchronously enumerates all chromatograms with their descriptions and data.</summary>
     public async IAsyncEnumerable<(ChromatogramDescription, StructArray)> EnumerateChromatogramsAsync()
     {
         var dataReader = OpenChromatogramDataReader();
@@ -230,6 +276,8 @@ public class MzPeakReader
         return reader;
     }
 
+    /// <summary>Gets the data arrays for a spectrum by index.</summary>
+    /// <param name="index">The spectrum index.</param>
     public async Task<ChunkedArray?> GetSpectrumData(ulong index)
     {
         var reader = OpenSpectrumDataReader();
@@ -237,6 +285,8 @@ public class MzPeakReader
         return await reader.ReadForIndex(index);
     }
 
+    /// <summary>Gets the peak data arrays for a spectrum by index.</summary>
+    /// <param name="index">The spectrum index.</param>
     public async Task<ChunkedArray?> GetSpectrumPeaks(ulong index)
     {
         var reader = OpenSpectrumPeaksDataReader();
@@ -244,6 +294,8 @@ public class MzPeakReader
         return await reader.ReadForIndex(index);
     }
 
+    /// <summary>Gets the data arrays for a chromatogram by index.</summary>
+    /// <param name="index">The chromatogram index.</param>
     public async Task<ChunkedArray?> GetChromatogramData(ulong index)
     {
         var reader = OpenChromatogramDataReader();

@@ -16,13 +16,25 @@ using MZPeak.Compute;
 using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
 using System.Security;
+using ParquetSharp;
 
+/// <summary>
+/// Represents a range of values associated with a key.
+/// </summary>
+/// <typeparam name="T">The comparable type for range bounds.</typeparam>
 public record struct GroupTagBounds<T> where T : IComparable<T>
 {
+    /// <summary>The key identifying this group.</summary>
     public ulong Key;
+    /// <summary>The start of the range (inclusive).</summary>
     public T Start;
+    /// <summary>The end of the range (inclusive).</summary>
     public T End;
 
+    /// <summary>Creates a new group tag bounds.</summary>
+    /// <param name="key">The group key.</param>
+    /// <param name="start">The start of the range.</param>
+    /// <param name="end">The end of the range.</param>
     public GroupTagBounds(ulong key, T start, T end)
     {
         Key = key;
@@ -31,6 +43,8 @@ public record struct GroupTagBounds<T> where T : IComparable<T>
     }
 
 
+    /// <summary>Checks if a value falls within the range.</summary>
+    /// <param name="value">The value to check.</param>
     public bool Contains(T value)
     {
         return (Start.CompareTo(value) <= 0) && (value.CompareTo(End) <= 0);
@@ -45,22 +59,32 @@ class KeyComparator<T> : IComparer<GroupTagBounds<T>> where T : IComparable<T>
     }
 }
 
+/// <summary>
+/// Index mapping keys to row ranges within Parquet row groups.
+/// </summary>
 public class RangeIndex : IEnumerable<GroupTagBounds<ulong>>
 {
+    /// <summary>The list of range bounds.</summary>
     public List<GroupTagBounds<ulong>> Ranges;
 
+    /// <summary>Gets the number of ranges.</summary>
     public long Length { get => Ranges.Count; }
 
+    /// <summary>Creates a range index from the specified bounds.</summary>
+    /// <param name="bounds">The list of group tag bounds.</param>
     public RangeIndex(List<GroupTagBounds<ulong>> bounds)
     {
         Ranges = bounds;
     }
 
+    /// <summary>Gets an enumerator over the ranges.</summary>
     public IEnumerator<GroupTagBounds<ulong>> GetEnumerator()
     {
         return ((IEnumerable<GroupTagBounds<ulong>>)Ranges).GetEnumerator();
     }
 
+    /// <summary>Finds a range by its key using binary search.</summary>
+    /// <param name="key">The key to search for.</param>
     public GroupTagBounds<ulong>? FindByKey(ulong key)
     {
         if (Length == 0)
@@ -78,6 +102,8 @@ public class RangeIndex : IEnumerable<GroupTagBounds<ulong>>
         }
     }
 
+    /// <summary>Gets all keys whose ranges contain the specified index.</summary>
+    /// <param name="index">The index to search for.</param>
     public List<ulong> KeysFor(ulong index)
     {
         List<ulong> groups = new List<ulong>();
@@ -110,16 +136,32 @@ public class RangeIndex : IEnumerable<GroupTagBounds<ulong>>
 }
 
 
+/// <summary>
+/// Metadata for reading data arrays from Parquet files.
+/// </summary>
 public class DataArraysReaderMeta
 {
+    /// <summary>The buffer context (spectrum or chromatogram).</summary>
     public BufferContext Context;
+    /// <summary>The array index describing available arrays.</summary>
     public ArrayIndex ArrayIndex;
+    /// <summary>Index mapping entry keys to row groups.</summary>
     public RangeIndex RowGroupIndex;
+    /// <summary>Index mapping entry keys to row spans.</summary>
     public RangeIndex EntrySpanIndex;
+    /// <summary>The buffer format used.</summary>
     public BufferFormat Format;
 
+    /// <summary>Optional spacing interpolation models keyed by entry index.</summary>
     public Dictionary<ulong, SpacingInterpolationModel<double>>? SpacingModels;
 
+    /// <summary>Creates metadata with the specified parameters.</summary>
+    /// <param name="context">The buffer context.</param>
+    /// <param name="arrayIndex">The array index.</param>
+    /// <param name="rowGroupIndex">The row group index.</param>
+    /// <param name="entrySpanIndex">The entry span index.</param>
+    /// <param name="bufferFormat">The buffer format.</param>
+    /// <param name="spacingModels">Optional spacing models.</param>
     public DataArraysReaderMeta(BufferContext context, ArrayIndex arrayIndex, RangeIndex rowGroupIndex, RangeIndex entrySpanIndex, BufferFormat bufferFormat, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null)
     {
         Context = context;
@@ -130,6 +172,9 @@ public class DataArraysReaderMeta
         SpacingModels = spacingModels;
     }
 
+    /// <summary>Creates metadata by reading from a Parquet file.</summary>
+    /// <param name="reader">The Parquet file reader.</param>
+    /// <param name="context">The buffer context.</param>
     public DataArraysReaderMeta(FileReader reader, BufferContext context)
     {
         Context = context;
@@ -256,17 +301,26 @@ public class DataArraysReaderMeta
 }
 
 
+/// <summary>
+/// Reader for data arrays stored in Parquet format.
+/// </summary>
 public class DataArraysReader
 {
+    /// <summary>The buffer context (spectrum or chromatogram).</summary>
     public BufferContext BufferContext;
     FileReader FileReader;
 
+    /// <summary>The reader metadata.</summary>
     public DataArraysReaderMeta Metadata;
 
+    /// <summary>Gets the array index from metadata.</summary>
     public ArrayIndex ArrayIndex { get => Metadata.ArrayIndex; }
+    /// <summary>Gets the row group index from metadata.</summary>
     public RangeIndex RowGroupIndex { get => Metadata.RowGroupIndex; }
+    /// <summary>Gets the entry span index from metadata.</summary>
     public RangeIndex EntrySpanIndex { get => Metadata.EntrySpanIndex; }
 
+    /// <summary>Gets or sets the spacing interpolation models.</summary>
     public Dictionary<ulong, SpacingInterpolationModel<double>>? SpacingModels
     {
         get
@@ -279,12 +333,18 @@ public class DataArraysReader
         }
     }
 
+    /// <summary>Creates a reader with existing metadata.</summary>
+    /// <param name="reader">The Parquet file reader.</param>
+    /// <param name="meta">The reader metadata.</param>
     public DataArraysReader(FileReader reader, DataArraysReaderMeta meta)
     {
         FileReader = reader;
         Metadata = meta;
     }
 
+    /// <summary>Creates a reader that builds metadata from the file.</summary>
+    /// <param name="reader">The Parquet file reader.</param>
+    /// <param name="context">The buffer context.</param>
     public DataArraysReader(FileReader reader, BufferContext context)
     {
         BufferContext = context;
@@ -292,8 +352,10 @@ public class DataArraysReader
         Metadata = new DataArraysReaderMeta(reader, context);
     }
 
+    /// <summary>Gets the buffer format from metadata.</summary>
     public BufferFormat Format => Metadata.Format;
 
+    /// <summary>Creates an empty struct array matching the schema.</summary>
     public StructArray EmptyArrays()
     {
         List<Field> fields = new();
@@ -312,6 +374,8 @@ public class DataArraysReader
         return new StructArray(structDtype, 0, [], default);
     }
 
+    /// <summary>Reads data arrays for a specific entry index.</summary>
+    /// <param name="key">The entry index to read.</param>
     public async Task<ChunkedArray?> ReadForIndex(ulong key)
     {
         var rowGroups = RowGroupIndex.KeysFor(key);
@@ -357,9 +421,10 @@ public class DataArraysReader
         return result;
     }
 
+    /// <summary>Gets the number of entries.</summary>
     public long Length { get => Metadata.EntrySpanIndex.Length; }
 
-    //TODO: Factor this into a type
+    /// <summary>Asynchronously enumerates all entries with their index and data.</summary>
     public async IAsyncEnumerable<(ulong, StructArray)> Enumerate()
     {
         BaseLayoutReader reader;
@@ -383,6 +448,9 @@ public class DataArraysReader
 }
 
 
+/// <summary>
+/// Base class for reading data arrays from different storage layouts.
+/// </summary>
 public class BaseLayoutReader
 {
     public static ILogger? Logger = null;
@@ -391,6 +459,10 @@ public class BaseLayoutReader
     protected IArrowArrayStream Reader;
     protected Dictionary<ulong, SpacingInterpolationModel<double>>? SpacingModels;
 
+    /// <summary>Creates a layout reader with the specified configuration.</summary>
+    /// <param name="reader">The Arrow array stream.</param>
+    /// <param name="arrayIndex">The array index metadata.</param>
+    /// <param name="spacingModels">Optional spacing interpolation models.</param>
     public BaseLayoutReader(IArrowArrayStream reader, ArrayIndex arrayIndex, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null)
     {
         Reader = reader;
@@ -407,6 +479,7 @@ public class BaseLayoutReader
         return rootStruct;
     }
 
+    /// <summary>Asynchronously enumerates all entries.</summary>
     public async IAsyncEnumerable<(ulong, StructArray)> EnumerateEntries()
     {
         ulong rowCountRead = 0;
@@ -466,6 +539,10 @@ public class BaseLayoutReader
         }
     }
 
+    /// <summary>Reads rows for a specific entry within a row range.</summary>
+    /// <param name="entryIndex">The entry index.</param>
+    /// <param name="startFrom">The starting row offset.</param>
+    /// <param name="endAt">The ending row offset.</param>
     public async Task<ChunkedArray> ReadRowsOf(ulong entryIndex, ulong startFrom, ulong endAt)
     {
         ulong rowCountRead = 0;
@@ -507,8 +584,15 @@ public class BaseLayoutReader
 }
 
 
+/// <summary>
+/// Reader for point-format data layouts where each row is a single data point.
+/// </summary>
 public class PointLayoutReader : BaseLayoutReader
 {
+    /// <summary>Creates a point layout reader.</summary>
+    /// <param name="reader">The Arrow array stream.</param>
+    /// <param name="arrayIndex">The array index metadata.</param>
+    /// <param name="spacingModels">Optional spacing interpolation models.</param>
     public PointLayoutReader(IArrowArrayStream reader, ArrayIndex arrayIndex, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null) : base(reader, arrayIndex, spacingModels) { }
 
     protected override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
@@ -649,16 +733,19 @@ record TransformKey(ArrayType? ArrayType, string ArrayName, BinaryDataType Binar
     }
 }
 
+/// <summary>
+/// Reader for chunk-format data layouts where each row contains compressed array chunks.
+/// </summary>
 public class ChunkLayoutReader : BaseLayoutReader
 {
     const string NUMPRESS_LINEAR_CURIE = "MS:1002312";
     const string NUMPRESS_SLOF_CURIE = "MS:1002314";
 
     ArrayIndexEntry? mainAxis;
-    int chunkStartIndex;
-    int chunkEndIndex;
-    int chunkEncodingIndex;
-    int chunkValuesIndex;
+    int chunkStartIndex = -1;
+    int chunkEndIndex = -1;
+    int chunkEncodingIndex = -1;
+    int chunkValuesIndex = -1;
     HashSet<ArrayIndexEntry> secondaryIndices;
     Dictionary<TransformKey, List<ArrayIndexEntry>> transformMap;
 
@@ -716,10 +803,11 @@ public class ChunkLayoutReader : BaseLayoutReader
             }
         }
 
+        if (chunkEncodingIndex == -1)
+            throw new InvalidOperationException("Chunk encoding column not found");
+
         if (mainAxis == null)
-        {
             throw new InvalidOperationException("Main axis cannot be null");
-        }
     }
 
     public ChunkLayoutReader(IArrowArrayStream reader, ArrayIndex arrayIndex, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null) : base(reader, arrayIndex, spacingModels)
@@ -1046,4 +1134,58 @@ public class ChunkLayoutReader : BaseLayoutReader
         return combined;
     }
 
+}
+
+
+public class DataIter
+{
+    BaseLayoutReader LayoutReader;
+    IArrowArrayStream StreamReader;
+    ulong RowCountRead = 0;
+    List<IArrowArray> Chunks;
+    ulong? LastIndex = null;
+    ulong? CurrentIndex = null;
+
+    StructArray? CurrentBatch = null;
+
+    public DataIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
+    {
+        LayoutReader = layoutReader;
+        StreamReader = stream;
+        RowCountRead = 0;
+        Chunks = new();
+        LastIndex = null;
+        CurrentIndex = null;
+        CurrentBatch = null;
+    }
+
+    public async Task<bool> ReadNextBatch()
+    {
+        var batch = await StreamReader.ReadNextRecordBatchAsync();
+        if (batch == null)
+            return false;
+
+        var root = batch.Column(0);
+
+        var rootStruct = (StructArray?)root;
+        if (rootStruct == null)
+            return false;
+
+        CurrentBatch = rootStruct;
+        return true;
+    }
+
+    public async Task<bool> Initialize()
+    {
+        if (!await ReadNextBatch()) return false;
+        if (CurrentBatch == null) return false;
+        var idxCol = (UInt64Array)CurrentBatch.Fields[0];
+        CurrentIndex = idxCol.GetValue(0);
+        return true;
+    }
+
+    public async Task GetNextSegment()
+    {
+        var isInitializing = CurrentIndex == null;
+    }
 }

@@ -1828,6 +1828,83 @@ public static class IonSelectionPropertiesMethods
     }
 }
 
+public enum ChromatogramTypes
+{
+    ChromatogramType,
+    IonCurrentChromatogram,
+    ElectromagneticRadiationChromatogram,
+    TemperatureChromatogram,
+    PressureChromatogram,
+    FlowRateChromatogram,
+    TotalIonCurrentChromatogram,
+    SelectedIonCurrentChromatogram,
+    BasepeakChromatogram,
+    SelectedIonMonitoringChromatogram,
+    SelectedReactionMonitoringChromatogram,
+    ConsecutiveReactionMonitoringChromatogram,
+    PrecursorIonCurrentChromatogram,
+    AbsorptionChromatogram,
+    EmissionChromatogram,
+    TotalIonCurrents,
+}
+
+public static class ChromatogramTypesMethods
+{
+
+    public static readonly Dictionary<string, ChromatogramTypes> FromCURIE = new Dictionary<string, ChromatogramTypes>(
+        ((ChromatogramTypes[])Enum.GetValues(typeof(ChromatogramTypes))).Select((v) => new KeyValuePair<string, ChromatogramTypes>(v.CURIE(), v))
+    );
+
+
+    public static string Name(this ChromatogramTypes term)
+    {
+        switch (term)
+        {
+            case ChromatogramTypes.ChromatogramType: return "chromatogram type";
+            case ChromatogramTypes.IonCurrentChromatogram: return "ion current chromatogram";
+            case ChromatogramTypes.ElectromagneticRadiationChromatogram: return "electromagnetic radiation chromatogram";
+            case ChromatogramTypes.TemperatureChromatogram: return "temperature chromatogram";
+            case ChromatogramTypes.PressureChromatogram: return "pressure chromatogram";
+            case ChromatogramTypes.FlowRateChromatogram: return "flow rate chromatogram";
+            case ChromatogramTypes.TotalIonCurrentChromatogram: return "total ion current chromatogram";
+            case ChromatogramTypes.SelectedIonCurrentChromatogram: return "selected ion current chromatogram";
+            case ChromatogramTypes.BasepeakChromatogram: return "basepeak chromatogram";
+            case ChromatogramTypes.SelectedIonMonitoringChromatogram: return "selected ion monitoring chromatogram";
+            case ChromatogramTypes.SelectedReactionMonitoringChromatogram: return "selected reaction monitoring chromatogram";
+            case ChromatogramTypes.ConsecutiveReactionMonitoringChromatogram: return "consecutive reaction monitoring chromatogram";
+            case ChromatogramTypes.PrecursorIonCurrentChromatogram: return "precursor ion current chromatogram";
+            case ChromatogramTypes.AbsorptionChromatogram: return "absorption chromatogram";
+            case ChromatogramTypes.EmissionChromatogram: return "emission chromatogram";
+            case ChromatogramTypes.TotalIonCurrents: return "total ion currents";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this ChromatogramTypes term)
+    {
+        switch (term)
+        {
+            case ChromatogramTypes.ChromatogramType: return "MS:1000626";
+            case ChromatogramTypes.IonCurrentChromatogram: return "MS:1000810";
+            case ChromatogramTypes.ElectromagneticRadiationChromatogram: return "MS:1000811";
+            case ChromatogramTypes.TemperatureChromatogram: return "MS:1002715";
+            case ChromatogramTypes.PressureChromatogram: return "MS:1003019";
+            case ChromatogramTypes.FlowRateChromatogram: return "MS:1003020";
+            case ChromatogramTypes.TotalIonCurrentChromatogram: return "MS:1000235";
+            case ChromatogramTypes.SelectedIonCurrentChromatogram: return "MS:1000627";
+            case ChromatogramTypes.BasepeakChromatogram: return "MS:1000628";
+            case ChromatogramTypes.SelectedIonMonitoringChromatogram: return "MS:1001472";
+            case ChromatogramTypes.SelectedReactionMonitoringChromatogram: return "MS:1001473";
+            case ChromatogramTypes.ConsecutiveReactionMonitoringChromatogram: return "MS:1001474";
+            case ChromatogramTypes.PrecursorIonCurrentChromatogram: return "MS:4000025";
+            case ChromatogramTypes.AbsorptionChromatogram: return "MS:1000812";
+            case ChromatogramTypes.EmissionChromatogram: return "MS:1000813";
+            case ChromatogramTypes.TotalIonCurrents: return "MS:4000104";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
 public record ColumnParam
 {
     public string Name;

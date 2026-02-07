@@ -39,6 +39,8 @@ public abstract class BaseLayoutBuilder
         InitializeBuilders();
     }
 
+    public bool HasArrayType(ArrayType arrayType) => ArrayIndex.HasArrayType(arrayType);
+
     protected virtual void InitializeBuilders()
     {
         int i = 1;
@@ -309,14 +311,14 @@ public abstract class BaseLayoutBuilder
         {
             case ArrowTypeId.Double:
                 {
-                    DoubleArray valArray = (DoubleArray)array;
+                    DoubleArray valArray = ComputeFn.CastDouble(array);
                     DoubleArray.Builder valBuilder = (DoubleArray.Builder)builder;
                     foreach (var v in valArray) valBuilder.Append(v);
                     break;
                 }
             case ArrowTypeId.Float:
                 {
-                    FloatArray valArray = (FloatArray)array;
+                    FloatArray valArray = ComputeFn.CastFloat(array);
                     FloatArray.Builder valBuilder = (FloatArray.Builder)builder;
                     foreach (var v in valArray) valBuilder.Append(v);
                     break;
@@ -337,14 +339,14 @@ public abstract class BaseLayoutBuilder
                 }
             case ArrowTypeId.Int32:
                 {
-                    Int32Array valArray = (Int32Array)array;
+                    Int32Array valArray = ComputeFn.CastInt32(array);
                     Int32Array.Builder valBuilder = (Int32Array.Builder)builder;
                     foreach (var v in valArray) valBuilder.Append(v);
                     break;
                 }
             case ArrowTypeId.Int64:
                 {
-                    Int64Array valArray = (Int64Array)array;
+                    Int64Array valArray = ComputeFn.CastInt64(array);
                     Int64Array.Builder valBuilder = (Int64Array.Builder)builder;
                     foreach (var v in valArray) valBuilder.Append(v);
                     break;
@@ -469,10 +471,22 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 public class ChunkLayoutBuilder : BaseLayoutBuilder
 {
     public string MainAxisEncodingCURIE { get; set; }
+    public double ChunkSize { get; set; } = 50.0;
+    public ArrayIndexEntry MainAxisEntry {get; set;}
 
-    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE) : base(arrayIndex)
+    int MainAxisBuilderIdx;
+    int StartValueBuilderIdx;
+    int EndValueBuilderIdx;
+    int EncodingBuilderIdx;
+
+    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE=DeltaCodec.CURIE, double chunkSize=50.0) : base(arrayIndex)
     {
         MainAxisEncodingCURIE = mainAxisEncodingCURIE;
+        ChunkSize = chunkSize;
+        MainAxisEntry = arrayIndex.Entries.Find(
+            entry => entry.BufferFormat == BufferFormat.ChunkValues) ?? throw new InvalidDataException(
+            $"No main axis array found in {BufferContext} array index");
+
     }
 
     protected override void InitializeBuilders()
@@ -516,7 +530,8 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
                 case BufferFormat.ChunkValues:
                     {
                         DataTypes.Add(entry.GetArrowType());
-                        Arrays.Add(new ListArray.Builder(entry.GetArrowType()));
+                        Arrays.Add(new ListArray.Builder(entry.GetArrowType()).Append());
+
                         break;
                     }
                 case BufferFormat.ChunkTransform:
@@ -527,6 +542,19 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
                     }
                 default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
             }
+        }
+
+        foreach(var entry in ArrayIndex.Entries)
+        {
+            var idx = (entry.SchemaIndex ?? throw new InvalidOperationException()) - 1;
+            if (entry.BufferFormat == BufferFormat.ChunkValues)
+                MainAxisBuilderIdx = idx;
+            else if (entry.BufferFormat == BufferFormat.ChunkEncoding)
+                EncodingBuilderIdx = idx;
+            else if (entry.BufferFormat == BufferFormat.ChunkStart)
+                StartValueBuilderIdx = idx;
+            else if (entry.BufferFormat == BufferFormat.ChunkEnd)
+                EndValueBuilderIdx = idx;
         }
     }
 
@@ -553,38 +581,148 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
     public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
-        int k = 0;
+        var mainAxis = arrays[MainAxisEntry];
+
+        var spans = Chunking.ChunkEvery(mainAxis, ChunkSize);
+
+        int k = spans.Count;
         foreach (var val in arrays.Values)
         {
-            if (k > 0 && k != val.Length) throw new InvalidDataException("Arrays do not have equal lengths");
-            else k = val.Length;
+            if (mainAxis.Length != val.Length) throw new InvalidDataException("Arrays do not have equal lengths");
         }
+
         Index.AppendRange(Enumerable.Repeat(entryIndex, k));
-        foreach (var entry in ArrayIndex.Entries)
+
+        HashSet<int> visited = new()
         {
-            if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
-            Array? array;
-            if (arrays.TryGetValue(entry, out array))
+            MainAxisBuilderIdx,
+            EncodingBuilderIdx,
+            StartValueBuilderIdx,
+            EndValueBuilderIdx
+        };
+        var mainAxisBuilder = (ListArray.Builder)Arrays[MainAxisBuilderIdx];
+        var mainAxisValueBuilder = mainAxisBuilder.ValueBuilder;
+        var startValBuilder = Arrays[StartValueBuilderIdx];
+        var endValBuilder = Arrays[EndValueBuilderIdx];
+        foreach (var (startIdx, endIdx) in spans)
+        {
+            var chunk = mainAxis.Slice(startIdx, endIdx - startIdx);
+            var startVal = ComputeFn.Min(chunk, NullHandling.Skip);
+            var endVal = ComputeFn.Max(chunk, NullHandling.Skip);
+            if (startVal == null) continue;
+
+            switch (DataTypes[StartValueBuilderIdx].TypeId)
             {
-                var builder = Arrays[(int)entry.SchemaIndex - 1];
-                var dtype = DataTypes[(int)entry.SchemaIndex - 1];
-                AppendArrayTo(builder, dtype, array);
+                case ArrowTypeId.Float:
+                    {
+                        ((FloatArray.Builder)startValBuilder).Append((float?)startVal);
+                        break;
+                    }
+                case ArrowTypeId.Double:
+                    {
+                        ((DoubleArray.Builder)startValBuilder).Append(startVal);
+                        break;
+                    }
+                default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
             }
-            else
+            switch (DataTypes[EndValueBuilderIdx].TypeId)
             {
-                var builder = Arrays[(int)entry.SchemaIndex - 1];
-                var dtype = DataTypes[(int)entry.SchemaIndex - 1];
-                AppendNullsTo(builder, dtype, k);
+                case ArrowTypeId.Float:
+                    {
+                        ((FloatArray.Builder)endValBuilder).Append((float?)endVal);
+                        break;
+                    }
+                case ArrowTypeId.Double:
+                    {
+                        ((DoubleArray.Builder)endValBuilder).Append(endVal);
+                        break;
+                    }
+                default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
+            }
+
+            if (MainAxisEncodingCURIE == DeltaCodec.CURIE)
+            {
+                ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(DeltaCodec.CURIE);
+                switch (MainAxisEntry.GetArrowType().TypeId)
+                {
+                    case ArrowTypeId.Double:
+                        {
+
+                            var builder = (DoubleArray.Builder)mainAxisValueBuilder;
+                            DeltaCodec.Encode(startVal, ComputeFn.CastDouble(chunk.Slice(1, chunk.Length - 1)), builder);
+                            mainAxisBuilder.Append();
+                            break;
+                        }
+                    case ArrowTypeId.Float:
+                        {
+                            var builder = (FloatArray.Builder)mainAxisValueBuilder;
+                            DeltaCodec.Encode((float?)startVal, ComputeFn.CastFloat(chunk.Slice(1, chunk.Length - 1)), builder);
+                            mainAxisBuilder.Append();
+                            break;
+                        }
+                    default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
+                }
+            }
+            else if (MainAxisEncodingCURIE == NoCompressionCodec.CURIE)
+            {
+                ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(NoCompressionCodec.CURIE);
+                switch (MainAxisEntry.GetArrowType().TypeId)
+                {
+                    case ArrowTypeId.Double:
+                        {
+                            var builder = (DoubleArray.Builder)mainAxisValueBuilder;
+                            NoCompressionCodec.Encode((double)startVal, ComputeFn.CastDouble(chunk.Slice(1, chunk.Length - 1)), builder);
+                            mainAxisBuilder.Append();
+                            break;
+                        }
+                    case ArrowTypeId.Float:
+                        {
+                            var builder = (FloatArray.Builder)mainAxisValueBuilder;
+                            NoCompressionCodec.Encode((float)startVal, ComputeFn.CastFloat(chunk.Slice(1, chunk.Length - 1)), builder);
+                            mainAxisBuilder.Append();
+                            break;
+                        }
+                    default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
+                }
+            }
+            else throw new NotImplementedException(MainAxisEncodingCURIE);
+
+            foreach (var entry in ArrayIndex.Entries)
+            {
+                if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
+                if (visited.Contains((int)entry.SchemaIndex - 1)) continue;
+                Array? array;
+                if (arrays.TryGetValue(entry, out array))
+                {
+                    var arrayChunk = array.Slice(startIdx, endIdx - startIdx);
+                    var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
+                    var dtype = DataTypes[(int)entry.SchemaIndex - 1];
+                    AppendArrayTo(builder.ValueBuilder, dtype, arrayChunk);
+                    builder.Append();
+                }
+                else
+                {
+                    var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
+                    builder.Append();
+                }
             }
         }
-        NumberOfPoints += (ulong)k;
+
+        NumberOfPoints += (ulong)mainAxis.Length;
 
         return (deltaModel, auxiliaryArrays);
     }
 
+
+
     public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
-        var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
+        var kvs = ArrayIndex.Entries.Where(e => e.BufferFormat switch
+        {
+            BufferFormat.ChunkSecondary => true,
+            BufferFormat.ChunkValues => true,
+            _ => false,
+        }).Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs, isProfile);
     }
 
@@ -594,7 +732,7 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
 
         foreach (var entry in ArrayIndex.Entries)
         {
-            var name = entry.CreateColumnName();
+            var name = entry.Path.Split(".").Last();
             switch (entry.BufferFormat)
             {
                 case BufferFormat.ChunkEncoding:

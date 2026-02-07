@@ -7,6 +7,7 @@ using MZPeak.Reader.Visitors;
 using MZPeak.Metadata;
 using MZPeak.Writer.Data;
 using MZPeak.Compute;
+using Apache.Arrow.Types;
 
 namespace MzPeakTests;
 
@@ -52,6 +53,80 @@ public class WriteTest
             new FloatArray.Builder().AppendRange([1026.1f]).Build()
         ]);
         Assert.Equal(2ul, writer.NumberOfPoints);
+    }
+
+    [Fact]
+    public void ChunkedLayoutBuilderTest()
+    {
+        var builder = ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        var index = builder.Build();
+        var writer = new ChunkLayoutBuilder(index);
+        writer.Add(0, [
+            new DoubleArray.Builder().AppendRange([250.0,   251.0, 272.0, 500.0, 501.0, 512.0]).Build(),
+            new FloatArray.Builder().AppendRange([1023.1f, 20.0f, 200f,  300f,  100f,  500f]).Build()
+        ]);
+        writer.Add(1, [
+            new DoubleArray.Builder().AppendRange([252.0]).Build(),
+            new FloatArray.Builder().AppendRange([1026.1f]).Build()
+        ]);
+        Assert.Equal(7ul, writer.NumberOfPoints);
+        var bat = writer.GetRecordBatch();
+        Assert.Equal(3, bat.Length);
+        var cols = (StructArray)bat.Column(0);
+    }
+
+    [Fact]
+    public void BuildChunkedArrayIndexTest()
+    {
+        var builder = ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        var index = builder.Build();
+        bool hasEncoding = false;
+        bool hasStart = false;
+        bool hasEnd = false;
+        bool hasChunkValues = false;
+        bool hasPointFormat = false;
+        foreach(var entry in index.Entries)
+        {
+            switch (entry.BufferFormat)
+            {
+                case BufferFormat.ChunkEncoding:
+                    {
+                        hasEncoding = true;
+                        break;
+                    }
+                case BufferFormat.ChunkEnd:
+                    {
+                        hasEnd = true;
+                        break;
+                    }
+                case BufferFormat.ChunkStart:
+                    {
+                        hasStart = true;
+                        break;
+                    }
+                case BufferFormat.ChunkValues:
+                    {
+                        hasChunkValues = true;
+                        break;
+                    }
+                case BufferFormat.Point:
+                    {
+                        hasPointFormat = true;
+                        break;
+                    }
+                default: continue;
+            }
+        }
+
+        Assert.True(hasEncoding, "Chunk encoding not found");
+        Assert.True(hasChunkValues, "Chunk values not found");
+        Assert.True(hasStart, "Chunk start not found");
+        Assert.True(hasEnd, "Chunk end not found");
+        Assert.False(hasPointFormat, "Chunked layout should not contain a point format array");
     }
 
     [Fact]

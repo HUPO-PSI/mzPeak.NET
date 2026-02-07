@@ -9,6 +9,7 @@ using ParquetSharp.IO;
 using MZPeak.Metadata;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using MathNet.Numerics;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EntityType
@@ -156,10 +157,13 @@ public interface IMZPeakArchiveStorage
         }
     }
 
-    public ParquetSharp.Arrow.FileReader? SpectrumData()
+    public ParquetSharp.Arrow.FileReader? SpectrumData(long bufferSize=1024)
     {
+        var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
+        var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
+        arrowProps.BatchSize = 4096;
         var stream = OpenEntry(EntityType.Spectrum, DataKind.DataArrays);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
     }
 
     public ParquetSharp.Arrow.FileReader? SpectrumPeaks()

@@ -18,11 +18,17 @@ public abstract class MetadataReaderBase<T>
 
     protected MzPeakMetadata mzPeakMetadata;
 
+    /// <summary>Gets the file description metadata.</summary>
     public FileDescription FileDescription => mzPeakMetadata.FileDescription;
+    /// <summary>Gets the list of instrument configurations.</summary>
     public List<InstrumentConfiguration> InstrumentConfigurations => mzPeakMetadata.InstrumentConfigurations;
+    /// <summary>Gets the list of software used.</summary>
     public List<Software> Softwares => mzPeakMetadata.Softwares;
+    /// <summary>Gets the list of samples.</summary>
     public List<Sample> Samples => mzPeakMetadata.Samples;
+    /// <summary>Gets the list of data processing methods.</summary>
     public List<DataProcessingMethod> DataProcessingMethods => mzPeakMetadata.DataProcessingMethods;
+    /// <summary>Gets the run-level metadata.</summary>
     public MSRun Run => mzPeakMetadata.Run;
 
     protected MetadataReaderBase(MzPeakMetadata mzPeakMetadata)
@@ -59,15 +65,24 @@ public abstract class MetadataReaderBase<T>
         return nativeIds;
     }
 
+    /// <summary>Gets the number of entries in the metadata table.</summary>
     public abstract int Length { get; }
 
+    /// <summary>Loads all metadata entries into a list.</summary>
     public abstract List<T> BulkLoad();
+
+    /// <summary>Gets a single metadata entry by index.</summary>
+    /// <param name="index">The entry index.</param>
     public abstract T Get(ulong index);
 }
 
 
+/// <summary>
+/// Reader for spectrum metadata from Parquet files.
+/// </summary>
 public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
 {
+    /// <summary>The underlying Parquet file reader.</summary>
     public ParquetSharp.Arrow.FileReader FileReader;
 
     RecordBatch? spectrumMetadata = null;
@@ -79,6 +94,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     RecordBatch? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
+    /// <summary>Gets the number of spectra.</summary>
     public override int Length
     {
         get
@@ -91,6 +107,9 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
     }
 
+    /// <summary>Creates a spectrum metadata reader.</summary>
+    /// <param name="fileReader">The Parquet file reader.</param>
+    /// <param name="initializeFacets">Whether to initialize tables immediately.</param>
     public SpectrumMetadataReader(ParquetSharp.Arrow.FileReader fileReader, bool initializeFacets = true) : base(MzPeakMetadata.FromParquet(fileReader.ParquetReader))
     {
         FileReader = fileReader;
@@ -154,6 +173,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         return accumulator;
     }
 
+    /// <summary>Gets spacing interpolation models keyed by spectrum index.</summary>
     public Dictionary<ulong, SpacingInterpolationModel<double>> GetSpacingModelIndex()
     {
         if (SpectrumMetadata == null)
@@ -181,11 +201,13 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             throw new NotImplementedException($"{modelArr.Data.DataType.Name} not supported");
         }
     }
+    /// <summary>Gets native IDs keyed by spectrum index.</summary>
     public Dictionary<ulong, string?> GetNativeIds()
     {
         return GetNativeIdsFrom(SpectrumMetadata);
     }
 
+    /// <summary>Gets or sets the spectrum metadata table.</summary>
     public RecordBatch? SpectrumMetadata
     {
         get
@@ -198,6 +220,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
         set => spectrumMetadata = value;
     }
+
+    /// <summary>Gets or sets the scan metadata table.</summary>
     public RecordBatch? ScanMetadata
     {
         get
@@ -210,6 +234,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
         set => scanMetadata = value;
     }
+
+    /// <summary>Gets or sets the precursor metadata table.</summary>
     public RecordBatch? PrecursorMetadata
     {
         get
@@ -222,6 +248,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
         set => precursorMetadata = value;
     }
+
+    /// <summary>Gets or sets the selected ion metadata table.</summary>
     public RecordBatch? SelectedIonMetadata
     {
         get
@@ -235,6 +263,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         set => selectedIonMetadata = value;
     }
 
+    /// <summary>Loads all spectrum descriptions.</summary>
     public override List<SpectrumDescription> BulkLoad()
     {
         if (SpectrumMetadata == null) return new();
@@ -367,14 +396,20 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
     }
 
+    /// <summary>Gets the spectrum description for the specified index.</summary>
+    /// <param name="index">The spectrum index.</param>
     public override SpectrumDescription Get(ulong index)
     {
         return GetSpectrum(index);
     }
 }
 
+/// <summary>
+/// Reader for chromatogram metadata from Parquet files.
+/// </summary>
 public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescription>
 {
+    /// <summary>The underlying Parquet file reader.</summary>
     public ParquetSharp.Arrow.FileReader FileReader;
 
     RecordBatch? chromatogramMetadata = null;
@@ -384,6 +419,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     RecordBatch? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
+    /// <summary>Gets the number of chromatograms.</summary>
     public override int Length
     {
         get
@@ -396,6 +432,9 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         }
     }
 
+    /// <summary>Creates a chromatogram metadata reader.</summary>
+    /// <param name="fileReader">The Parquet file reader.</param>
+    /// <param name="initializeFacets">Whether to initialize tables immediately.</param>
     public ChromatogramMetadataReader(ParquetSharp.Arrow.FileReader fileReader, bool initializeFacets = true) : base(MzPeakMetadata.FromParquet(fileReader.ParquetReader))
     {
         chromatogramMetadataColumns = new();
@@ -408,6 +447,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         }
     }
 
+    /// <summary>Gets or sets the chromatogram metadata table.</summary>
     public RecordBatch? ChromatogramMetadata
     {
         get
@@ -421,6 +461,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         set => chromatogramMetadata = value;
     }
 
+    /// <summary>Gets or sets the precursor metadata table.</summary>
     public RecordBatch? PrecursorMetadata
     {
         get
@@ -434,6 +475,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         set => precursorMetadata = value;
     }
 
+    /// <summary>Gets or sets the selected ion metadata table.</summary>
     public RecordBatch? SelectedIonMetadata
     {
         get
@@ -447,11 +489,13 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         set => selectedIonMetadata = value;
     }
 
+    /// <summary>Gets native IDs keyed by chromatogram index.</summary>
     public Dictionary<ulong, string?> GetNativeIds()
     {
         return GetNativeIdsFrom(ChromatogramMetadata);
     }
 
+    /// <summary>Loads all chromatogram descriptions.</summary>
     public override List<ChromatogramDescription> BulkLoad()
     {
         if (ChromatogramMetadata == null) return [];
@@ -514,6 +558,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         return new ChromatogramDescription(rec, precursorInfos, selectedIons);
     }
 
+    /// <summary>Initializes metadata tables by reading from the Parquet file.</summary>
     public async Task InitializeTables()
     {
         var reader = FileReader.GetRecordBatchReader();
@@ -557,6 +602,8 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         }
     }
 
+    /// <summary>Gets the chromatogram description for the specified index.</summary>
+    /// <param name="index">The chromatogram index.</param>
     public override ChromatogramDescription Get(ulong index)
     {
         return GetChromatogram(index);

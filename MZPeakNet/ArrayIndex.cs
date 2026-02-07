@@ -9,7 +9,11 @@ using Apache.Arrow;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Reader.Visitors;
 using System.Text.Json;
+using MZPeak.Compute;
 
+/// <summary>
+/// Specifies the layout format for data buffers in the storage layer.
+/// </summary>
 [JsonConverter(typeof(BufferFormatConverter))]
 public enum BufferFormat
 {
@@ -29,6 +33,9 @@ public enum BufferFormat
     ChunkTransform,
 }
 
+/// <summary>
+/// JSON converter for <see cref="BufferFormat"/> serialization.
+/// </summary>
 public class BufferFormatConverter : JsonConverter<BufferFormat>
 {
     public override BufferFormat Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -93,6 +100,9 @@ public class BufferFormatConverter : JsonConverter<BufferFormat>
     }
 }
 
+/// <summary>
+/// Indicates whether a buffer is the primary or secondary representation of an array type.
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BufferPriority
 {
@@ -102,6 +112,9 @@ public enum BufferPriority
     Secondary
 }
 
+/// <summary>
+/// The data context that a buffer belongs to (spectrum or chromatogram).
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BufferContext
 {
@@ -168,45 +181,60 @@ static class BufferContexteMethods
     }
 }
 
-// [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+/// <summary>
+/// Describes metadata for a single data array within the storage format.
+/// </summary>
 public record ArrayIndexEntry
 {
+    /// <summary>The data context (spectrum or chromatogram).</summary>
     [JsonPropertyName("context")]
     public required BufferContext Context { get; set; }
 
+    /// <summary>The column path within the Parquet schema.</summary>
     [JsonPropertyName("path")]
     public required string Path { get; set; }
 
+    /// <summary>The CURIE identifying the binary data type (e.g., float32, float64).</summary>
     [JsonPropertyName("data_type")]
     public required string DataTypeCURIE { get; set; }
 
+    /// <summary>The CURIE identifying the array type (e.g., m/z array, intensity array).</summary>
     [JsonPropertyName("array_type")]
     public required string ArrayTypeCURIE { get; set; }
 
+    /// <summary>Human-readable name for the array.</summary>
     [JsonPropertyName("array_name")]
     public required string ArrayName { get; set; }
 
+    /// <summary>Optional CURIE for the unit of measurement.</summary>
     [JsonPropertyName("unit")]
     public string? UnitCURIE { get; set; } = null;
 
+    /// <summary>Optional transform applied to the data (e.g., null interpolation).</summary>
     [JsonPropertyName("transform")]
     public string? Transform { get; set; } = null;
 
+    /// <summary>The storage format for this buffer.</summary>
     [JsonPropertyName("buffer_format")]
     public BufferFormat BufferFormat { get; set; }
 
+    /// <summary>Optional reference to the data processing method used.</summary>
     [JsonPropertyName("data_processing_id")]
     public string? DataProcessesingId { get; set; } = null;
 
+    /// <summary>Whether this is the primary or secondary buffer for the array type.</summary>
     [JsonPropertyName("buffer_priority")]
     public BufferPriority? BufferPriority { get; set; } = null;
 
+    /// <summary>Optional rank for sorting arrays of the same type.</summary>
     [JsonPropertyName("sorting_rank")]
     public uint? SortingRank { get; set; } = null;
 
+    /// <summary>The column index in the Parquet schema (populated at runtime).</summary>
     [JsonIgnore]
     public int? SchemaIndex { get; set; } = null;
 
+    /// <summary>Gets the array type enum from the CURIE, or null if unknown.</summary>
     public ArrayType? GetArrayType()
     {
         ArrayType v;
@@ -214,6 +242,7 @@ public record ArrayIndexEntry
         else return null;
     }
 
+    /// <summary>Gets the unit enum from the CURIE, or null if not specified.</summary>
     public Unit? GetUnit()
     {
         if (UnitCURIE == null) return null;
@@ -222,6 +251,7 @@ public record ArrayIndexEntry
         else return null;
     }
 
+    /// <summary>Gets the Apache Arrow type corresponding to the data type CURIE.</summary>
     public ArrowType GetArrowType()
     {
         switch (DataTypeCURIE)
@@ -253,6 +283,7 @@ public record ArrayIndexEntry
         }
     }
 
+    /// <summary>Creates a column name based on array metadata.</summary>
     public string CreateColumnName()
     {
         var notAlpha = new Regex("[^A-Za-z_]+");
@@ -277,28 +308,45 @@ public record ArrayIndexEntry
     }
 }
 
+/// <summary>
+/// Collection of array metadata entries with a common path prefix.
+/// </summary>
 public class ArrayIndex
 {
+    /// <summary>The common path prefix for all entries.</summary>
     [JsonPropertyName("prefix")]
     public string Prefix { get; set; }
 
+    /// <summary>The list of array metadata entries.</summary>
     [JsonPropertyName("entries")]
     public List<ArrayIndexEntry> Entries { get; set; }
 
+    /// <summary>Creates an empty array index.</summary>
     public ArrayIndex()
     {
         Prefix = "?";
         Entries = new();
     }
 
+    /// <summary>Creates an array index with the specified prefix and entries.</summary>
+    /// <param name="prefix">The common path prefix for all entries.</param>
+    /// <param name="entries">The list of array metadata entries.</param>
     public ArrayIndex(string prefix, List<ArrayIndexEntry> entries)
     {
         Prefix = prefix;
         Entries = entries;
     }
+
+    public bool HasArrayType(ArrayType arrayType)
+    {
+        return Entries.Find(entry => entry.GetArrayType() == arrayType) != null;
+    }
 }
 
 
+/// <summary>
+/// Builder for constructing <see cref="ArrayIndex"/> instances.
+/// </summary>
 public class ArrayIndexBuilder
 {
     string Prefix;
@@ -314,16 +362,27 @@ public class ArrayIndexBuilder
         Format = bufferFormat;
     }
 
+    /// <summary>Creates a builder for point-format arrays.</summary>
+    /// <param name="context">The buffer context (spectrum or chromatogram).</param>
     public static ArrayIndexBuilder PointBuilder(BufferContext context)
     {
         return new("point", context, BufferFormat.Point);
     }
 
+    /// <summary>Creates a builder for chunk-format arrays.</summary>
+    /// <param name="context">The buffer context (spectrum or chromatogram).</param>
     public static ArrayIndexBuilder ChunkBuilder(BufferContext context)
     {
         return new("chunk", context, BufferFormat.ChunkValues);
     }
 
+    /// <summary>Adds an array entry to the builder.</summary>
+    /// <param name="arrayType">The type of the array (e.g., m/z, intensity).</param>
+    /// <param name="dataType">The binary data type for storage.</param>
+    /// <param name="unit">Optional unit of measurement.</param>
+    /// <param name="sortingRank">Optional sorting rank.</param>
+    /// <param name="transform">Optional transform identifier.</param>
+    /// <param name="priority">Optional buffer priority.</param>
     public ArrayIndexBuilder Add(ArrayType arrayType, BinaryDataType dataType, Unit? unit = null, uint? sortingRank = null, string? transform = null, BufferPriority? priority = null)
     {
         var entry = new ArrayIndexEntry()
@@ -337,13 +396,22 @@ public class ArrayIndexBuilder
             Path = Prefix,
             SortingRank = sortingRank,
             Transform = transform,
-            BufferPriority = priority
+            BufferPriority = priority,
+            BufferFormat = BufferFormat.Point,
         };
         entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
         Entries.Add(entry);
         return this;
     }
 
+    public ArrayIndexBuilder Add(ArrayIndexEntry entry)
+    {
+        entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
+        Entries.Add(entry);
+        return this;
+    }
+
+    /// <summary>Assigns primary priority to the first entry of each array type without explicit priority.</summary>
     public void MarkPriorities()
     {
         Dictionary<ArrayType, int> indexOfFirst = new();
@@ -376,26 +444,79 @@ public class ArrayIndexBuilder
         }
     }
 
+    bool ApplyChunkedFormat()
+    {
+        if (Format != BufferFormat.ChunkValues)
+            return true;
+        bool foundMainAxis = false;
+        foreach(var entry in Entries.ToList())
+        {
+            if (entry.GetArrayType() == Context.DefaultPrimaryAxis() && entry.BufferPriority == BufferPriority.Primary)
+            {
+                var newEntry = entry with {BufferFormat = BufferFormat.ChunkStart};
+                newEntry.Path = $"{Prefix}.{newEntry.CreateColumnName()}_chunk_start";
+                Entries.Add(newEntry);
+                newEntry = entry with { BufferFormat = BufferFormat.ChunkEnd };
+                newEntry.Path = $"{Prefix}.{newEntry.CreateColumnName()}_chunk_end";
+                Entries.Add(newEntry);
+                newEntry = entry with { BufferFormat = BufferFormat.ChunkEncoding };
+                newEntry.Path = $"{Prefix}.chunk_encoding";
+                Entries.Add(newEntry);
+                entry.BufferFormat = BufferFormat.ChunkValues;
+                entry.Path = $"{entry.Path}_chunk_values";
+                foundMainAxis = true;
+            }
+            else if (entry.Transform != null && entry.Transform != NullInterpolation.NullZeroCURIE)
+            {
+                throw new NotImplementedException();
+            }
+            else
+            {
+                entry.BufferFormat = BufferFormat.ChunkSecondary;
+            }
+        }
+        return foundMainAxis;
+    }
+
+    /// <summary>Builds the final <see cref="ArrayIndex"/> instance.</summary>
     public ArrayIndex Build()
     {
         MarkPriorities();
+        if (!ApplyChunkedFormat()) throw new InvalidOperationException("Failed to infer which array to orient chunks around");
         return new ArrayIndex(Prefix, Entries);
     }
 }
 
 
+/// <summary>
+/// Represents an auxiliary data array with metadata for serialization.
+/// </summary>
 public class AuxiliaryArray : IHasParameters
 {
+    /// <summary>Raw byte data of the array.</summary>
     public Memory<byte> Data;
+    /// <summary>Parameter describing the array name and type.</summary>
     public Param Name;
+    /// <summary>The binary data type of the array elements.</summary>
     public BinaryDataType DataType;
+    /// <summary>Compression applied to the data.</summary>
     public Compression Compression;
+    /// <summary>Optional unit of measurement.</summary>
     public Unit? Unit;
+    /// <summary>Additional parameters describing the array.</summary>
     public List<Param> Parameters;
+    /// <summary>The Apache Arrow type for this array.</summary>
     public ArrowType ArrowType => DataType.ArrowType();
 
     List<Param> IHasParameters.Parameters { get => Parameters; set => Parameters = value; }
 
+    /// <summary>Creates an auxiliary array with the specified data and metadata.</summary>
+    /// <param name="data">The raw byte data.</param>
+    /// <param name="name">Parameter describing the array name and type.</param>
+    /// <param name="dataType">The binary data type.</param>
+    /// <param name="unit">Optional unit of measurement.</param>
+    /// <param name="compression">Compression method applied to the data.</param>
+    /// <param name="parameters">Optional additional parameters.</param>
     public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression = Compression.NoCompression, List<Param>? parameters = null)
     {
         Data = data;
@@ -406,6 +527,7 @@ public class AuxiliaryArray : IHasParameters
         Parameters = parameters ?? new();
     }
 
+    /// <summary>Returns a typed view of the array data.</summary>
     public ReadOnlySpan<T> View<T>() where T : struct
     {
         if (Compression == Compression.NoCompression) return Data.Span.CastTo<T>();
@@ -418,6 +540,10 @@ public class AuxiliaryArray : IHasParameters
         }
     }
 
+    /// <summary>Creates an auxiliary array from a list of values.</summary>
+    /// <typeparam name="T">The value type.</typeparam>
+    /// <param name="values">The list of values to store.</param>
+    /// <param name="entry">The array index entry providing metadata.</param>
     public static AuxiliaryArray FromValues<T>(List<T> values, ArrayIndexEntry entry) where T : struct
     {
         var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(values)).ToArray();
@@ -427,6 +553,9 @@ public class AuxiliaryArray : IHasParameters
         return new AuxiliaryArray(bytes, name, dataType, unit, Compression.NoCompression);
     }
 
+    /// <summary>Creates an auxiliary array from an Arrow array.</summary>
+    /// <param name="values">The Arrow array to convert.</param>
+    /// <param name="entry">The array index entry providing metadata.</param>
     public static AuxiliaryArray FromValues(IArrowArray values, ArrayIndexEntry entry)
     {
         switch (values.Data.DataType.TypeId)
@@ -456,6 +585,10 @@ public class AuxiliaryArray : IHasParameters
         }
     }
 
+    /// <summary>Creates an auxiliary array from a primitive Arrow array.</summary>
+    /// <typeparam name="T">The numeric value type.</typeparam>
+    /// <param name="values">The primitive Arrow array to convert.</param>
+    /// <param name="entry">The array index entry providing metadata.</param>
     public static AuxiliaryArray FromValues<T>(PrimitiveArray<T> values, ArrayIndexEntry entry) where T : struct, System.Numerics.INumber<T>
     {
         var bytes = values.ValueBuffer.Memory.ToArray();

@@ -781,6 +781,23 @@ public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrow
     }
 }
 
+/// <summary>
+/// Specifies how null values should be handled in aggregate computations.
+/// </summary>
+public enum NullHandling
+{
+    /// <summary>
+    /// Skip null values when computing the result.
+    /// Returns null only if the array is empty or all values are null.
+    /// </summary>
+    Skip,
+
+    /// <summary>
+    /// Propagate null: if any value in the array is null, return null.
+    /// </summary>
+    Propagate
+}
+
 public static class Chunking
 {
     public static List<(int, int)> ChunkEvery<T>(PrimitiveArray<T> data, T width) where T : struct, INumber<T>
@@ -874,9 +891,199 @@ public static class Compute
 {
     public static ILogger? Logger = null;
 
+    public static void PrettyPrintFormat(IArrowArray array, StreamWriter stream, int indent=0, string indenter="    ")
+    {
+
+        List<string> indenting = Enumerable.Repeat(indenter, indent).ToList();
+        string indentString = string.Concat(indenting);
+
+        stream.WriteLine($"{indentString}[");
+        var pad = indentString + indenter;
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Float:
+                {
+                    var valArray = (FloatArray)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.Double:
+                {
+                    var valArray = (DoubleArray)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    var valArray = (Int32Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    var valArray = (Int64Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    var valArray = (Int16Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    var valArray = (Int8Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    var valArray = (UInt8Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    var valArray = (UInt16Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    var valArray = (UInt32Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    var valArray = (UInt64Array)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.Boolean:
+                {
+                    var valArray = (BooleanArray)array;
+
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.HalfFloat:
+                {
+                    var valArray = (HalfFloatArray)array;
+                    foreach (var v in valArray)
+                    {
+                        stream.WriteLine($"{pad}{v}");
+                    }
+                    break;
+                }
+            case ArrowTypeId.List:
+                {
+                    var valArray = (ListArray)array;
+                    for(var i = 0; i < valArray.Length; i++)
+                    {
+                        if (valArray.IsNull(i))
+                        {
+                            stream.WriteLine($"{pad}{null}");
+                        }
+                        else
+                        {
+                            var slc = valArray.GetSlicedValues(i);
+                            PrettyPrintFormat(slc, stream, indent + 1, indenter);
+                        }
+                    }
+                    break;
+                }
+            case ArrowTypeId.String:
+                {
+                    var valArray = (StringArray)array;
+                    for (var i = 0; i < valArray.Length; i++)
+                    {
+                        if (valArray.IsNull(i))
+                        {
+                            stream.WriteLine($"{pad}{null}");
+                        }
+                        else
+                        {
+                            var slc = valArray.GetString(i);
+                            stream.WriteLine($"{pad}{slc}");
+                        }
+                    }
+                    break;
+                }
+            case ArrowTypeId.Struct:
+                {
+                    var dtype = (StructType)array.Data.DataType;
+                    var valArray = (StructArray)array;
+                    foreach(var (f, col) in dtype.Fields.Zip(valArray.Fields))
+                    {
+                        stream.WriteLine($"{indentString}{f.Name}: {f.DataType.Name}");
+                        PrettyPrintFormat(col, stream, indent + 1, indenter);
+                    }
+                    break;
+                }
+            default: throw new NotImplementedException($"{array.Data.DataType.Name}");
+        }
+        stream.WriteLine($"{indentString}]");
+    }
+
+    public static string PrettyPrintFormat(IArrowArray array, int indent=0, string indenter="    ")
+    {
+        using (var bufferStream = new MemoryStream())
+        {
+            var writer = new StreamWriter(bufferStream);
+            PrettyPrintFormat(array, writer, indent, indenter);
+            writer.Flush();
+            bufferStream.Seek(0, SeekOrigin.Begin);
+            var reader = new StreamReader(bufferStream);
+            var buff = reader.ReadToEnd();
+            return buff;
+        }
+    }
+
+    public static void PrettyPrint(IArrowArray array, int indent = 0, string indenter = "    ")
+    {
+        var text = PrettyPrintFormat(array, indent, indenter);
+        Console.WriteLine(text);
+    }
+
     static void NullToZero<T, TBuilder>(PrimitiveArray<T> array, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator)
         where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
+        accumulator.Reserve(array.Length);
         foreach (var value in array)
         {
             accumulator.Append(value == null ? T.Zero : (T)value);
@@ -886,6 +1093,7 @@ public static class Compute
     public static BooleanArray Invert(BooleanArray mask, MemoryAllocator? allocator = null)
     {
         var builder = new BooleanArray.Builder();
+        builder.Reserve(mask.Length);
         foreach (var val in mask)
         {
             if (val != null)
@@ -898,6 +1106,265 @@ public static class Compute
             }
         }
         return builder.Build(allocator);
+    }
+
+    public static BooleanArray And(BooleanArray lhs, BooleanArray rhs, MemoryAllocator? allocator = null)
+    {
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        var builder = new BooleanArray.Builder();
+        builder.Reserve(lhs.Length);
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            if (a != null && b != null)
+            {
+                builder.Append((bool)a && (bool)b);
+            }
+            else
+            {
+                builder.AppendNull();
+            }
+        }
+        return builder.Build(allocator);
+    }
+
+    public static BooleanArray Or(BooleanArray lhs, BooleanArray rhs, MemoryAllocator? allocator = null)
+    {
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        var builder = new BooleanArray.Builder();
+        builder.Reserve(lhs.Length);
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            if (a != null && b != null)
+            {
+                builder.Append((bool)a || (bool)b);
+            }
+            else
+            {
+                builder.AppendNull();
+            }
+        }
+        return builder.Build(allocator);
+    }
+
+    public static BooleanArray Xor(BooleanArray lhs, BooleanArray rhs, MemoryAllocator? allocator = null)
+    {
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        var builder = new BooleanArray.Builder();
+        builder.Reserve(lhs.Length);
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            if (a != null && b != null)
+            {
+                builder.Append((bool)a ^ (bool)b);
+            }
+            else
+            {
+                builder.AppendNull();
+            }
+        }
+        return builder.Build(allocator);
+    }
+
+    /// <summary>
+    /// Returns the minimum value in the array.
+    /// </summary>
+    /// <typeparam name="T">The numeric type of array elements.</typeparam>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The minimum value, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static T? Min<T>(PrimitiveArray<T> array, NullHandling nullHandling = NullHandling.Skip)
+        where T : struct, INumber<T>
+    {
+        if (array.Length == 0)
+            return null;
+
+        T? min = null;
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+            {
+                if (nullHandling == NullHandling.Propagate)
+                    return null;
+                continue;
+            }
+
+            if (min == null || (T)value < min)
+                min = value;
+        }
+        return min;
+    }
+
+    /// <summary>
+    /// Returns the maximum value in the array.
+    /// </summary>
+    /// <typeparam name="T">The numeric type of array elements.</typeparam>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The maximum value, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static T? Max<T>(PrimitiveArray<T> array, NullHandling nullHandling = NullHandling.Skip)
+        where T : struct, INumber<T>
+    {
+        if (array.Length == 0)
+            return null;
+
+        T? max = null;
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+            {
+                if (nullHandling == NullHandling.Propagate)
+                    return null;
+                continue;
+            }
+
+            if (max == null || (T)value > max)
+                max = value;
+        }
+        return max;
+    }
+
+    /// <summary>
+    /// Returns the index of the minimum value in the array (first occurrence).
+    /// </summary>
+    /// <typeparam name="T">The numeric type of array elements.</typeparam>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The index of the minimum value, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static int? ArgMin<T>(PrimitiveArray<T> array, NullHandling nullHandling = NullHandling.Skip)
+        where T : struct, INumber<T>
+    {
+        if (array.Length == 0)
+            return null;
+
+        T? min = null;
+        int? minIndex = null;
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+            {
+                if (nullHandling == NullHandling.Propagate)
+                    return null;
+                continue;
+            }
+
+            if (min == null || (T)value < min)
+            {
+                min = value;
+                minIndex = i;
+            }
+        }
+        return minIndex;
+    }
+
+    /// <summary>
+    /// Returns the index of the maximum value in the array (first occurrence).
+    /// </summary>
+    /// <typeparam name="T">The numeric type of array elements.</typeparam>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The index of the maximum value, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static int? ArgMax<T>(PrimitiveArray<T> array, NullHandling nullHandling = NullHandling.Skip)
+        where T : struct, INumber<T>
+    {
+        if (array.Length == 0)
+            return null;
+
+        T? max = null;
+        int? maxIndex = null;
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+            {
+                if (nullHandling == NullHandling.Propagate)
+                    return null;
+                continue;
+            }
+
+            if (max == null || (T)value > max)
+            {
+                max = value;
+                maxIndex = i;
+            }
+        }
+        return maxIndex;
+    }
+
+    /// <summary>
+    /// Returns the sum of all values in the array.
+    /// </summary>
+    /// <typeparam name="T">The numeric type of array elements.</typeparam>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The sum of values, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static T? Sum<T>(PrimitiveArray<T> array, NullHandling nullHandling = NullHandling.Skip)
+        where T : struct, INumber<T>
+    {
+        if (array.Length == 0)
+            return null;
+
+        T sum = T.Zero;
+        bool hasValue = false;
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+            {
+                if (nullHandling == NullHandling.Propagate)
+                    return null;
+                continue;
+            }
+
+            sum += (T)value;
+            hasValue = true;
+        }
+        return hasValue ? sum : null;
+    }
+
+    /// <summary>
+    /// Returns the arithmetic mean of all values in the array.
+    /// </summary>
+    /// <typeparam name="T">The numeric type of array elements.</typeparam>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The mean as a double, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static double? Mean<T>(PrimitiveArray<T> array, NullHandling nullHandling = NullHandling.Skip)
+        where T : struct, INumber<T>
+    {
+        if (array.Length == 0)
+            return null;
+
+        T sum = T.Zero;
+        long count = 0;
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+            {
+                if (nullHandling == NullHandling.Propagate)
+                    return null;
+                continue;
+            }
+
+            sum += (T)value;
+            count++;
+        }
+        return count > 0 ? double.CreateChecked(sum) / count : null;
     }
 
     public static PrimitiveArray<T> NullifyAt<T>(PrimitiveArray<T> array, BooleanArray mask)
@@ -1042,6 +1509,7 @@ public static class Compute
     public static Int64Array CastInt64<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new Int64Array.Builder();
+        builder.Reserve(array.Length);
         foreach (var val in array)
         {
             if (val != null) builder.Append(long.CreateChecked((T)val));
@@ -1053,6 +1521,7 @@ public static class Compute
     public static Int32Array CastInt32<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new Int32Array.Builder();
+        builder.Reserve(array.Length);
         foreach (var val in array)
         {
             if (val != null) builder.Append(int.CreateChecked((T)val));
@@ -1064,6 +1533,7 @@ public static class Compute
     public static FloatArray CastFloat<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new FloatArray.Builder();
+        builder.Reserve(array.Length);
         foreach (var val in array)
         {
             if (val != null) builder.Append(float.CreateChecked((T)val));
@@ -1075,6 +1545,7 @@ public static class Compute
     public static DoubleArray CastDouble<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new DoubleArray.Builder();
+        builder.Reserve(array.Length);
         foreach (var val in array)
         {
             if (val != null) builder.Append(double.CreateChecked((T)val));
@@ -1083,19 +1554,39 @@ public static class Compute
         return builder.Build(allocator);
     }
 
-    public static DoubleArray CastDouble<T>(T[] array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    public static DoubleArray CastDouble<T>(IList<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new DoubleArray.Builder();
+        builder.Reserve(array.Count);
         foreach (var val in array)
             builder.Append(double.CreateChecked(val));
         return builder.Build(allocator);
     }
 
-    public static FloatArray CastFloat<T>(T[] array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    public static FloatArray CastFloat<T>(IList<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new FloatArray.Builder();
+        builder.Reserve(array.Count);
         foreach (var val in array)
             builder.Append(float.CreateChecked(val));
+        return builder.Build(allocator);
+    }
+
+    public static Int32Array CastInt32<T>(IList<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var builder = new Int32Array.Builder();
+        builder.Reserve(array.Count);
+        foreach (var val in array)
+            builder.Append(int.CreateChecked(val));
+        return builder.Build(allocator);
+    }
+
+    public static Int64Array CastInt64<T>(IList<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var builder = new Int64Array.Builder();
+        builder.Reserve(array.Count);
+        foreach (var val in array)
+            builder.Append(long.CreateChecked(val));
         return builder.Build(allocator);
     }
 
@@ -1215,6 +1706,303 @@ public static class Compute
         }
     }
 
+    /// <summary>
+    /// Returns the minimum value in the array as a double.
+    /// </summary>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The minimum value as double, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static double? Min(IArrowArray array, NullHandling nullHandling = NullHandling.Skip)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return Min((DoubleArray)array, nullHandling);
+            case ArrowTypeId.Float:
+                {
+                    var result = Min((FloatArray)array, nullHandling);
+                    return result.HasValue ? (double)result.Value : null;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    var result = Min((Int32Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    var result = Min((Int64Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    var result = Min((UInt32Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    var result = Min((UInt64Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    var result = Min((Int16Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    var result = Min((Int8Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    var result = Min((UInt16Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    var result = Min((UInt8Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    /// <summary>
+    /// Returns the maximum value in the array as a double.
+    /// </summary>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The maximum value as double, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static double? Max(IArrowArray array, NullHandling nullHandling = NullHandling.Skip)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return Max((DoubleArray)array, nullHandling);
+            case ArrowTypeId.Float:
+                {
+                    var result = Max((FloatArray)array, nullHandling);
+                    return result.HasValue ? (double)result.Value : null;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    var result = Max((Int32Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    var result = Max((Int64Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    var result = Max((UInt32Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    var result = Max((UInt64Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    var result = Max((Int16Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    var result = Max((Int8Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    var result = Max((UInt16Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    var result = Max((UInt8Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    /// <summary>
+    /// Returns the index of the minimum value in the array.
+    /// </summary>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The index of the minimum value, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static int? ArgMin(IArrowArray array, NullHandling nullHandling = NullHandling.Skip)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return ArgMin((DoubleArray)array, nullHandling);
+            case ArrowTypeId.Float:
+                return ArgMin((FloatArray)array, nullHandling);
+            case ArrowTypeId.Int32:
+                return ArgMin((Int32Array)array, nullHandling);
+            case ArrowTypeId.Int64:
+                return ArgMin((Int64Array)array, nullHandling);
+            case ArrowTypeId.UInt32:
+                return ArgMin((UInt32Array)array, nullHandling);
+            case ArrowTypeId.UInt64:
+                return ArgMin((UInt64Array)array, nullHandling);
+            case ArrowTypeId.Int16:
+                return ArgMin((Int16Array)array, nullHandling);
+            case ArrowTypeId.Int8:
+                return ArgMin((Int8Array)array, nullHandling);
+            case ArrowTypeId.UInt16:
+                return ArgMin((UInt16Array)array, nullHandling);
+            case ArrowTypeId.UInt8:
+                return ArgMin((UInt8Array)array, nullHandling);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    /// <summary>
+    /// Returns the index of the maximum value in the array.
+    /// </summary>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The index of the maximum value, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static int? ArgMax(IArrowArray array, NullHandling nullHandling = NullHandling.Skip)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return ArgMax((DoubleArray)array, nullHandling);
+            case ArrowTypeId.Float:
+                return ArgMax((FloatArray)array, nullHandling);
+            case ArrowTypeId.Int32:
+                return ArgMax((Int32Array)array, nullHandling);
+            case ArrowTypeId.Int64:
+                return ArgMax((Int64Array)array, nullHandling);
+            case ArrowTypeId.UInt32:
+                return ArgMax((UInt32Array)array, nullHandling);
+            case ArrowTypeId.UInt64:
+                return ArgMax((UInt64Array)array, nullHandling);
+            case ArrowTypeId.Int16:
+                return ArgMax((Int16Array)array, nullHandling);
+            case ArrowTypeId.Int8:
+                return ArgMax((Int8Array)array, nullHandling);
+            case ArrowTypeId.UInt16:
+                return ArgMax((UInt16Array)array, nullHandling);
+            case ArrowTypeId.UInt8:
+                return ArgMax((UInt8Array)array, nullHandling);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    /// <summary>
+    /// Returns the sum of all values in the array as a double.
+    /// </summary>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The sum as double, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static double? Sum(IArrowArray array, NullHandling nullHandling = NullHandling.Skip)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return Sum((DoubleArray)array, nullHandling);
+            case ArrowTypeId.Float:
+                {
+                    var result = Sum((FloatArray)array, nullHandling);
+                    return result.HasValue ? (double)result.Value : null;
+                }
+            case ArrowTypeId.Int32:
+                {
+                    var result = Sum((Int32Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int64:
+                {
+                    var result = Sum((Int64Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    var result = Sum((UInt32Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    var result = Sum((UInt64Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int16:
+                {
+                    var result = Sum((Int16Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.Int8:
+                {
+                    var result = Sum((Int8Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    var result = Sum((UInt16Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    var result = Sum((UInt8Array)array, nullHandling);
+                    return result.HasValue ? result.Value : null;
+                }
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+    /// <summary>
+    /// Returns the arithmetic mean of all values in the array.
+    /// </summary>
+    /// <param name="array">The input array.</param>
+    /// <param name="nullHandling">How to handle null values.</param>
+    /// <returns>The mean as a double, or null if the array is empty, all values are null,
+    /// or nullHandling is Propagate and any null exists.</returns>
+    public static double? Mean(IArrowArray array, NullHandling nullHandling = NullHandling.Skip)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return Mean((DoubleArray)array, nullHandling);
+            case ArrowTypeId.Float:
+                return Mean((FloatArray)array, nullHandling);
+            case ArrowTypeId.Int32:
+                return Mean((Int32Array)array, nullHandling);
+            case ArrowTypeId.Int64:
+                return Mean((Int64Array)array, nullHandling);
+            case ArrowTypeId.UInt32:
+                return Mean((UInt32Array)array, nullHandling);
+            case ArrowTypeId.UInt64:
+                return Mean((UInt64Array)array, nullHandling);
+            case ArrowTypeId.Int16:
+                return Mean((Int16Array)array, nullHandling);
+            case ArrowTypeId.Int8:
+                return Mean((Int8Array)array, nullHandling);
+            case ArrowTypeId.UInt16:
+                return Mean((UInt16Array)array, nullHandling);
+            case ArrowTypeId.UInt8:
+                return Mean((UInt8Array)array, nullHandling);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
     public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
@@ -1236,6 +2024,175 @@ public static class Compute
             var a = lhs.GetValue(i);
             var b = rhs.GetValue(i);
             var flag = a == b;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray Equal(StringArray lhs, string rhs, MemoryAllocator? allocator = null)
+    {
+        var cmp = new BooleanArray.Builder();
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetString(i);
+            var flag = a == rhs;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray Equal(StringArray lhs, StringArray rhs, MemoryAllocator? allocator = null)
+    {
+        var cmp = new BooleanArray.Builder();
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetString(i);
+            var b = rhs.GetString(i);
+            var flag = a == b;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray Equal(LargeStringArray lhs, string rhs, MemoryAllocator? allocator = null)
+    {
+        var cmp = new BooleanArray.Builder();
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetString(i);
+            var flag = a == rhs;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray Equal(LargeStringArray lhs, LargeStringArray rhs, MemoryAllocator? allocator = null)
+    {
+        var cmp = new BooleanArray.Builder();
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetString(i);
+            var b = rhs.GetString(i);
+            var flag = a == b;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray Equal(IArrowArray lhs, string rhs, MemoryAllocator? allocator = null)
+    {
+        switch (lhs.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.String:
+                return Equal((StringArray)lhs, rhs, allocator);
+            case ArrowTypeId.LargeString:
+                return Equal((LargeStringArray)lhs, rhs, allocator);
+            default:
+                throw new InvalidDataException("Unsupported data type " + lhs.Data.DataType.Name);
+        }
+    }
+
+    public static BooleanArray GreaterThan<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var flag = a > rhs;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray GreaterThan<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            var flag = a > b;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray LessThan<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var flag = a < rhs;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray LessThan<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            var flag = a < b;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray GreaterThanOrEqual<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var flag = a >= rhs;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray GreaterThanOrEqual<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            var flag = a >= b;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray LessThanOrEqual<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var flag = a <= rhs;
+            cmp.Append(flag);
+        }
+        return cmp.Build(allocator);
+    }
+
+    public static BooleanArray LessThanOrEqual<T>(PrimitiveArray<T> lhs, PrimitiveArray<T> rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var cmp = new BooleanArray.Builder();
+        if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        for (int i = 0; i < lhs.Length; i++)
+        {
+            var a = lhs.GetValue(i);
+            var b = rhs.GetValue(i);
+            var flag = a <= b;
             cmp.Append(flag);
         }
         return cmp.Build(allocator);

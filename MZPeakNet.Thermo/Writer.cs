@@ -1,4 +1,6 @@
-﻿using MZPeak.ControlledVocabulary;
+﻿using Apache.Arrow;
+using MZPeak.Compute;
+using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
@@ -16,6 +18,7 @@ public struct IsolationWindow
     public double LowerMZ;
     public double TargetMZ;
     public double UpperMZ;
+    public double IsolationWidth;
 
     public IsolationWindow(double isolationWidth, double monoisotopicMZ, double isolationOffset)
     {
@@ -35,15 +38,15 @@ public struct IsolationWindow
                 Unit.MZ.CURIE()
             ),
             new Param(
-                IsolationWindowProperties.IsolationWindowLowerLimit.Name(),
-                IsolationWindowProperties.IsolationWindowLowerLimit.CURIE(),
-                LowerMZ,
+                IsolationWindowProperties.IsolationWindowLowerOffset.Name(),
+                IsolationWindowProperties.IsolationWindowLowerOffset.CURIE(),
+                TargetMZ - LowerMZ,
                 Unit.MZ.CURIE()
             ),
             new Param(
-                IsolationWindowProperties.IsolationWindowUpperLimit.Name(),
-                IsolationWindowProperties.IsolationWindowUpperLimit.CURIE(),
-                UpperMZ,
+                IsolationWindowProperties.IsolationWindowUpperOffset.Name(),
+                IsolationWindowProperties.IsolationWindowUpperOffset.CURIE(),
+                UpperMZ - TargetMZ,
                 Unit.MZ.CURIE()
             ),
         };
@@ -489,14 +492,49 @@ public class ConversionContextHelper
             return (null, acquisitionProperties);
         }
     }
+
+    int FirstSpectrum(IRawDataPlus accessor) => accessor.RunHeader.FirstSpectrum;
+    int LastSpectrum(IRawDataPlus accessor) => accessor.RunHeader.LastSpectrum;
+
+    public (ChromatogramInfo, List<IArrowArray>) ReadSummaryTrace(TraceType traceType, IRawDataPlus accessor)
+    {
+        var ticSettings = new ChromatogramTraceSettings(traceType);
+        var tic = accessor.GetChromatogramDataEx([ticSettings], FirstSpectrum(accessor), LastSpectrum(accessor));
+        var signals = ChromatogramSignal.FromChromatogramData(tic);
+        var signal = signals[0];
+
+        var times = Compute.Compute.CastDouble(signal.Times);
+        var intensities = Compute.Compute.CastDouble(signal.Intensities);
+        var info = traceType switch
+        {
+            TraceType.TIC => new ChromatogramInfo(0, "TIC", parameters: [
+                new Param(
+                    ChromatogramTypes.TotalIonCurrentChromatogram.Name(),
+                    ChromatogramTypes.TotalIonCurrentChromatogram.CURIE(), null),
+            ]),
+            TraceType.BasePeak => new ChromatogramInfo(0, "BPC", parameters: [
+                new Param(
+                    ChromatogramTypes.BasepeakChromatogram.Name(),
+                    ChromatogramTypes.BasepeakChromatogram.CURIE(), null),
+            ]),
+            _ => throw new NotImplementedException()
+        };
+
+        return (info, [times, intensities]);
+    }
 }
 
 
-public class ThermoMZPeakWriter
+public class ThermoMZPeakWriter : IDisposable
 {
     MZPeakWriter Writer;
-    Dictionary<ulong, int> ScanNumberToIndex;
+    Dictionary<int, ulong> ScanNumberToIndex;
     ConversionContextHelper ConversionHelper;
+    bool IncludeResolution;
+    bool IncludeCharge;
+
+    public ulong CurrentSpectrum => Writer.CurrentSpectrum;
+    public ulong CurrentChromatogram => Writer.CurrentChromatogram;
 
     protected static ArrayIndex DefaultSpectrumArrayIndex()
     {
@@ -506,20 +544,71 @@ public class ThermoMZPeakWriter
         return builder.Build();
     }
 
-    public ThermoMZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex = null, ArrayIndex? chromatogramArrayIndex = null)
+    public static ArrayIndex PeakArrayIndex(bool includeResolution=false, bool includeCharge=false)
+    {
+        var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        builder.Add(ArrayType.BaselineArray, BinaryDataType.Float32);
+        builder.Add(ArrayType.NoiseArray, BinaryDataType.Float32);
+        if (includeResolution)
+            builder.Add(ArrayType.ResolutionArray, BinaryDataType.Float32);
+        if (includeCharge)
+            builder.Add(ArrayType.ChargeArray, BinaryDataType.Int32);
+        return builder.Build();
+    }
+
+    public ThermoMZPeakWriter(IMZPeakArchiveWriter storage,
+                              ArrayIndex? spectrumArrayIndex = null,
+                              ArrayIndex? chromatogramArrayIndex = null,
+                              ArrayIndex? spectrumPeakArrayIndex=null)
     {
         if (spectrumArrayIndex == null)
         {
             spectrumArrayIndex = DefaultSpectrumArrayIndex();
         }
-        Writer = new MZPeakWriter(storage, spectrumArrayIndex);
+        Writer = new MZPeakWriter(
+            storage,
+            spectrumArrayIndex,
+            chromatogramArrayIndex,
+            includeSpectrumPeakData: spectrumPeakArrayIndex != null,
+            spectrumPeakArrayIndex: spectrumPeakArrayIndex);
         ScanNumberToIndex = new();
         ConversionHelper = new();
+        IncludeResolution = Writer.SpectrumPeaksHasArrayType(ArrayType.ResolutionArray);
+        IncludeCharge = Writer.SpectrumPeaksHasArrayType(ArrayType.ChargeArray);
     }
 
     public void InitializeHelper(IRawDataPlus accessor)
     {
         ConversionHelper.Initialize(accessor);
+    }
+
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
+    {
+        var isProfile = !stats.IsCentroidScan;
+        var mzArray = Compute.Compute.CastDouble(segments.Positions);
+        var intensityArray = Compute.Compute.CastFloat(segments.Intensities);
+        return Writer.AddSpectrumData(entryIndex, [mzArray, intensityArray], isProfile: isProfile);
+    }
+
+    public List<AuxiliaryArray> AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
+    {
+        if (centroids.Length == 0) return [];
+        var mzArray = Compute.Compute.CastDouble(centroids.Masses);
+        var intensityArray = Compute.Compute.CastFloat(centroids.Intensities);
+        var baselineArray = Compute.Compute.CastFloat(centroids.Baselines);
+        var noiseArray = Compute.Compute.CastFloat(centroids.Noises);
+        List<Apache.Arrow.Array> arrays = [mzArray, intensityArray, baselineArray, noiseArray];
+        if (IncludeCharge)
+        {
+            arrays.Add(Compute.Compute.CastInt32(centroids.Charges));
+        }
+        if (IncludeResolution)
+        {
+            arrays.Add(Compute.Compute.CastFloat(centroids.Resolutions));
+        }
+        return Writer.AddSpectrumPeakData(entryIndex, arrays).Item2;
     }
 
     Param GetMSLevel(IScanFilter scanFilter)
@@ -585,7 +674,7 @@ public class ThermoMZPeakWriter
 
         var id = $"controllerType=0 controllerNumber=1 scan={scanNumber + 1}";
         var index = Writer.AddSpectrum(id, time, null, spacingModel, paramList, auxiliaryArrays);
-        ScanNumberToIndex[index] = scanNumber;
+        ScanNumberToIndex[scanNumber] = index;
         return index;
     }
 
@@ -649,20 +738,21 @@ public class ThermoMZPeakWriter
         );
     }
 
-    public (PrecursorProperties?, AcquisitionProperties) ExtractPrecursorAndTrailerMetadata(int scanNumber, int msLevel, IRawDataPlus accessor, IScanFilter filter, ScanStatistics stats)
+    public (PrecursorProperties?, AcquisitionProperties) ExtractPrecursorAndTrailerMetadata(int scanNumber, IRawDataPlus accessor, IScanFilter filter, ScanStatistics stats)
     {
+        var msLevel = ConversionContextHelper.MSLevelMap[filter.MSOrder];
         return ConversionHelper.ExtractPrecursorAndTrailerMetadata(scanNumber, msLevel, filter, accessor, stats);
     }
 
     public void AddPrecursor(
         ulong sourceIndex,
-        ulong precursorIndex,
         PrecursorProperties precursorProperties,
         List<Param>? @activationParams = null
     )
     {
-        var precursorScanNumber = ScanNumberToIndex[precursorIndex];
-        var precursorId = $"controllerType=0 controllerNumber=1 scan={precursorScanNumber + 1}";
+
+        var precursorIndex = ScanNumberToIndex[precursorProperties.MasterScanNumber];
+        var precursorId = $"controllerType=0 controllerNumber=1 scan={precursorProperties.MasterScanNumber}";
         var activationParamList = @activationParams ?? new();
         activationParamList.AddRange(precursorProperties.Activation.AsParamList());
         Writer.AddPrecursor(
@@ -674,12 +764,12 @@ public class ThermoMZPeakWriter
         );
     }
 
-    public void AddSelectedIonMetadata(
+    public void AddSelectedIon(
         ulong sourceIndex,
-        ulong precursorIndex,
         PrecursorProperties precursorProperties
     )
     {
+        var precursorIndex = ScanNumberToIndex[precursorProperties.MasterScanNumber];
         List<Param> paramList = new()
         {
             new Param(
@@ -700,4 +790,50 @@ public class ThermoMZPeakWriter
             paramList
         );
     }
+
+    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => AddChromatogramData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => AddChromatogramData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => AddChromatogramData(entryIndex, arrays);
+
+    public ulong AddChromatogram(
+        string id,
+        string? dataProcessingRef,
+        List<Param>? chromatogramParams = null,
+        List<AuxiliaryArray>? auxiliaryArrays = null
+    )
+    {
+        return Writer.AddChromatogram(id, dataProcessingRef, chromatogramParams, auxiliaryArrays);
+    }
+
+    public void CloseCurrentWriter() => Writer.CloseCurrentWriter();
+    public void FlushSpectrumData() => Writer.FlushSpectrumData();
+    public void FlushSpectrumPeakData() => Writer.FlushSpectrumPeakData();
+
+    /// <summary>Starts writing spectrum peak data.</summary>
+    public void StartSpectrumPeakData() => Writer.StartSpectrumPeakData();
+
+    /// <summary>Writes spectrum metadata to the archive.</summary>
+    public void WriteSpectrumMetadata() => Writer.WriteSpectrumMetadata();
+
+    public void WriteChromatogramData() => Writer.WriteChromatogramData();
+    public void WriteChromatogramMetadata() => Writer.WriteChromatogramMetadata();
+
+    /// <summary>Closes the writer and finalizes the archive.</summary>
+    public void Close() => Writer.Close();
+
+    public void Dispose() => Close();
+
+    /// <summary>Gets or sets the file description metadata.</summary>
+    public FileDescription FileDescription { get => Writer.FileDescription; set => Writer.FileDescription = value; }
+    /// <summary>Gets or sets the list of instrument configurations.</summary>
+    public List<InstrumentConfiguration> InstrumentConfigurations { get => Writer.InstrumentConfigurations; set => Writer.InstrumentConfigurations = value; }
+    /// <summary>Gets or sets the list of software used.</summary>
+    public List<Software> Softwares { get => Writer.Softwares; set => Writer.Softwares = value; }
+    /// <summary>Gets or sets the list of samples.</summary>
+    public List<Sample> Samples { get => Writer.Samples; set => Writer.Samples = value; }
+    /// <summary>Gets or sets the list of data processing methods.</summary>
+    public List<DataProcessingMethod> DataProcessingMethods { get => Writer.DataProcessingMethods; set => Writer.DataProcessingMethods = value; }
+    /// <summary>Gets or sets the run-level metadata.</summary>
+    public MSRun Run { get => Writer.Run; set => Writer.Run = value; }
+
 }

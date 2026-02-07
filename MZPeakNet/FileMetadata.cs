@@ -12,12 +12,14 @@ using ParquetSharp;
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record FileDescription
 {
+    /// <summary>Creates an empty file description.</summary>
     public FileDescription()
     {
         Contents = new();
         SourceFiles = new();
     }
 
+    /// <summary>Creates an empty file description instance.</summary>
     public static FileDescription Empty()
     {
         return new FileDescription
@@ -50,6 +52,11 @@ public record FileDescription
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record SourceFile
 {
+    /// <summary>Creates a source file entry.</summary>
+    /// <param name="id">Unique identifier for this source file.</param>
+    /// <param name="name">Name of the source file without path.</param>
+    /// <param name="location">URI-encoded path to the source file.</param>
+    /// <param name="parameters">Additional parameters describing the file.</param>
     public SourceFile(string id, string name, string location, List<Param> parameters)
     {
         Id = id;
@@ -303,6 +310,13 @@ public record MSRun
     [JsonPropertyName("parameters")]
     public List<Param> Parameters { get; set; }
 
+    /// <summary>Creates an MS run with the specified parameters.</summary>
+    /// <param name="id">Unique identifier for the run.</param>
+    /// <param name="defaultDataProcessingId">Default data processing identifier.</param>
+    /// <param name="defaultInstrumentId">Default instrument configuration identifier.</param>
+    /// <param name="defaultSourceFileId">Default source file identifier.</param>
+    /// <param name="startTime">Optional acquisition start time.</param>
+    /// <param name="parameters">Optional additional parameters.</param>
     public MSRun(string id, string defaultDataProcessingId, int defaultInstrumentId, string defaultSourceFileId, DateTime? startTime = null, List<Param>? parameters = null)
     {
         Id = id;
@@ -313,6 +327,7 @@ public record MSRun
         Parameters = parameters ?? new();
     }
 
+    /// <summary>Creates an empty MS run.</summary>
     public MSRun()
     {
         Id = "";
@@ -360,6 +375,7 @@ public class MzPeakMetadata
     /// </summary>
     public MSRun Run { get; set; }
 
+    /// <summary>Creates an empty metadata container.</summary>
     public MzPeakMetadata()
     {
         FileDescription = new FileDescription
@@ -374,6 +390,13 @@ public class MzPeakMetadata
         Run = new();
     }
 
+    /// <summary>Creates metadata with the specified sections.</summary>
+    /// <param name="description">The file description.</param>
+    /// <param name="instrumentConfigurations">List of instrument configurations.</param>
+    /// <param name="softwares">List of software entries.</param>
+    /// <param name="samples">List of samples.</param>
+    /// <param name="dataProcessingMethods">List of data processing methods.</param>
+    /// <param name="run">The run-level metadata.</param>
     public MzPeakMetadata(FileDescription description,
                           List<InstrumentConfiguration> instrumentConfigurations,
                           List<Software> softwares,
@@ -389,6 +412,8 @@ public class MzPeakMetadata
         Run = run;
     }
 
+    /// <summary>Reads metadata from a Parquet file's key-value metadata.</summary>
+    /// <param name="reader">The Parquet file reader.</param>
     public static MzPeakMetadata FromParquet(ParquetFileReader reader)
     {
         var meta = reader.FileMetaData.KeyValueMetadata;

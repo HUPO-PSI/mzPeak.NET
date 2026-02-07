@@ -9,6 +9,31 @@
 
   <ItemGroup>
     <ProjectReference Include="../MZPeakNet/MZPeakNet.csproj" />
+    <ProjectReference Include="../MZPeakNet.Thermo/MZPeakNet.Thermo.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="ThermoFisher.CommonCore.BackgroundSubtraction">
+      <HintPath>../MZPeakNet.Thermo/lib/core/ThermoFisher.CommonCore.BackgroundSubtraction.dll</HintPath>
+    </Reference>
+    <Reference Include="ThermoFisher.CommonCore.Data">
+      <HintPath>../MZPeakNet.Thermo/lib/core/ThermoFisher.CommonCore.Data.dll</HintPath>
+    </Reference>
+    <Reference Include="ThermoFisher.CommonCore.MassPrecisionEstimator">
+      <HintPath>../MZPeakNet.Thermo/lib/core/ThermoFisher.CommonCore.MassPrecisionEstimator.dll</HintPath>
+    </Reference>
+    <Reference Include="ThermoFisher.CommonCore.RawFileReader">
+      <HintPath>../MZPeakNet.Thermo/lib/core/ThermoFisher.CommonCore.RawFileReader.dll</HintPath>
+    </Reference>
+    <Reference Include="ThermoFisher.CommonCore.RandomAccessReaderPlugin">
+      <HintPath>../MZPeakNet.Thermo/lib/core/ThermoFisher.CommonCore.RandomAccessReaderPlugin.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMcdf">
+      <HintPath>../MZPeakNet.Thermo/lib/core/OpenMcdf.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMcdf.Extensions">
+      <HintPath>../MZPeakNet.Thermo/lib/core/OpenMcdf.Extensions.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
