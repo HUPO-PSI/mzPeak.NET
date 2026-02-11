@@ -2,6 +2,8 @@ Prototype for reading [`mzPeak`](https://github.com/mobiusklein/mzpeak_prototypi
 
 ## Usage
 
+### Reading
+
 ```csharp
 using MZPeak.Reader;
 
@@ -40,6 +42,13 @@ await foreach (var (description, data) in reader.EnumerateChromatogramsAsync())
     Console.WriteLine($"  Points: {data.Length}");
 }
 ```
+
+
+### Writing
+
+TODO: Code sample
+
+See [MZPeakNet.AppTest/Program.cs] `TranscodeFile` or `ThermoTranslate`
 
 ## Status
 
