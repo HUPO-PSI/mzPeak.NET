@@ -405,18 +405,23 @@ public static class NullInterpolation
             bounds.Add((0, arrayValues.Length));
             return bounds;
         }
+        var startsWithNull = true;
+        var endsWithNull = true;
         if (nullHere[0] != 0)
         {
+            startsWithNull = false;
             List<int> tmp = [0, .. nullHere];
             nullHere = tmp;
         }
         if (nullHere.Last() != arrayValues.Length - 1)
         {
+            endsWithNull = false;
             nullHere.Add(arrayValues.Length);
         }
         if (nullHere.Count % 2 != 0)
         {
-            throw new InvalidDataException("The nulls in this data array are not properly paired");
+            // Compute.PrettyPrint(arrayValues);
+            throw new InvalidDataException($"The {nullHere.Count} nulls in this data array are not properly paired. Start with null? {startsWithNull}. Ends with null? {endsWithNull}");
         }
         for (int i = 0; i < nullHere.Count; i += 2)
         {
@@ -906,7 +911,10 @@ public static class Compute
                     var valArray = (FloatArray)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -915,7 +923,10 @@ public static class Compute
                     var valArray = (DoubleArray)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -924,7 +935,10 @@ public static class Compute
                     var valArray = (Int32Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -933,7 +947,10 @@ public static class Compute
                     var valArray = (Int64Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -942,7 +959,10 @@ public static class Compute
                     var valArray = (Int16Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -951,7 +971,10 @@ public static class Compute
                     var valArray = (Int8Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -960,7 +983,10 @@ public static class Compute
                     var valArray = (UInt8Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -969,7 +995,10 @@ public static class Compute
                     var valArray = (UInt16Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -978,7 +1007,10 @@ public static class Compute
                     var valArray = (UInt32Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -987,7 +1019,10 @@ public static class Compute
                     var valArray = (UInt64Array)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -997,7 +1032,10 @@ public static class Compute
 
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -1006,7 +1044,10 @@ public static class Compute
                     var valArray = (HalfFloatArray)array;
                     foreach (var v in valArray)
                     {
-                        stream.WriteLine($"{pad}{v}");
+                        if (v == null)
+                            stream.WriteLine($"{pad}null");
+                        else
+                            stream.WriteLine($"{pad}{v}");
                     }
                     break;
                 }
@@ -1017,7 +1058,7 @@ public static class Compute
                     {
                         if (valArray.IsNull(i))
                         {
-                            stream.WriteLine($"{pad}{null}");
+                            stream.WriteLine($"{pad}null");
                         }
                         else
                         {
@@ -1034,7 +1075,7 @@ public static class Compute
                     {
                         if (valArray.IsNull(i))
                         {
-                            stream.WriteLine($"{pad}{null}");
+                            stream.WriteLine($"{pad}null");
                         }
                         else
                         {
@@ -2253,7 +2294,7 @@ public static class Compute
         List<Array> chunks = new();
         for (var i = 0; i < indices.Count; i++)
         {
-            chunks.Add(array.Slice(i, 1));
+            chunks.Add(array.Slice(indices[i], 1));
         }
         return (Array)ArrowArrayConcatenator.Concatenate(chunks, allocator);
     }

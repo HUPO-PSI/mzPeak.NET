@@ -138,9 +138,9 @@ public class WriteTest
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
 
-        ChunkedArray? data = await reader.GetSpectrumData(0);
+        StructArray? data = await reader.GetSpectrumData(0);
         Assert.NotNull(data);
-        var chunk = (StructArray)data.Array(0);
+        var chunk = (StructArray)data;
         var n0 = chunk.Length;
 
         var intensities = (FloatArray)chunk.Fields[2];
@@ -153,7 +153,7 @@ public class WriteTest
 
         data = await reader.GetSpectrumData(1);
         Assert.NotNull(data);
-        chunk = (StructArray)data.Array(0);
+        chunk = data;
         var n1 = chunk.Length;
 
         writer.Add(1, [(Apache.Arrow.Array)chunk.Fields[1], (Apache.Arrow.Array)chunk.Fields[2]]);
@@ -191,7 +191,7 @@ public class WriteTest
         Assert.NotNull(meta0);
         var (deltaModel, auxArrays) = writer.AddSpectrumData(
             writer.CurrentSpectrum,
-            ((StructArray)dat0.Array(0)).Fields.Skip(1)
+            dat0.Fields.Skip(1)
         );
 
         var index = writer.AddSpectrum(

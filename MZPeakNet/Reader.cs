@@ -32,7 +32,7 @@ public class DataFacet<T>
 
     /// <summary>Gets the metadata and data arrays for a specific index.</summary>
     /// <param name="index">The entry index.</param>
-    public async Task<(T, ChunkedArray)> Get(ulong index)
+    public async Task<(T, StructArray)> Get(ulong index)
     {
         var meta = MetadataReader.Get(index);
         if (meta == null) throw new IndexOutOfRangeException();
@@ -278,7 +278,7 @@ public class MzPeakReader
 
     /// <summary>Gets the data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
-    public async Task<ChunkedArray?> GetSpectrumData(ulong index)
+    public async Task<StructArray?> GetSpectrumData(ulong index)
     {
         var reader = OpenSpectrumDataReader();
         if (reader == null) return null;
@@ -287,7 +287,7 @@ public class MzPeakReader
 
     /// <summary>Gets the peak data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
-    public async Task<ChunkedArray?> GetSpectrumPeaks(ulong index)
+    public async Task<StructArray?> GetSpectrumPeaks(ulong index)
     {
         var reader = OpenSpectrumPeaksDataReader();
         if (reader == null) return null;
@@ -296,7 +296,7 @@ public class MzPeakReader
 
     /// <summary>Gets the data arrays for a chromatogram by index.</summary>
     /// <param name="index">The chromatogram index.</param>
-    public async Task<ChunkedArray?> GetChromatogramData(ulong index)
+    public async Task<StructArray?> GetChromatogramData(ulong index)
     {
         var reader = OpenChromatogramDataReader();
         if (reader == null) return null;

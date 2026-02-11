@@ -671,7 +671,11 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
     {
         // Required CV terms
         new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int8Type()),
-        new CustomBuilderFromParam("MS:1000626", "chromatogram type", new StringType()),
+        new ChildTermParamBuilder(
+            "MS:1000626",
+            "chromatogram type",
+            ChromatogramTypesMethods.FromCURIE.Values.Select(v => v.CURIE()).ToList()
+        ),
         // Optional properties (commonly present)
         new CustomBuilderFromParam("MS:1003060", "number of data points", new Int64Type()),
     })

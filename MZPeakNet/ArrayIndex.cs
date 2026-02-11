@@ -10,6 +10,7 @@ using MZPeak.ControlledVocabulary;
 using MZPeak.Reader.Visitors;
 using System.Text.Json;
 using MZPeak.Compute;
+using System.Text;
 
 /// <summary>
 /// Specifies the layout format for data buffers in the storage layer.
@@ -184,7 +185,7 @@ static class BufferContexteMethods
 /// <summary>
 /// Describes metadata for a single data array within the storage format.
 /// </summary>
-public record ArrayIndexEntry
+public record ArrayIndexEntry : IEquatable<ArrayIndexEntry>
 {
     /// <summary>The data context (spectrum or chromatogram).</summary>
     [JsonPropertyName("context")]
@@ -287,7 +288,12 @@ public record ArrayIndexEntry
     public string CreateColumnName()
     {
         var notAlpha = new Regex("[^A-Za-z_]+");
-        var arrayName = notAlpha.Replace(ArrayName.Replace("m/z", "mz").Replace(" array", ""), "_");
+        var arrayName = notAlpha.Replace(
+                ArrayName.Replace("m/z", "mz")
+                    .Replace(" array", "")
+                    .Trim(),
+                "_"
+            );
         if (BufferPriority == Metadata.BufferPriority.Primary)
         {
             return arrayName;
@@ -297,14 +303,28 @@ public record ArrayIndexEntry
             var dtypeName = BinaryDataTypeMethods.FromCURIE[DataTypeCURIE].NameForColumn();
             var unitName = UnitCURIE != null ? UnitMethods.FromCURIE[UnitCURIE].NameForColumn() : null;
             if (unitName != null)
-            {
                 return string.Join("_", [arrayName, dtypeName, unitName]);
-            }
             else
             {
                 return string.Join("_", [arrayName, dtypeName]);
             }
         }
+    }
+
+    public override int GetHashCode()
+    {
+        return (ArrayName, DataTypeCURIE, Transform, UnitCURIE).GetHashCode();
+    }
+
+    public virtual bool Equals(ArrayIndexEntry? other)
+    {
+        if (other == null) return false;
+        return ArrayName == other.ArrayName &&
+             ArrayTypeCURIE == other.ArrayTypeCURIE &&
+             DataProcessesingId == other.DataProcessesingId &&
+             DataTypeCURIE == other.DataTypeCURIE &&
+             Transform == other.Transform &&
+             UnitCURIE == other.UnitCURIE;
     }
 }
 
@@ -340,6 +360,31 @@ public class ArrayIndex
     public bool HasArrayType(ArrayType arrayType)
     {
         return Entries.Find(entry => entry.GetArrayType() == arrayType) != null;
+    }
+
+    public IEnumerable<ArrayIndexEntry> EntriesFor(ArrayType arrayType)
+    {
+        return Entries.Where(a => a.ArrayTypeCURIE == arrayType.CURIE());
+    }
+
+    public BufferFormat? InferBufferFormat()
+    {
+        if (Entries[0].BufferFormat == BufferFormat.Point)
+            return BufferFormat.Point;
+        else
+        {
+            switch (Entries[0].BufferFormat)
+            {
+                case BufferFormat.ChunkEncoding:
+                case BufferFormat.ChunkSecondary:
+                case BufferFormat.ChunkEnd:
+                case BufferFormat.ChunkStart:
+                case BufferFormat.ChunkTransform:
+                case BufferFormat.ChunkValues:
+                    return BufferFormat.ChunkValues;
+            }
+        }
+        return null;
     }
 }
 
@@ -580,6 +625,10 @@ public class AuxiliaryArray : IHasParameters
                 return FromValues((UInt16Array)values, entry);
             case ArrowTypeId.UInt8:
                 return FromValues((UInt8Array)values, entry);
+            case ArrowTypeId.Boolean:
+                return FromValues((BooleanArray)values, entry);
+            case ArrowTypeId.String:
+                return FromValues((StringArray)values, entry);
             default:
                 throw new InvalidDataException("Unsupported data type " + values.Data.DataType.Name);
         }
@@ -591,10 +640,28 @@ public class AuxiliaryArray : IHasParameters
     /// <param name="entry">The array index entry providing metadata.</param>
     public static AuxiliaryArray FromValues<T>(PrimitiveArray<T> values, ArrayIndexEntry entry) where T : struct, System.Numerics.INumber<T>
     {
-        var bytes = values.ValueBuffer.Memory.ToArray();
+        var vals = values.Select(v => v == null ? T.Zero : (T)v).ToList();
+        return FromValues(vals, entry);
+    }
+
+    public static AuxiliaryArray FromValues(StringArray values, ArrayIndexEntry entry)
+    {
+        var buffer = new MemoryStream();
+        var stringWriter = new StreamWriter(buffer, Encoding.ASCII);
+        for(var i = 0; i < values.Length; i++)
+        {
+            if (values.IsNull(i))
+                stringWriter.Write('\0');
+            else
+            {
+                stringWriter.Write(values.GetString(i));
+                stringWriter.Write('\0');
+            }
+        }
         var name = new Param(entry.ArrayName, entry.ArrayTypeCURIE, null, entry.UnitCURIE);
         var dataType = BinaryDataTypeMethods.FromCURIE[entry.DataTypeCURIE];
         var unit = entry.GetUnit();
+        var bytes = new Memory<byte>(buffer.GetBuffer());
         return new AuxiliaryArray(bytes, name, dataType, unit, Compression.NoCompression);
     }
 }

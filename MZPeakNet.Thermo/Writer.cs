@@ -1,10 +1,16 @@
-﻿using Apache.Arrow;
+﻿using System.Reflection;
+using System.Text.RegularExpressions;
+
+using Apache.Arrow;
+using Apache.Arrow.Types;
+
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using MZPeak.Writer;
+
 using ThermoFisher.CommonCore.Data;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
@@ -66,6 +72,7 @@ public record ActivationProperties(ActivationType Dissociation, double Energy)
             ActivationType.HigherEnergyCollisionalDissociation => DissociationMethod.BeamTypeCollisionInducedDissociation,
             ActivationType.NegativeElectronTransferDissociation => DissociationMethod.NegativeElectronTransferDissociation,
             ActivationType.UltraVioletPhotoDissociation => DissociationMethod.UltravioletPhotodissociation,
+            ActivationType.Any => DissociationMethod.DissociationMethod,
             _ => throw new NotImplementedException($"{Dissociation} not mapped"),
         };
 
@@ -522,23 +529,499 @@ public class ConversionContextHelper
 
         return (info, [times, intensities]);
     }
+
+    public FileDescription GetFileDescription(IRawDataPlus accessor)
+    {
+        var descr = new FileDescription();
+        uint counter;
+        if (MSLevelCounts.TryGetValue(1, out counter) && counter > 0)
+            descr.Contents.Add(new Param(SpectrumType.Ms1Spectrum.Name(), SpectrumType.Ms1Spectrum.CURIE()));
+        if (MSLevelCounts.TryGetValue(2, out counter) && counter > 0)
+            descr.Contents.Add(new Param(SpectrumType.MsnSpectrum.Name(), SpectrumType.MsnSpectrum.CURIE()));
+
+        var path = accessor.Path;
+        if (path.Contains("\\"))
+        {
+            path = path.Replace("\\", "/");
+        }
+        path = "file:///" + path;
+
+        var sfile = new SourceFile(
+            "RAW1",
+            accessor.FileName,
+            path,
+            [
+                new Param(
+                    NativeIdentifierFormats.ThermoNativeidFormat.Name(),
+                    NativeIdentifierFormats.ThermoNativeidFormat.CURIE(),
+                    null)
+            ]);
+        descr.SourceFiles.Add(sfile);
+        return descr;
+    }
+
+    public List<ArrowStatusLog> StatusLogs(IRawDataPlus accessor)
+    {
+        var nEntries = accessor.GetStatusLogEntriesCount();
+
+        Dictionary<string, StatusLogBuilder> logs = new();
+
+        for (var i = 0; i < nEntries; i++)
+        {
+            var logsFor = accessor.GetStatusLogEntry(i);
+
+            foreach (var (datum, header) in logsFor.Values.Zip(accessor.GetStatusLogHeaderInformation()))
+            {
+                var dType = header.DataType;
+                if (dType == GenericDataTypes.NULL)
+                {
+                    continue;
+                }
+                switch (dType)
+                {
+                    case GenericDataTypes.YESNO:
+                    case GenericDataTypes.ONOFF:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int32(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (bool)datum);
+                            break;
+                        }
+                    case GenericDataTypes.Bool:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int32(header.Label));
+                            }
+
+                            logs[header.Label].Add(logsFor.Time, (bool)datum);
+                            break;
+                        }
+                    case GenericDataTypes.CHAR:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.String(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, datum.ToString() ?? "");
+                            break;
+                        }
+                    case GenericDataTypes.CHAR_STRING:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.String(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, datum.ToString() ?? "");
+                            break;
+                        }
+                    case GenericDataTypes.WCHAR_STRING:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.String(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (string)datum);
+                            break;
+                        }
+                    case GenericDataTypes.FLOAT:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Double(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (double)(float)datum);
+                            break;
+                        }
+                    case GenericDataTypes.DOUBLE:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Double(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (double)datum);
+                            break;
+                        }
+                    case GenericDataTypes.Int:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (int)datum);
+                            break;
+                        }
+                    case GenericDataTypes.ULONG:
+                        {
+
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (uint)datum);
+                            break;
+                        }
+                    case GenericDataTypes.SHORT:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (short)datum);
+                            break;
+                        }
+                    case GenericDataTypes.USHORT:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(logsFor.Time, (ushort)datum);
+                            break;
+                        }
+                    default:
+                        {
+                            System.Console.Error.WriteLine("Skipping {0} {1}", header.Label, header.DataType);
+                            break;
+                        }
+                }
+            }
+        }
+        var logArrays = logs.Values.Select(b => b.Build()).ToList();
+        return logArrays;
+    }
+
+    public List<InstrumentConfiguration> GetInstrumentConfigurations(IRawDataPlus accessor)
+    {
+        List<InstrumentConfiguration> configs = new();
+        var inst = accessor.GetInstrumentData();
+        var modelTerm = Instruments.GetInstrumentModel(inst.Model);
+        List<Param> instParams = [
+            modelTerm,
+            new Param("instrument serial number", "MS:1000529", inst.SerialNumber),
+        ];
+
+        // TODO: Generate actual instrument component lists here.
+
+        var conf1 = new InstrumentConfiguration()
+        {
+            Id = 0,
+            Components = [],
+            Parameters = instParams,
+            SoftwareReference = "mzpeak_thermo_rawfilereader",
+        };
+
+        configs.Add(conf1);
+        return configs;
+    }
+
+    public DataProcessingMethod GetDataProcessingMethod(IRawDataPlus accessor)
+    {
+        new ProcessingMethod()
+        {
+            Order = 1,
+            SoftwareReference = "mzpeak_thermo_rawfilereader",
+            Parameters = [
+
+            ]
+        };
+
+        var dpMethod = new DataProcessingMethod()
+        {
+            Id = "DP01",
+            ProcessingMethods = []
+        };
+
+        return dpMethod;
+    }
+
+    public List<Software> GetSoftwares(IRawDataPlus accessor)
+    {
+        var lib = Assembly.GetCallingAssembly();
+        var thisSoftware = new Software()
+        {
+            Id = "mzpeak_thermo_rawfilereader",
+            Version = lib.GetName()?.Version?.ToString() ?? "0.0rc",
+            Parameters = [
+                new Param("custom unreleased software tool", "MS:1000799", "mzpeak_thermo_rawfilereader")
+            ]
+        };
+
+        var inst = accessor.GetInstrumentData();
+
+        var xcaliburSoftware = new Software()
+        {
+            Id = "XcaliburSW",
+            Version = inst.SoftwareVersion,
+            Parameters = [new Param("Xcalibur", "MS:1000532", null)]
+        };
+
+        return [xcaliburSoftware, thisSoftware];
+    }
+
+    public Sample GetSample(IRawDataPlus accessor)
+    {
+        var sinfo = accessor.SampleInformation;
+        var sample = new Sample()
+        {
+            Id = sinfo.SampleId,
+            Name = sinfo.SampleName,
+            Parameters = []
+        };
+
+        sample.Parameters.AddRange([
+            new Param("sample vial", sinfo.Vial),
+            new Param("sample comment", sinfo.Comment),
+            new Param("sample barcode", sinfo.Barcode),
+            new Param("sample row number", sinfo.RowNumber),
+            new Param("thermo:sample type", sinfo.SampleType.ToString()),
+            new Param("thermo:dilution factor", sinfo.DilutionFactor),
+            new Param("user text", string.Join("\n", sinfo.UserText.Select(v => v.ToString()))),
+            new Param(
+                    SampleProperties.SampleVolume.Name(),
+                    SampleProperties.SampleVolume.CURIE(),
+                    sinfo.SampleVolume,
+                    Unit.Milliliter.CURIE()),
+            new Param(
+                    SampleProperties.SampleMass.Name(),
+                    SampleProperties.SampleMass.CURIE(),
+                    sinfo.SampleWeight,
+                    Unit.Gram.CURIE()),
+        ]);
+
+        return sample;
+    }
 }
 
+public class StatusLogBuilder
+{
+    public string Name;
+    public IArrowArrayBuilder Data;
+    public DoubleArray.Builder Time;
+    public IArrowType DataType;
+
+    public static StatusLogBuilder Int(string name)
+    {
+        return new(name, new Int64Array.Builder(), new Int64Type());
+    }
+
+    public static StatusLogBuilder Double(string name)
+    {
+        return new(name, new DoubleArray.Builder(), new DoubleType());
+    }
+
+    public static StatusLogBuilder Int32(string name)
+    {
+        return new(name, new Int32Array.Builder(), new Int32Type());
+    }
+
+    public static StatusLogBuilder String(string name)
+    {
+        return new(name, new StringArray.Builder(), new StringType());
+    }
+
+    public void Add(double time, double value)
+    {
+        if (DataType.TypeId != ArrowTypeId.Double)
+            throw new InvalidCastException();
+        ((DoubleArray.Builder)Data).Append(value);
+        Time.Append(time);
+    }
+
+    public void Add(double time, long value)
+    {
+        if (DataType.TypeId != ArrowTypeId.Int64)
+            throw new InvalidCastException();
+        ((Int64Array.Builder)Data).Append(value);
+        Time.Append(time);
+    }
+
+    public void Add(double time, bool value)
+    {
+        if (DataType.TypeId != ArrowTypeId.Int32)
+            throw new InvalidCastException();
+        ((Int32Array.Builder)Data).Append(value ? 1 : 0);
+        Time.Append(time);
+    }
+
+    public void Add(double time, string value)
+    {
+        if (DataType.TypeId != ArrowTypeId.String)
+            throw new InvalidCastException();
+        ((StringArray.Builder)Data).Append(value);
+        Time.Append(time);
+    }
+
+    protected StatusLogBuilder(string name, IArrowArrayBuilder data, IArrowType dataType)
+    {
+        Name = name;
+        Data = data;
+        Time = new DoubleArray.Builder();
+        DataType = dataType;
+    }
+
+    public ArrowStatusLog Build()
+    {
+        return new ArrowStatusLog(Name.Trim(':'), Time.Build(), DataType.TypeId switch
+        {
+            ArrowTypeId.Int64 => ((Int64Array.Builder)Data).Build(),
+            ArrowTypeId.Double => ((DoubleArray.Builder)Data).Build(),
+            ArrowTypeId.Int32 => ((Int32Array.Builder)Data).Build(),
+            ArrowTypeId.String => ((StringArray.Builder)Data).Build(),
+            _ => throw new NotImplementedException(DataType.Name)
+        }, DataType);
+    }
+}
+
+
+public record ArrowStatusLog {
+
+    public string Name {get; set; }
+    public DoubleArray Time {get; set; }
+    public Apache.Arrow.Array Data {get; set; }
+    public IArrowType DataType {get; set; }
+
+    public ArrowStatusLog(string name, DoubleArray time, Apache.Arrow.Array data, IArrowType dataType)
+    {
+        Name = name;
+        Time = time;
+        Data = data;
+        DataType = dataType;
+    }
+
+    public (ChromatogramInfo, Dictionary<ArrayIndexEntry, Apache.Arrow.Array>) AsChromatogramInfo()
+    {
+        var info = new ChromatogramInfo(0, Name, null, 0, [
+            new Param(
+                ChromatogramTypes.ChromatogramType.Name(),
+                ChromatogramTypes.ChromatogramType.CURIE(), null)
+        ]);
+
+        var timeKey = new ArrayIndexEntry()
+        {
+            ArrayName = ArrayType.TimeArray.Name(),
+            ArrayTypeCURIE = ArrayType.TimeArray.CURIE(),
+            Context = BufferContext.Chromatogram,
+            DataTypeCURIE = BinaryDataType.Float64.CURIE(),
+            UnitCURIE = Unit.Minute.CURIE(),
+            Path = "",
+            SortingRank = 1,
+            BufferPriority = BufferPriority.Primary,
+            SchemaIndex = 1,
+        };
+        timeKey.Path = $"point.{timeKey.CreateColumnName()}";
+
+        var dataKey = new ArrayIndexEntry()
+        {
+            ArrayName = Name,
+            ArrayTypeCURIE = ArrayType.NonStandardDataArray.CURIE(),
+            Context = BufferContext.Chromatogram,
+            DataTypeCURIE = DataType.TypeId switch
+            {
+                ArrowTypeId.Double => BinaryDataType.Float64.CURIE(),
+                ArrowTypeId.Int64 => BinaryDataType.Int64.CURIE(),
+                ArrowTypeId.Int32 => BinaryDataType.Int32.CURIE(),
+                ArrowTypeId.String => BinaryDataType.ASCII.CURIE(),
+                _ => throw new NotImplementedException()
+            },
+            Path = ""
+        };
+        var unitPattern = new Regex(@"(.+)\s*?\((.+)\)");
+        var match = unitPattern.Match(Name);
+        if (match.Success)
+        {
+            var name = match.Groups[1];
+            var unitName = match.Groups[2];
+            switch (unitName.Value) {
+                case "°C":
+                case "C":
+                    {
+                        dataKey.UnitCURIE = Unit.DegreeCelsius.CURIE();
+                        Name = info.Id = name.Value.Trim();
+                        break;
+                    }
+                case "psi":
+                    {
+                        dataKey.UnitCURIE = Unit.Pascal.CURIE();
+                        Name = info.Id = name.Value.Trim();
+                        break;
+                    }
+                case "V":
+                    {
+                        dataKey.UnitCURIE = Unit.Volt.CURIE();
+                        Name = info.Id = name.Value.Trim();
+                        break;
+                    }
+                // case "MHz":
+                //     {
+                //         dataKey.UnitCURIE = Unit.Hertz.CURIE();
+                //         Name = info.Id = name.Value.Trim();
+                //         break;
+                //     }
+                case "Hz":
+                    {
+                        dataKey.UnitCURIE = Unit.Hertz.CURIE();
+                        Name = info.Id = name.Value.Trim();
+                        break;
+                    }
+                case "Watts":
+                case "Ohm":
+                case "Amps":
+                    {
+                        break;
+                    }
+                case "%":
+                    {
+                        dataKey.UnitCURIE = Unit.Percent.CURIE();
+                        Name = info.Id = name.Value.Trim();
+                        break;
+                    }
+                case "mm":
+                    {
+                        // dataKey.UnitCURIE = Unit.Micrometer.CURIE();
+                        break;
+                    }
+                case "uL/min":
+                    {
+                        dataKey.UnitCURIE = Unit.MicrolitersPerMinute.CURIE();
+                        Name = info.Id = name.Value.Trim();
+                        break;
+                    }
+                default:
+                    {
+                        break;
+                    }
+            }
+        }
+
+        dataKey.ArrayName = Name.Trim();
+        dataKey.Path = $"point.{dataKey.CreateColumnName()}";
+
+        Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays = new()
+        {
+            { timeKey, Time },
+            { dataKey, Data }
+        };
+        return (info, arrays);
+    }
+}
 
 public class ThermoMZPeakWriter : IDisposable
 {
     MZPeakWriter Writer;
     Dictionary<int, ulong> ScanNumberToIndex;
-    ConversionContextHelper ConversionHelper;
+    public ConversionContextHelper ConversionHelper { get; protected set; }
     bool IncludeResolution;
     bool IncludeCharge;
 
     public ulong CurrentSpectrum => Writer.CurrentSpectrum;
     public ulong CurrentChromatogram => Writer.CurrentChromatogram;
 
-    protected static ArrayIndex DefaultSpectrumArrayIndex()
+    protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked=false)
     {
-        var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
+        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
@@ -558,21 +1041,28 @@ public class ThermoMZPeakWriter : IDisposable
         return builder.Build();
     }
 
+
+    public ArrayIndex SpectrumArrayIndex => Writer.SpectrumArrayIndex;
+    public ArrayIndex ChromatogramArrayIndex => Writer.ChromatogramArrayIndex;
+    public ArrayIndex? SpectrumPeakArrayIndex => Writer.SpectrumPeakArrayIndex;
+
     public ThermoMZPeakWriter(IMZPeakArchiveWriter storage,
                               ArrayIndex? spectrumArrayIndex = null,
                               ArrayIndex? chromatogramArrayIndex = null,
-                              ArrayIndex? spectrumPeakArrayIndex=null)
+                              ArrayIndex? spectrumPeakArrayIndex = null,
+                              bool useChunked = false)
     {
         if (spectrumArrayIndex == null)
         {
-            spectrumArrayIndex = DefaultSpectrumArrayIndex();
+            spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
         }
         Writer = new MZPeakWriter(
             storage,
             spectrumArrayIndex,
             chromatogramArrayIndex,
             includeSpectrumPeakData: spectrumPeakArrayIndex != null,
-            spectrumPeakArrayIndex: spectrumPeakArrayIndex);
+            spectrumPeakArrayIndex: spectrumPeakArrayIndex,
+            useChunked: useChunked);
         ScanNumberToIndex = new();
         ConversionHelper = new();
         IncludeResolution = Writer.SpectrumPeaksHasArrayType(ArrayType.ResolutionArray);
@@ -582,6 +1072,12 @@ public class ThermoMZPeakWriter : IDisposable
     public void InitializeHelper(IRawDataPlus accessor)
     {
         ConversionHelper.Initialize(accessor);
+
+        Samples = [ConversionHelper.GetSample(accessor)];
+        InstrumentConfigurations = ConversionHelper.GetInstrumentConfigurations(accessor);
+        FileDescription = ConversionHelper.GetFileDescription(accessor);
+        Softwares = ConversionHelper.GetSoftwares(accessor);
+        DataProcessingMethods = [ConversionHelper.GetDataProcessingMethod(accessor)];
     }
 
     public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
@@ -751,8 +1247,13 @@ public class ThermoMZPeakWriter : IDisposable
     )
     {
 
-        var precursorIndex = ScanNumberToIndex[precursorProperties.MasterScanNumber];
-        var precursorId = $"controllerType=0 controllerNumber=1 scan={precursorProperties.MasterScanNumber}";
+        ulong precursorIndex;
+        string? precursorId = null;
+
+        if (ScanNumberToIndex.TryGetValue(precursorProperties.MasterScanNumber, out precursorIndex))
+        {
+            precursorId = $"controllerType=0 controllerNumber=1 scan={precursorProperties.MasterScanNumber}";
+        }
         var activationParamList = @activationParams ?? new();
         activationParamList.AddRange(precursorProperties.Activation.AsParamList());
         Writer.AddPrecursor(
@@ -769,7 +1270,9 @@ public class ThermoMZPeakWriter : IDisposable
         PrecursorProperties precursorProperties
     )
     {
-        var precursorIndex = ScanNumberToIndex[precursorProperties.MasterScanNumber];
+        ulong precursorIndex;
+        if (!ScanNumberToIndex.TryGetValue(precursorProperties.MasterScanNumber, out precursorIndex)) { }
+
         List<Param> paramList = new()
         {
             new Param(
@@ -791,9 +1294,9 @@ public class ThermoMZPeakWriter : IDisposable
         );
     }
 
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => AddChromatogramData(entryIndex, arrays);
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => AddChromatogramData(entryIndex, arrays);
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => AddChromatogramData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
 
     public ulong AddChromatogram(
         string id,

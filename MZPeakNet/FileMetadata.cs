@@ -69,25 +69,25 @@ public record SourceFile
     /// A unique identifier for this source file.
     /// </summary>
     [JsonPropertyName("id")]
-    public required string Id { get; set; }
+    public string Id { get; set; }
 
     /// <summary>
     /// The name of the source file, not including parent directory.
     /// </summary>
     [JsonPropertyName("name")]
-    public required string Name { get; set; }
+    public string Name { get; set; }
 
     /// <summary>
     /// The path to the source file, URI encoded. May include file:// protocols and UNC paths.
     /// </summary>
     [JsonPropertyName("location")]
-    public required string Location { get; set; }
+    public string Location { get; set; }
 
     /// <summary>
     /// Additional parameters describing this source file, like checksums, nativeID format, or file format.
     /// </summary>
     [JsonPropertyName("parameters")]
-    public required List<Param> Parameters { get; set; }
+    public List<Param> Parameters { get; set; }
 }
 
 /// <summary>

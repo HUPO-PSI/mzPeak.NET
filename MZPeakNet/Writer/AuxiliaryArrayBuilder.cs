@@ -24,6 +24,7 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
         Unit = new();
         DataProcessingRef = new();
         Parameters = new();
+        Data.Append();
     }
 
     public int Length => Name.Length;
@@ -88,6 +89,7 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
         Compression.Clear();
         Unit.Clear();
         DataProcessingRef.Clear();
+        Data.Append();
     }
 }
 

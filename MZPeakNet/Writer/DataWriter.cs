@@ -211,7 +211,7 @@ public abstract class BaseLayoutBuilder
 
         foreach (var (k, v) in notCoveredArrays)
         {
-            // ($"{k} is treated as an auxiliary array");
+            // Console.WriteLine($"{k} is treated as an auxiliary array");
             arrays.Remove(k);
             auxiliaryArrays.Add(AuxiliaryArray.FromValues(v, k));
         }
@@ -470,7 +470,10 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 
 public class ChunkLayoutBuilder : BaseLayoutBuilder
 {
-    public string MainAxisEncodingCURIE { get; set; }
+    public string DefaultMainAxisEncodingCURIE { get; set; }
+
+    public string CurrentMainAxisEncodingCURIE { get; set; }
+
     public double ChunkSize { get; set; } = 50.0;
     public ArrayIndexEntry MainAxisEntry {get; set;}
 
@@ -481,7 +484,8 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
 
     public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE=DeltaCodec.CURIE, double chunkSize=50.0) : base(arrayIndex)
     {
-        MainAxisEncodingCURIE = mainAxisEncodingCURIE;
+        DefaultMainAxisEncodingCURIE = mainAxisEncodingCURIE;
+        CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
         ChunkSize = chunkSize;
         MainAxisEntry = arrayIndex.Entries.Find(
             entry => entry.BufferFormat == BufferFormat.ChunkValues) ?? throw new InvalidDataException(
@@ -581,6 +585,14 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
     public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
+        if (isProfile != null && (bool)isProfile)
+        {
+            CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
+        }
+        else if (isProfile != null && !(bool)isProfile)
+        {
+            CurrentMainAxisEncodingCURIE = NoCompressionCodec.CURIE;
+        }
         var mainAxis = arrays[MainAxisEntry];
 
         var spans = Chunking.ChunkEvery(mainAxis, ChunkSize);
@@ -640,7 +652,7 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
                 default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
             }
 
-            if (MainAxisEncodingCURIE == DeltaCodec.CURIE)
+            if (CurrentMainAxisEncodingCURIE == DeltaCodec.CURIE)
             {
                 ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(DeltaCodec.CURIE);
                 switch (MainAxisEntry.GetArrowType().TypeId)
@@ -663,7 +675,7 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
                     default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
                 }
             }
-            else if (MainAxisEncodingCURIE == NoCompressionCodec.CURIE)
+            else if (CurrentMainAxisEncodingCURIE == NoCompressionCodec.CURIE)
             {
                 ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(NoCompressionCodec.CURIE);
                 switch (MainAxisEntry.GetArrowType().TypeId)
@@ -685,7 +697,7 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
                     default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
                 }
             }
-            else throw new NotImplementedException(MainAxisEncodingCURIE);
+            else throw new NotImplementedException(CurrentMainAxisEncodingCURIE);
 
             foreach (var entry in ArrayIndex.Entries)
             {
@@ -709,7 +721,7 @@ public class ChunkLayoutBuilder : BaseLayoutBuilder
         }
 
         NumberOfPoints += (ulong)mainAxis.Length;
-
+        CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
         return (deltaModel, auxiliaryArrays);
     }
 

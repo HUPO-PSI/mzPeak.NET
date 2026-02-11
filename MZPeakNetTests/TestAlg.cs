@@ -84,7 +84,7 @@ public class NullInterpolationTest
         var specData = await reader.GetSpectrumData(0);
         Assert.NotNull(specData);
 
-        var chunk = (StructArray)specData.Array(0);
+        var chunk = specData;
         Assert.Equal(0, chunk.NullCount);
 
         var mzsArr = (DoubleArray)chunk.Fields[1];
@@ -115,7 +115,7 @@ public class NullInterpolationTest
         var specData = await reader.GetSpectrumData(0);
         Assert.NotNull(specData);
 
-        var chunk = (StructArray)specData.Array(0);
+        var chunk = specData;
         Assert.Equal(0, chunk.NullCount);
 
         var mzsArr = (DoubleArray)chunk.Fields[1];

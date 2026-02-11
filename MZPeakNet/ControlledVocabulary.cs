@@ -1905,6 +1905,340 @@ public static class ChromatogramTypesMethods
     }
 }
 
+public enum SampleProperties
+{
+    SampleAttribute,
+    SampleNumber,
+    SampleName,
+    SampleState,
+    SampleMass,
+    SampleVolume,
+    SampleConcentration,
+    SampleBatch,
+    LabelFreeSample,
+    SampleLabel,
+    Emulsion,
+    GaseousSampleState,
+    LiquidSampleState,
+    SolidSampleState,
+    Solution,
+    Suspension,
+    IcatReagent,
+    IcplReagent,
+    SilacReagent,
+    TmtReagent,
+    ItraqReagent,
+    DiartReagent,
+    DileuReagent,
+    IcatHeavyReagent,
+    IcatLightReagent,
+    IcplReagent0,
+    IcplReagent4,
+    IcplReagent6,
+    IcplReagent10,
+    SilacHeavyReagent,
+    SilacMediumReagent,
+    SilacLightReagent,
+    TmtReagent126,
+    TmtReagent127,
+    TmtReagent128,
+    TmtReagent129,
+    TmtReagent130,
+    TmtReagent131,
+    TmtReagent127N,
+    TmtReagent127C,
+    TmtReagent128N,
+    TmtReagent128C,
+    TmtReagent129N,
+    TmtReagent129C,
+    TmtReagent130N,
+    TmtReagent130C,
+    ItraqReagent113,
+    ItraqReagent114,
+    ItraqReagent115,
+    ItraqReagent116,
+    ItraqReagent117,
+    ItraqReagent118,
+    ItraqReagent119,
+    ItraqReagent121,
+    DiartReagent114,
+    DiartReagent115,
+    DiartReagent116,
+    DiartReagent117,
+    DiartReagent118,
+    DiartReagent119,
+    DileuReagent115,
+    DileuReagent116,
+    DileuReagent117,
+    DileuReagent118,
+}
+
+public static class SamplePropertiesMethods
+{
+
+    public static readonly Dictionary<string, SampleProperties> FromCURIE = new Dictionary<string, SampleProperties>(
+        ((SampleProperties[])Enum.GetValues(typeof(SampleProperties))).Select((v) => new KeyValuePair<string, SampleProperties>(v.CURIE(), v))
+    );
+
+
+    public static string Name(this SampleProperties term)
+    {
+        switch (term)
+        {
+            case SampleProperties.SampleAttribute: return "sample attribute";
+            case SampleProperties.SampleNumber: return "sample number";
+            case SampleProperties.SampleName: return "sample name";
+            case SampleProperties.SampleState: return "sample state";
+            case SampleProperties.SampleMass: return "sample mass";
+            case SampleProperties.SampleVolume: return "sample volume";
+            case SampleProperties.SampleConcentration: return "sample concentration";
+            case SampleProperties.SampleBatch: return "sample batch";
+            case SampleProperties.LabelFreeSample: return "label free sample";
+            case SampleProperties.SampleLabel: return "sample label";
+            case SampleProperties.Emulsion: return "emulsion";
+            case SampleProperties.GaseousSampleState: return "gaseous sample state";
+            case SampleProperties.LiquidSampleState: return "liquid sample state";
+            case SampleProperties.SolidSampleState: return "solid sample state";
+            case SampleProperties.Solution: return "solution";
+            case SampleProperties.Suspension: return "suspension";
+            case SampleProperties.IcatReagent: return "ICAT reagent";
+            case SampleProperties.IcplReagent: return "ICPL reagent";
+            case SampleProperties.SilacReagent: return "SILAC reagent";
+            case SampleProperties.TmtReagent: return "TMT reagent";
+            case SampleProperties.ItraqReagent: return "iTRAQ reagent";
+            case SampleProperties.DiartReagent: return "DiART reagent";
+            case SampleProperties.DileuReagent: return "DiLeu reagent";
+            case SampleProperties.IcatHeavyReagent: return "ICAT heavy reagent";
+            case SampleProperties.IcatLightReagent: return "ICAT light reagent";
+            case SampleProperties.IcplReagent0: return "ICPL reagent 0";
+            case SampleProperties.IcplReagent4: return "ICPL reagent 4";
+            case SampleProperties.IcplReagent6: return "ICPL reagent 6";
+            case SampleProperties.IcplReagent10: return "ICPL reagent 10";
+            case SampleProperties.SilacHeavyReagent: return "SILAC heavy reagent";
+            case SampleProperties.SilacMediumReagent: return "SILAC medium reagent";
+            case SampleProperties.SilacLightReagent: return "SILAC light reagent";
+            case SampleProperties.TmtReagent126: return "TMT reagent 126";
+            case SampleProperties.TmtReagent127: return "TMT reagent 127";
+            case SampleProperties.TmtReagent128: return "TMT reagent 128";
+            case SampleProperties.TmtReagent129: return "TMT reagent 129";
+            case SampleProperties.TmtReagent130: return "TMT reagent 130";
+            case SampleProperties.TmtReagent131: return "TMT reagent 131";
+            case SampleProperties.TmtReagent127N: return "TMT reagent 127N";
+            case SampleProperties.TmtReagent127C: return "TMT reagent 127C";
+            case SampleProperties.TmtReagent128N: return "TMT reagent 128N";
+            case SampleProperties.TmtReagent128C: return "TMT reagent 128C";
+            case SampleProperties.TmtReagent129N: return "TMT reagent 129N";
+            case SampleProperties.TmtReagent129C: return "TMT reagent 129C";
+            case SampleProperties.TmtReagent130N: return "TMT reagent 130N";
+            case SampleProperties.TmtReagent130C: return "TMT reagent 130C";
+            case SampleProperties.ItraqReagent113: return "iTRAQ reagent 113";
+            case SampleProperties.ItraqReagent114: return "iTRAQ reagent 114";
+            case SampleProperties.ItraqReagent115: return "iTRAQ reagent 115";
+            case SampleProperties.ItraqReagent116: return "iTRAQ reagent 116";
+            case SampleProperties.ItraqReagent117: return "iTRAQ reagent 117";
+            case SampleProperties.ItraqReagent118: return "iTRAQ reagent 118";
+            case SampleProperties.ItraqReagent119: return "iTRAQ reagent 119";
+            case SampleProperties.ItraqReagent121: return "iTRAQ reagent 121";
+            case SampleProperties.DiartReagent114: return "DiART reagent 114";
+            case SampleProperties.DiartReagent115: return "DiART reagent 115";
+            case SampleProperties.DiartReagent116: return "DiART reagent 116";
+            case SampleProperties.DiartReagent117: return "DiART reagent 117";
+            case SampleProperties.DiartReagent118: return "DiART reagent 118";
+            case SampleProperties.DiartReagent119: return "DiART reagent 119";
+            case SampleProperties.DileuReagent115: return "DiLeu reagent 115";
+            case SampleProperties.DileuReagent116: return "DiLeu reagent 116";
+            case SampleProperties.DileuReagent117: return "DiLeu reagent 117";
+            case SampleProperties.DileuReagent118: return "DiLeu reagent 118";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this SampleProperties term)
+    {
+        switch (term)
+        {
+            case SampleProperties.SampleAttribute: return "MS:1000548";
+            case SampleProperties.SampleNumber: return "MS:1000001";
+            case SampleProperties.SampleName: return "MS:1000002";
+            case SampleProperties.SampleState: return "MS:1000003";
+            case SampleProperties.SampleMass: return "MS:1000004";
+            case SampleProperties.SampleVolume: return "MS:1000005";
+            case SampleProperties.SampleConcentration: return "MS:1000006";
+            case SampleProperties.SampleBatch: return "MS:1000053";
+            case SampleProperties.LabelFreeSample: return "MS:1002038";
+            case SampleProperties.SampleLabel: return "MS:1002602";
+            case SampleProperties.Emulsion: return "MS:1000047";
+            case SampleProperties.GaseousSampleState: return "MS:1000048";
+            case SampleProperties.LiquidSampleState: return "MS:1000049";
+            case SampleProperties.SolidSampleState: return "MS:1000050";
+            case SampleProperties.Solution: return "MS:1000051";
+            case SampleProperties.Suspension: return "MS:1000052";
+            case SampleProperties.IcatReagent: return "MS:1002603";
+            case SampleProperties.IcplReagent: return "MS:1002606";
+            case SampleProperties.SilacReagent: return "MS:1002611";
+            case SampleProperties.TmtReagent: return "MS:1002615";
+            case SampleProperties.ItraqReagent: return "MS:1002622";
+            case SampleProperties.DiartReagent: return "MS:1002771";
+            case SampleProperties.DileuReagent: return "MS:1002778";
+            case SampleProperties.IcatHeavyReagent: return "MS:1002604";
+            case SampleProperties.IcatLightReagent: return "MS:1002605";
+            case SampleProperties.IcplReagent0: return "MS:1002607";
+            case SampleProperties.IcplReagent4: return "MS:1002608";
+            case SampleProperties.IcplReagent6: return "MS:1002609";
+            case SampleProperties.IcplReagent10: return "MS:1002610";
+            case SampleProperties.SilacHeavyReagent: return "MS:1002612";
+            case SampleProperties.SilacMediumReagent: return "MS:1002613";
+            case SampleProperties.SilacLightReagent: return "MS:1002614";
+            case SampleProperties.TmtReagent126: return "MS:1002616";
+            case SampleProperties.TmtReagent127: return "MS:1002617";
+            case SampleProperties.TmtReagent128: return "MS:1002618";
+            case SampleProperties.TmtReagent129: return "MS:1002619";
+            case SampleProperties.TmtReagent130: return "MS:1002620";
+            case SampleProperties.TmtReagent131: return "MS:1002621";
+            case SampleProperties.TmtReagent127N: return "MS:1002763";
+            case SampleProperties.TmtReagent127C: return "MS:1002764";
+            case SampleProperties.TmtReagent128N: return "MS:1002765";
+            case SampleProperties.TmtReagent128C: return "MS:1002766";
+            case SampleProperties.TmtReagent129N: return "MS:1002767";
+            case SampleProperties.TmtReagent129C: return "MS:1002768";
+            case SampleProperties.TmtReagent130N: return "MS:1002769";
+            case SampleProperties.TmtReagent130C: return "MS:1002770";
+            case SampleProperties.ItraqReagent113: return "MS:1002623";
+            case SampleProperties.ItraqReagent114: return "MS:1002624";
+            case SampleProperties.ItraqReagent115: return "MS:1002625";
+            case SampleProperties.ItraqReagent116: return "MS:1002626";
+            case SampleProperties.ItraqReagent117: return "MS:1002627";
+            case SampleProperties.ItraqReagent118: return "MS:1002628";
+            case SampleProperties.ItraqReagent119: return "MS:1002629";
+            case SampleProperties.ItraqReagent121: return "MS:1002630";
+            case SampleProperties.DiartReagent114: return "MS:1002772";
+            case SampleProperties.DiartReagent115: return "MS:1002773";
+            case SampleProperties.DiartReagent116: return "MS:1002774";
+            case SampleProperties.DiartReagent117: return "MS:1002775";
+            case SampleProperties.DiartReagent118: return "MS:1002776";
+            case SampleProperties.DiartReagent119: return "MS:1002777";
+            case SampleProperties.DileuReagent115: return "MS:1002779";
+            case SampleProperties.DileuReagent116: return "MS:1002780";
+            case SampleProperties.DileuReagent117: return "MS:1002781";
+            case SampleProperties.DileuReagent118: return "MS:1002782";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
+public enum NativeIdentifierFormats
+{
+    NativeSpectrumIdentifierFormat,
+    ThermoNativeidFormat,
+    WatersNativeidFormat,
+    WiffNativeidFormat,
+    BrukerAgilentYepNativeidFormat,
+    BrukerBafNativeidFormat,
+    BrukerFidNativeidFormat,
+    MultiplePeakListNativeidFormat,
+    SinglePeakListNativeidFormat,
+    ScanNumberOnlyNativeidFormat,
+    SpectrumIdentifierNativeidFormat,
+    BrukerU2NativeidFormat,
+    NoNativeidFormat,
+    ShimadzuBiotechNativeidFormat,
+    MobilionMbiNativeidFormat,
+    SciexTofTofNativeidFormat,
+    AgilentMasshunterNativeidFormat,
+    SpectrumFromDatabaseIntegerNativeidFormat,
+    MascotQueryNumber,
+    SpectrumFromProteinscapeDatabaseNativeidFormat,
+    SpectrumFromDatabaseStringNativeidFormat,
+    SciexTofTofT2DNativeidFormat,
+    ScaffoldNativeidFormat,
+    BrukerContainerNativeidFormat,
+    UimfNativeidFormat,
+    BrukerTdfNativeidFormat,
+    ShimadzuBiotechQtofNativeidFormat,
+    BrukerTsfNativeidFormat,
+}
+
+public static class NativeIdentifierFormatsMethods
+{
+
+    public static readonly Dictionary<string, NativeIdentifierFormats> FromCURIE = new Dictionary<string, NativeIdentifierFormats>(
+        ((NativeIdentifierFormats[])Enum.GetValues(typeof(NativeIdentifierFormats))).Select((v) => new KeyValuePair<string, NativeIdentifierFormats>(v.CURIE(), v))
+    );
+
+    public static string Name(this NativeIdentifierFormats term)
+    {
+        switch (term)
+        {
+            case NativeIdentifierFormats.NativeSpectrumIdentifierFormat: return "native spectrum identifier format";
+            case NativeIdentifierFormats.ThermoNativeidFormat: return "Thermo nativeID format";
+            case NativeIdentifierFormats.WatersNativeidFormat: return "Waters nativeID format";
+            case NativeIdentifierFormats.WiffNativeidFormat: return "WIFF nativeID format";
+            case NativeIdentifierFormats.BrukerAgilentYepNativeidFormat: return "Bruker/Agilent YEP nativeID format";
+            case NativeIdentifierFormats.BrukerBafNativeidFormat: return "Bruker BAF nativeID format";
+            case NativeIdentifierFormats.BrukerFidNativeidFormat: return "Bruker FID nativeID format";
+            case NativeIdentifierFormats.MultiplePeakListNativeidFormat: return "multiple peak list nativeID format";
+            case NativeIdentifierFormats.SinglePeakListNativeidFormat: return "single peak list nativeID format";
+            case NativeIdentifierFormats.ScanNumberOnlyNativeidFormat: return "scan number only nativeID format";
+            case NativeIdentifierFormats.SpectrumIdentifierNativeidFormat: return "spectrum identifier nativeID format";
+            case NativeIdentifierFormats.BrukerU2NativeidFormat: return "Bruker U2 nativeID format";
+            case NativeIdentifierFormats.NoNativeidFormat: return "no nativeID format";
+            case NativeIdentifierFormats.ShimadzuBiotechNativeidFormat: return "Shimadzu Biotech nativeID format";
+            case NativeIdentifierFormats.MobilionMbiNativeidFormat: return "Mobilion MBI nativeID format";
+            case NativeIdentifierFormats.SciexTofTofNativeidFormat: return "SCIEX TOF/TOF nativeID format";
+            case NativeIdentifierFormats.AgilentMasshunterNativeidFormat: return "Agilent MassHunter nativeID format";
+            case NativeIdentifierFormats.SpectrumFromDatabaseIntegerNativeidFormat: return "spectrum from database integer nativeID format";
+            case NativeIdentifierFormats.MascotQueryNumber: return "Mascot query number";
+            case NativeIdentifierFormats.SpectrumFromProteinscapeDatabaseNativeidFormat: return "spectrum from ProteinScape database nativeID format";
+            case NativeIdentifierFormats.SpectrumFromDatabaseStringNativeidFormat: return "spectrum from database string nativeID format";
+            case NativeIdentifierFormats.SciexTofTofT2DNativeidFormat: return "SCIEX TOF/TOF T2D nativeID format";
+            case NativeIdentifierFormats.ScaffoldNativeidFormat: return "Scaffold nativeID format";
+            case NativeIdentifierFormats.BrukerContainerNativeidFormat: return "Bruker Container nativeID format";
+            case NativeIdentifierFormats.UimfNativeidFormat: return "UIMF nativeID format";
+            case NativeIdentifierFormats.BrukerTdfNativeidFormat: return "Bruker TDF nativeID format";
+            case NativeIdentifierFormats.ShimadzuBiotechQtofNativeidFormat: return "Shimadzu Biotech QTOF nativeID format";
+            case NativeIdentifierFormats.BrukerTsfNativeidFormat: return "Bruker TSF nativeID format";
+            default: throw new InvalidOperationException();
+        }
+    }
+
+    public static string CURIE(this NativeIdentifierFormats term)
+    {
+        switch (term)
+        {
+            case NativeIdentifierFormats.NativeSpectrumIdentifierFormat: return "MS:1000767";
+            case NativeIdentifierFormats.ThermoNativeidFormat: return "MS:1000768";
+            case NativeIdentifierFormats.WatersNativeidFormat: return "MS:1000769";
+            case NativeIdentifierFormats.WiffNativeidFormat: return "MS:1000770";
+            case NativeIdentifierFormats.BrukerAgilentYepNativeidFormat: return "MS:1000771";
+            case NativeIdentifierFormats.BrukerBafNativeidFormat: return "MS:1000772";
+            case NativeIdentifierFormats.BrukerFidNativeidFormat: return "MS:1000773";
+            case NativeIdentifierFormats.MultiplePeakListNativeidFormat: return "MS:1000774";
+            case NativeIdentifierFormats.SinglePeakListNativeidFormat: return "MS:1000775";
+            case NativeIdentifierFormats.ScanNumberOnlyNativeidFormat: return "MS:1000776";
+            case NativeIdentifierFormats.SpectrumIdentifierNativeidFormat: return "MS:1000777";
+            case NativeIdentifierFormats.BrukerU2NativeidFormat: return "MS:1000823";
+            case NativeIdentifierFormats.NoNativeidFormat: return "MS:1000824";
+            case NativeIdentifierFormats.ShimadzuBiotechNativeidFormat: return "MS:1000929";
+            case NativeIdentifierFormats.MobilionMbiNativeidFormat: return "MS:1001186";
+            case NativeIdentifierFormats.SciexTofTofNativeidFormat: return "MS:1001480";
+            case NativeIdentifierFormats.AgilentMasshunterNativeidFormat: return "MS:1001508";
+            case NativeIdentifierFormats.SpectrumFromDatabaseIntegerNativeidFormat: return "MS:1001526";
+            case NativeIdentifierFormats.MascotQueryNumber: return "MS:1001528";
+            case NativeIdentifierFormats.SpectrumFromProteinscapeDatabaseNativeidFormat: return "MS:1001531";
+            case NativeIdentifierFormats.SpectrumFromDatabaseStringNativeidFormat: return "MS:1001532";
+            case NativeIdentifierFormats.SciexTofTofT2DNativeidFormat: return "MS:1001559";
+            case NativeIdentifierFormats.ScaffoldNativeidFormat: return "MS:1001562";
+            case NativeIdentifierFormats.BrukerContainerNativeidFormat: return "MS:1002303";
+            case NativeIdentifierFormats.UimfNativeidFormat: return "MS:1002532";
+            case NativeIdentifierFormats.BrukerTdfNativeidFormat: return "MS:1002818";
+            case NativeIdentifierFormats.ShimadzuBiotechQtofNativeidFormat: return "MS:1002898";
+            case NativeIdentifierFormats.BrukerTsfNativeidFormat: return "MS:1003283";
+            default: throw new InvalidOperationException();
+        }
+    }
+}
+
+
 public record ColumnParam
 {
     public string Name;
@@ -2020,10 +2354,16 @@ public class Param
         return rawValue == null;
     }
 
+    public bool ValidateValueType()
+    {
+        return IsNull() || IsLong() || IsDouble() || IsBoolean() || IsString();
+    }
+
     public Param(string name, object? rawValue)
     {
         Name = name;
         this.rawValue = rawValue;
+        ValidateValueType();
     }
 
     public Param(string name, string? accession, object? rawValue)
@@ -2031,6 +2371,7 @@ public class Param
         Name = name;
         AccessionCURIE = accession;
         this.rawValue = rawValue;
+        ValidateValueType();
     }
 
     public Param(string name, string? accession, object? rawValue, string? unit)
@@ -2039,6 +2380,7 @@ public class Param
         AccessionCURIE = accession;
         this.rawValue = rawValue;
         UnitCURIE = unit;
+        ValidateValueType();
     }
 
     public string AsString()
@@ -2203,6 +2545,10 @@ public class ParamJsonConverter : JsonConverter<Param>
         else if (value.IsNull())
         {
             writer.WriteNull("value");
+        }
+        else
+        {
+            throw new InvalidCastException($"Could not determine how to coerce {value.rawValue} of type {value.rawValue?.GetType()}");
         }
 
         writer.WriteString("unit", value.UnitCURIE);

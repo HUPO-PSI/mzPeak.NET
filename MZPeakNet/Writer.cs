@@ -2,7 +2,6 @@ namespace MZPeak.Writer;
 
 using System.Text.Json;
 using Apache.Arrow;
-using Apache.Arrow.Types;
 using Microsoft.Extensions.Logging;
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
@@ -75,25 +74,36 @@ public class MZPeakWriter : IDisposable
     /// <summary>Gets or sets the run-level metadata.</summary>
     public MSRun Run { get => MzPeakMetadata.Run; set => MzPeakMetadata.Run = value; }
 
-    protected static ArrayIndex DefaultSpectrumArrayIndex()
+    protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)
     {
-        var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
+        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
 
-    protected static ArrayIndex DefaultChromatogramArrayIndex()
+    protected static ArrayIndex DefaultChromatogramArrayIndex(bool useChunked = false)
     {
-        var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Chromatogram);
-        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.Minute, 1);
+        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Chromatogram) : ArrayIndexBuilder.PointBuilder(BufferContext.Chromatogram);
+        builder.Add(ArrayType.TimeArray, BinaryDataType.Float64, Unit.Minute, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
 
-    /// <summary>Starts writing spectrum data arrays.</summary>
-    public void StartSpectrumData()
+    protected ParquetSharp.SchemaDescriptor TranslateSchema(Schema schema)
     {
+        var stream = new MemoryStream();
+        var tmp = new FileWriter(new ParquetSharp.IO.ManagedOutputStream(stream), schema);
+        tmp.Close();
+        stream.Seek(0, SeekOrigin.Begin);
+        var reader = new ParquetSharp.ParquetFileReader(stream);
+        return reader.FileMetaData.Schema;
+    }
+
+    /// <summary>Starts writing spectrum data arrays.</summary>
+    public virtual void StartSpectrumData()
+    {
+        CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
         var stream = Storage.OpenStream(entry);
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
@@ -103,21 +113,43 @@ public class MZPeakWriter : IDisposable
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
+            .DisableDictionary($"{SpectrumData.LayoutName()}.{SpectrumData.BufferContext.IndexName()}")
             .Encoding(
-                $"{SpectrumData.LayoutName}.{SpectrumData.BufferContext.IndexName()}",
+                $"{SpectrumData.LayoutName()}.{SpectrumData.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
-            );
+            ).DataPagesize(
+                (long)Math.Pow(1024, 2)
+            ).MaxRowGroupLength(1024 * 1024 * 4);
 
+
+        /* Three-fold API workaround
+            Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
+                   ParquetSharp doesn't have a one-shot conversion method.
+            Step 2: Traverse the the index to find entries with metadata matches and then traverse the ParquetSchema
+                    which are exact or prefix matches. This makes matching list element columns easier.
+            Step 3: Disable the dictionary encoding, because the underlying C++ library **always** falls back to PLAIN encoding
+                    when the dictionary page is too large, and THEN set the desired encoding.
+        */
+        var schema = SpectrumData.ArrowSchema();
+        var parquetSchema = TranslateSchema(schema);
         foreach (var arrayType in SpectrumData.ArrayIndex.Entries)
         {
-            if (arrayType.GetArrayType() == ArrayType.MZArray)
+            if (arrayType.ArrayTypeCURIE == ArrayType.MZArray.CURIE() && arrayType.BufferFormat != BufferFormat.ChunkEncoding)
             {
-                writerProps = writerProps.Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
+                for(var i = 0; i < parquetSchema.NumColumns; i++)
+                {
+                    var descr = parquetSchema.Column(i);
+                    var path = descr.Path.ToDotString();
+                    if (arrayType.Path == path || path.StartsWith(arrayType.Path + "."))
+                    {
+                        writerProps = writerProps.DisableDictionary(descr.Path).Encoding(descr.Path, ParquetSharp.Encoding.ByteStreamSplit);
+                    }
+                }
             }
         }
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-        var schema = SpectrumData.ArrowSchema();
+
         var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
 
         State = WriterState.SpectrumData;
@@ -125,8 +157,58 @@ public class MZPeakWriter : IDisposable
         CurrentEntry = entry;
     }
 
+    /// <summary>Starts writing chromatogram data arrays.</summary>
+    public virtual void StartChromatogramData()
+    {
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .EnableDictionary()
+            .EnableStatistics()
+            .DataPagesize(1024 * 1024)
+            .DisableDictionary($"{ChromatogramData.LayoutName()}.{ChromatogramData.BufferContext.IndexName()}")
+            .Encoding(
+                $"{ChromatogramData.LayoutName()}.{ChromatogramData.BufferContext.IndexName()}",
+                ParquetSharp.Encoding.DeltaBinaryPacked
+            )
+            .MaxRowGroupLength(1024 * 1024 * 5)
+            .EnableWritePageIndex();
+
+        /* Three-fold API workaround
+            Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
+                   ParquetSharp doesn't have a one-shot conversion method.
+            Step 2: Traverse the the index to find entries with metadata matches and then traverse the ParquetSchema
+                    which are exact or prefix matches. This makes matching list element columns easier.
+            Step 3: Disable the dictionary encoding, because the underlying C++ library **always** falls back to PLAIN encoding
+                    when the dictionary page is too large, and THEN set the desired encoding.
+        */
+        var schema = ChromatogramData.ArrowSchema();
+        var parquetSchema = TranslateSchema(schema);
+        foreach (var arrayType in SpectrumData.ArrayIndex.Entries)
+        {
+            if (arrayType.ArrayTypeCURIE == ArrayType.TimeArray.CURIE() && arrayType.BufferFormat != BufferFormat.ChunkEncoding)
+            {
+                for (var i = 0; i < parquetSchema.NumColumns; i++)
+                {
+                    var descr = parquetSchema.Column(i);
+                    var path = descr.Path.ToDotString();
+                    if (arrayType.Path == path || path.StartsWith(arrayType.Path + "."))
+                    {
+                        writerProps = writerProps.DisableDictionary(descr.Path).Encoding(descr.Path, ParquetSharp.Encoding.ByteStreamSplit);
+                    }
+                }
+            }
+        }
+
+        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        CurrentEntry = entry;
+        CurrentWriter = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
+    }
+
     /// <summary>Closes the current file writer.</summary>
-    public void CloseCurrentWriter()
+    public virtual void CloseCurrentWriter()
     {
         if (CurrentEntry != null)
         {
@@ -136,10 +218,15 @@ public class MZPeakWriter : IDisposable
         }
     }
 
+    public ArrayIndex SpectrumArrayIndex => SpectrumData.ArrayIndex;
+    public ArrayIndex ChromatogramArrayIndex => ChromatogramData.ArrayIndex;
+    public ArrayIndex? SpectrumPeakArrayIndex => SpectrumPeakData?.ArrayIndex;
+
     /// <summary>Starts writing spectrum peak data.</summary>
-    public void StartSpectrumPeakData()
+    public virtual void StartSpectrumPeakData()
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException();
+        CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
         var stream = Storage.OpenStream(entry);
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
@@ -149,15 +236,20 @@ public class MZPeakWriter : IDisposable
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
+            .DisableDictionary($"{SpectrumPeakData.LayoutName()}.{SpectrumPeakData.BufferContext.IndexName()}")
             .Encoding(
-                $"{SpectrumPeakData.LayoutName}.{SpectrumPeakData.BufferContext.IndexName()}",
+                $"{SpectrumPeakData.LayoutName()}.{SpectrumPeakData.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
-            );
+            ).DataPagesize(
+                (long)Math.Pow(1024, 2)
+            ).MaxRowGroupLength(1024 * 1024 * 4);
 
         foreach (var arrayType in SpectrumPeakData.ArrayIndex.Entries)
         {
-            if (arrayType.GetArrayType() == ArrayType.MZArray)
-                writerProps = writerProps.Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
+            if (arrayType.ArrayTypeCURIE == ArrayType.MZArray.CURIE())
+                writerProps = writerProps
+                    .DisableDictionary(arrayType.Path)
+                    .Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
         }
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
@@ -175,14 +267,33 @@ public class MZPeakWriter : IDisposable
     /// <param name="chromatogramArrayIndex">Optional custom chromatogram array index.</param>
     /// <param name="includeSpectrumPeakData">Whether to include spectrum peak data.</param>
     /// <param name="spectrumPeakArrayIndex">Optional custom spectrum peak array index.</param>
-    public MZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex = null, ArrayIndex? chromatogramArrayIndex = null, bool includeSpectrumPeakData = false, ArrayIndex? spectrumPeakArrayIndex = null)
+    /// <param name="useChunked">Optionally set any default array indices to use chunked encoding. Has no effect on explicitly provided array indices.</param>
+    public MZPeakWriter(IMZPeakArchiveWriter storage,
+                        ArrayIndex? spectrumArrayIndex = null,
+                        ArrayIndex? chromatogramArrayIndex = null,
+                        bool includeSpectrumPeakData = false,
+                        ArrayIndex? spectrumPeakArrayIndex = null,
+                        bool useChunked = false)
     {
+        if (spectrumArrayIndex == null)
+            spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
+        if (chromatogramArrayIndex == null)
+            chromatogramArrayIndex = DefaultChromatogramArrayIndex(useChunked);
         Storage = storage;
         MzPeakMetadata = new();
         SpectrumMetadata = new();
-        SpectrumData = new PointLayoutBuilder(spectrumArrayIndex ?? DefaultSpectrumArrayIndex());
+        SpectrumData = spectrumArrayIndex.InferBufferFormat() switch {
+            BufferFormat.Point => new PointLayoutBuilder(spectrumArrayIndex),
+            BufferFormat.ChunkValues => new ChunkLayoutBuilder(spectrumArrayIndex),
+            _ => throw new NotImplementedException($"Buffer format {spectrumArrayIndex.InferBufferFormat()} not recognized")
+        };
         ChromatogramMetadata = new();
-        ChromatogramData = new PointLayoutBuilder(chromatogramArrayIndex ?? DefaultChromatogramArrayIndex());
+        ChromatogramData = chromatogramArrayIndex.InferBufferFormat() switch
+        {
+            BufferFormat.Point => new PointLayoutBuilder(chromatogramArrayIndex),
+            BufferFormat.ChunkValues => new ChunkLayoutBuilder(chromatogramArrayIndex),
+            _ => throw new NotImplementedException($"Buffer format {chromatogramArrayIndex.InferBufferFormat()} not recognized")
+        };
         ChromatogramData.ShouldRemoveZeroRuns = false;
         if (includeSpectrumPeakData)
             SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
@@ -273,7 +384,7 @@ public class MZPeakWriter : IDisposable
     }
 
     /// <summary>Flushes buffered spectrum data to the output.</summary>
-    public void FlushSpectrumData()
+    public virtual void FlushSpectrumData()
     {
         if (State == WriterState.SpectrumData && CurrentWriter != null)
         {
@@ -287,7 +398,7 @@ public class MZPeakWriter : IDisposable
     }
 
     /// <summary>Flushes buffered spectrum peak data to the output.</summary>
-    public void FlushSpectrumPeakData()
+    public virtual void FlushSpectrumPeakData()
     {
         if (State == WriterState.SpectrumPeakData && SpectrumPeakData != null && CurrentWriter != null)
         {
@@ -426,6 +537,18 @@ public class MZPeakWriter : IDisposable
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .EnableDictionary()
+            .DisableDictionary("spectrum.index")
+            .DisableDictionary("scan.source_index")
+            .DisableDictionary("precursor.source_index")
+            .DisableDictionary("precursor.precursor_index")
+            .DisableDictionary("selected_ion.source_index")
+            .DisableDictionary("selected_ion.precursor_index")
+            .Encoding("spectrum.index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("scan.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("precursor.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("precursor.precursor_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("selected_ion.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("selected_ion.precursor_index", ParquetSharp.Encoding.DeltaBinaryPacked)
             .EnableStatistics()
             .EnableWritePageIndex();
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
@@ -453,6 +576,7 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
     }
 
+
     /// <summary>Writes chromatogram data to the archive.</summary>
     public void WriteChromatogramData()
     {
@@ -460,17 +584,9 @@ public class MZPeakWriter : IDisposable
             return;
         State = WriterState.ChromatogramData;
         if (ChromatogramData.BufferedRows == 0) return;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
-            .Compression(ParquetSharp.Compression.Zstd)
-            .EnableDictionary()
-            .EnableStatistics()
-            .EnableWritePageIndex();
-        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-        CurrentEntry = entry;
-        CurrentWriter = new FileWriter(managedStream, ChromatogramData.ArrowSchema(), writerProps.Build(), arrowProps.Build());
+        StartChromatogramData();
+        var batch = ChromatogramData.GetRecordBatch();
+        CurrentWriter?.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }
 

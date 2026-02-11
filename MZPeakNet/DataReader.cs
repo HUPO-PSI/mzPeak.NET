@@ -376,7 +376,7 @@ public class DataArraysReader
 
     /// <summary>Reads data arrays for a specific entry index.</summary>
     /// <param name="key">The entry index to read.</param>
-    public async Task<ChunkedArray?> ReadForIndex(ulong key)
+    public async Task<StructArray?> ReadForIndex(ulong key)
     {
         var rowGroups = RowGroupIndex.KeysFor(key);
         if (0 == rowGroups.Count)
@@ -418,7 +418,7 @@ public class DataArraysReader
         var startFrom = rowSpan.Start - offset;
         var endAt = rowSpan.End - offset;
         var result = await reader.ReadRowsOf(key, startFrom, endAt);
-        return result;
+        return (StructArray?)ArrowArrayConcatenator.Concatenate(Enumerable.Range(0, result.ArrayCount).Select(i => result.Array(i)).ToList());
     }
 
     /// <summary>Gets the number of entries.</summary>
@@ -510,13 +510,14 @@ public class BaseLayoutReader
                     if (c > offsetIn && lastIndex != null)
                     {
                         var block = (StructArray)rootStruct.Slice(offsetIn, c - offsetIn);
+                        chunks.Add(block);
+
+                        block = (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
                         ulong z0 = 0;
                         ulong z1 = 0;
                         ulong zn = (ulong)block.Length;
                         block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
-                        chunks.Add(block);
-
-                        yield return ((ulong)lastIndex, (StructArray)ArrowArrayConcatenator.Concatenate(chunks));
+                        yield return ((ulong)lastIndex, block);
                     }
                     chunks = new();
                     offsetIn = c;
@@ -526,16 +527,21 @@ public class BaseLayoutReader
             if (offsetIn < indexCol.Length && lastIndex != null)
             {
                 var block = (StructArray)rootStruct.Slice(offsetIn, indexCol.Length - offsetIn);
-                ulong z0 = 0;
-                ulong z1 = 0;
-                ulong zn = (ulong)block.Length;
-                block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
+                // ulong z0 = 0;
+                // ulong z1 = 0;
+                // ulong zn = (ulong)block.Length;
+                // block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
                 chunks.Add(block);
             }
         }
         if (chunks.Count > 0 && lastIndex != null)
         {
-            yield return ((ulong)lastIndex, (StructArray)ArrowArrayConcatenator.Concatenate(chunks));
+            var block = (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
+            ulong z0 = 0;
+            ulong z1 = 0;
+            ulong zn = (ulong)block.Length;
+            block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
+            yield return ((ulong)lastIndex, block);
         }
     }
 
@@ -1137,55 +1143,55 @@ public class ChunkLayoutReader : BaseLayoutReader
 }
 
 
-public class DataIter
-{
-    BaseLayoutReader LayoutReader;
-    IArrowArrayStream StreamReader;
-    ulong RowCountRead = 0;
-    List<IArrowArray> Chunks;
-    ulong? LastIndex = null;
-    ulong? CurrentIndex = null;
+// public class DataIter
+// {
+//     BaseLayoutReader LayoutReader;
+//     IArrowArrayStream StreamReader;
+//     ulong RowCountRead = 0;
+//     List<IArrowArray> Chunks;
+//     ulong? LastIndex = null;
+//     ulong? CurrentIndex = null;
 
-    StructArray? CurrentBatch = null;
+//     StructArray? CurrentBatch = null;
 
-    public DataIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
-    {
-        LayoutReader = layoutReader;
-        StreamReader = stream;
-        RowCountRead = 0;
-        Chunks = new();
-        LastIndex = null;
-        CurrentIndex = null;
-        CurrentBatch = null;
-    }
+//     public DataIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
+//     {
+//         LayoutReader = layoutReader;
+//         StreamReader = stream;
+//         RowCountRead = 0;
+//         Chunks = new();
+//         LastIndex = null;
+//         CurrentIndex = null;
+//         CurrentBatch = null;
+//     }
 
-    public async Task<bool> ReadNextBatch()
-    {
-        var batch = await StreamReader.ReadNextRecordBatchAsync();
-        if (batch == null)
-            return false;
+//     public async Task<bool> ReadNextBatch()
+//     {
+//         var batch = await StreamReader.ReadNextRecordBatchAsync();
+//         if (batch == null)
+//             return false;
 
-        var root = batch.Column(0);
+//         var root = batch.Column(0);
 
-        var rootStruct = (StructArray?)root;
-        if (rootStruct == null)
-            return false;
+//         var rootStruct = (StructArray?)root;
+//         if (rootStruct == null)
+//             return false;
 
-        CurrentBatch = rootStruct;
-        return true;
-    }
+//         CurrentBatch = rootStruct;
+//         return true;
+//     }
 
-    public async Task<bool> Initialize()
-    {
-        if (!await ReadNextBatch()) return false;
-        if (CurrentBatch == null) return false;
-        var idxCol = (UInt64Array)CurrentBatch.Fields[0];
-        CurrentIndex = idxCol.GetValue(0);
-        return true;
-    }
+//     public async Task<bool> Initialize()
+//     {
+//         if (!await ReadNextBatch()) return false;
+//         if (CurrentBatch == null) return false;
+//         var idxCol = (UInt64Array)CurrentBatch.Fields[0];
+//         CurrentIndex = idxCol.GetValue(0);
+//         return true;
+//     }
 
-    public async Task GetNextSegment()
-    {
-        var isInitializing = CurrentIndex == null;
-    }
-}
+//     public async Task GetNextSegment()
+//     {
+//         var isInitializing = CurrentIndex == null;
+//     }
+// }
