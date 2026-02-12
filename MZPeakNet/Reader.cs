@@ -46,7 +46,7 @@ public class DataFacet<T>
     {
         var metaRecs = MetadataReader.BulkLoad();
         var i = 0ul;
-        await foreach (var (idx, data) in DataReader.Enumerate())
+        await foreach (var (idx, data) in DataReader)
         {
             while (i < idx)
             {

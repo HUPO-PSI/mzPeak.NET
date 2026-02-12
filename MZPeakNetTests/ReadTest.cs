@@ -38,7 +38,7 @@ public class ArchiveTest
     [Fact]
     public async Task RawZipArchive_LoadSpectrumPoint()
     {
-        var meta = ChunkArchive.SpectrumMetadata();
+        var meta = PointArchive.SpectrumMetadata();
         Assert.NotNull(meta);
         var metaReader = new SpectrumMetadataReader(meta);
         var models = metaReader.GetSpacingModelIndex();
@@ -144,6 +144,29 @@ public class ArchiveTest
             k += pars.Count;
         }
         Assert.True(k > 0);
+    }
+
+    [Fact]
+    public async Task RawZipArchive_LoadSpectrumPoint_GetDataIter()
+    {
+        var reader = PointArchive.SpectrumData();
+        Assert.NotNull(reader);
+
+        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
+        var iter = dataReader.Enumerate();
+        ulong i = 0;
+        await foreach(var pair in iter)
+        {
+            if (pair.Item1 > 10) break;
+            Assert.Equal(i++, pair.Item1);
+        }
+        await iter.Seek(20);
+        i = 20;
+        await foreach (var pair in iter)
+        {
+            if (pair.Item1 > 30) break;
+            Assert.Equal(i++, pair.Item1);
+        }
     }
 }
 

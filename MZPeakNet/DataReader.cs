@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
 using System.Security;
 using ParquetSharp;
+using System.Threading;
 
 /// <summary>
 /// Represents a range of values associated with a key.
@@ -304,7 +305,7 @@ public class DataArraysReaderMeta
 /// <summary>
 /// Reader for data arrays stored in Parquet format.
 /// </summary>
-public class DataArraysReader
+public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
 {
     /// <summary>The buffer context (spectrum or chromatogram).</summary>
     public BufferContext BufferContext;
@@ -425,7 +426,7 @@ public class DataArraysReader
     public long Length { get => Metadata.EntrySpanIndex.Length; }
 
     /// <summary>Asynchronously enumerates all entries with their index and data.</summary>
-    public async IAsyncEnumerable<(ulong, StructArray)> Enumerate()
+    public DataReaderIter Enumerate()
     {
         BaseLayoutReader reader;
         if (Metadata.Format == BufferFormat.Point)
@@ -440,10 +441,25 @@ public class DataArraysReader
         {
             throw new InvalidDataException("Data layout not recognized");
         }
-        await foreach (var chunk in reader.EnumerateEntries())
+        return reader.GetIter();
+    }
+
+    public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        BaseLayoutReader reader;
+        if (Metadata.Format == BufferFormat.Point)
         {
-            yield return chunk;
+            reader = new PointLayoutReader(FileReader.GetRecordBatchReader(), ArrayIndex, SpacingModels);
         }
+        else if (Metadata.Format == BufferFormat.ChunkValues)
+        {
+            reader = new ChunkLayoutReader(FileReader.GetRecordBatchReader(), ArrayIndex, SpacingModels);
+        }
+        else
+        {
+            throw new InvalidDataException("Data layout not recognized");
+        }
+        return reader.GetIter();
     }
 }
 
@@ -451,7 +467,7 @@ public class DataArraysReader
 /// <summary>
 /// Base class for reading data arrays from different storage layouts.
 /// </summary>
-public class BaseLayoutReader
+public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
 {
     public static ILogger? Logger = null;
 
@@ -470,7 +486,7 @@ public class BaseLayoutReader
         SpacingModels = spacingModels;
     }
 
-    protected virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
+    public virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
         var indexArr = (UInt64Array)rootStruct.Fields[0];
         var mask = Compute.Equal(indexArr, entryIndex);
@@ -480,69 +496,14 @@ public class BaseLayoutReader
     }
 
     /// <summary>Asynchronously enumerates all entries.</summary>
-    public async IAsyncEnumerable<(ulong, StructArray)> EnumerateEntries()
+    public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        ulong rowCountRead = 0;
-        var chunks = new List<IArrowArray>();
-        ulong? lastIndex = null;
-        while (true)
-        {
-            var batch = await Reader.ReadNextRecordBatchAsync();
-            if (batch == null)
-            {
-                break;
-            }
-            var root = batch.Column(0);
+        return new DataReaderIter(this, Reader);
+    }
 
-            var rootStruct = (StructArray?)root;
-            if (rootStruct == null)
-            {
-                rowCountRead += (ulong)batch.Length;
-                continue;
-            }
-            var indexCol = (UInt64Array)rootStruct.Fields[0];
-            var offsetIn = 0;
-            for (int c = 0; c < indexCol.Length; c++)
-            {
-                ulong? v = indexCol.GetValue(c);
-                if (v != lastIndex && v != null)
-                {
-                    if (c > offsetIn && lastIndex != null)
-                    {
-                        var block = (StructArray)rootStruct.Slice(offsetIn, c - offsetIn);
-                        chunks.Add(block);
-
-                        block = (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
-                        ulong z0 = 0;
-                        ulong z1 = 0;
-                        ulong zn = (ulong)block.Length;
-                        block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
-                        yield return ((ulong)lastIndex, block);
-                    }
-                    chunks = new();
-                    offsetIn = c;
-                    lastIndex = v;
-                }
-            }
-            if (offsetIn < indexCol.Length && lastIndex != null)
-            {
-                var block = (StructArray)rootStruct.Slice(offsetIn, indexCol.Length - offsetIn);
-                // ulong z0 = 0;
-                // ulong z1 = 0;
-                // ulong zn = (ulong)block.Length;
-                // block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
-                chunks.Add(block);
-            }
-        }
-        if (chunks.Count > 0 && lastIndex != null)
-        {
-            var block = (StructArray)ArrowArrayConcatenator.Concatenate(chunks);
-            ulong z0 = 0;
-            ulong z1 = 0;
-            ulong zn = (ulong)block.Length;
-            block = ProcessSegment((ulong)lastIndex, block, ref z0, ref z1, ref zn);
-            yield return ((ulong)lastIndex, block);
-        }
+    public DataReaderIter GetIter()
+    {
+        return new DataReaderIter(this, Reader);
     }
 
     /// <summary>Reads rows for a specific entry within a row range.</summary>
@@ -601,7 +562,7 @@ public class PointLayoutReader : BaseLayoutReader
     /// <param name="spacingModels">Optional spacing interpolation models.</param>
     public PointLayoutReader(IArrowArrayStream reader, ArrayIndex arrayIndex, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null) : base(reader, arrayIndex, spacingModels) { }
 
-    protected override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
+    public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
         var rows = base.ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
         // Console.WriteLine("Processing {0}", rowCountRead);
@@ -944,7 +905,7 @@ public class ChunkLayoutReader : BaseLayoutReader
         throw new KeyNotFoundException($"No entry was found for {TransformKey.FromArrayIndexEntry(query)} with transform  = {transform}");
     }
 
-    protected override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
+    public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
     {
         var rows = base.ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
         var encodingMethod = (StringArray)rows.Fields[chunkEncodingIndex];
@@ -1143,55 +1104,179 @@ public class ChunkLayoutReader : BaseLayoutReader
 }
 
 
-// public class DataIter
-// {
-//     BaseLayoutReader LayoutReader;
-//     IArrowArrayStream StreamReader;
-//     ulong RowCountRead = 0;
-//     List<IArrowArray> Chunks;
-//     ulong? LastIndex = null;
-//     ulong? CurrentIndex = null;
+public class DataReaderIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<(ulong, StructArray)>
+{
+    CancellationToken CancellationToken;
+    BaseLayoutReader LayoutReader;
+    IArrowArrayStream StreamReader;
+    ulong? CurrentIndex = null;
 
-//     StructArray? CurrentBatch = null;
+    StructArray? CurrentBatch = null;
+    (ulong, StructArray)? NextItem = null;
 
-//     public DataIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
-//     {
-//         LayoutReader = layoutReader;
-//         StreamReader = stream;
-//         RowCountRead = 0;
-//         Chunks = new();
-//         LastIndex = null;
-//         CurrentIndex = null;
-//         CurrentBatch = null;
-//     }
+    public (ulong, StructArray) Current => NextItem == null ? throw new InvalidOperationException() : ((ulong, StructArray))NextItem;
 
-//     public async Task<bool> ReadNextBatch()
-//     {
-//         var batch = await StreamReader.ReadNextRecordBatchAsync();
-//         if (batch == null)
-//             return false;
+    public DataReaderIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
+    {
+        LayoutReader = layoutReader;
+        StreamReader = stream;
 
-//         var root = batch.Column(0);
+        CancellationToken = default;
+        CurrentIndex = null;
+        CurrentBatch = null;
+        NextItem = null;
+    }
 
-//         var rootStruct = (StructArray?)root;
-//         if (rootStruct == null)
-//             return false;
+    public async Task<bool> ReadNextBatch(bool updateIndex=false)
+    {
+        CurrentBatch = null;
+        var batch = await StreamReader.ReadNextRecordBatchAsync(CancellationToken);
+        if (batch == null)
+            return false;
 
-//         CurrentBatch = rootStruct;
-//         return true;
-//     }
+        var root = batch.Column(0);
 
-//     public async Task<bool> Initialize()
-//     {
-//         if (!await ReadNextBatch()) return false;
-//         if (CurrentBatch == null) return false;
-//         var idxCol = (UInt64Array)CurrentBatch.Fields[0];
-//         CurrentIndex = idxCol.GetValue(0);
-//         return true;
-//     }
+        var rootStruct = (StructArray?)root;
+        if (rootStruct == null)
+            return false;
 
-//     public async Task GetNextSegment()
-//     {
-//         var isInitializing = CurrentIndex == null;
-//     }
-// }
+        CurrentBatch = rootStruct;
+
+        var idxCol = (UInt64Array)CurrentBatch.Fields[0];
+        var lowestIndex = Compute.Min(idxCol);
+        if (updateIndex && ((CurrentIndex != null && lowestIndex > CurrentIndex) || CurrentIndex == null))
+        {
+            CurrentIndex = lowestIndex;
+        }
+        return true;
+    }
+
+    async Task<bool> Initialize()
+    {
+        if (!await ReadNextBatch()) return false;
+        if (CurrentBatch == null) return false;
+        var idxCol = (UInt64Array)CurrentBatch.Fields[0];
+        CurrentIndex = Compute.Min(idxCol);
+        return true;
+    }
+
+    bool BatchHasCurrentIndex()
+    {
+        if (CurrentBatch == null || CurrentIndex == null) return false;
+        return Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex).Any();
+    }
+
+    public async Task<bool> Seek(ulong index)
+    {
+        if (index < CurrentIndex)
+            throw new InvalidOperationException($"Cannot move an iterator to an earlier position in the stream. Current index is {CurrentIndex}, requested {index}");
+        if (index == CurrentIndex)
+            return true;
+        if (CurrentIndex == null)
+        {
+            if (!await Initialize())
+                return false;
+        }
+        if (CurrentIndex == null)
+            return false;
+        while (CurrentIndex != index)
+        {
+            await MoveNextAsyncWithProcess(false);
+        }
+        return true;
+    }
+
+    async Task<StructArray?> ExtractForCurrentIndex()
+    {
+        if (CurrentBatch == null || CurrentIndex == null) return null;
+        var mask = Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex);
+        var indices = mask.Select((v, i) => (v, i)).Where((v) => v.v ?? false).Select(v => v.i).ToList();
+        var lastPossibleRowIndex = CurrentBatch.Length - 1;
+        int n;
+        int start;
+        StructArray chunk;
+        if (indices.Count == 0)
+        {
+            n = CurrentBatch.Length;
+            start = 0;
+            chunk = (StructArray)CurrentBatch.Slice(0, 0);
+        }
+        else
+        {
+            start = indices[0];
+            n = indices.Count;
+            chunk = (StructArray)CurrentBatch.Slice(start, n);
+        }
+
+        if (n == CurrentBatch.Length || indices.Contains(lastPossibleRowIndex))
+        {
+            if (await ReadNextBatch(false))
+            {
+                if (BatchHasCurrentIndex())
+                {
+                    var rest = await ExtractForCurrentIndex();
+                    if (rest != null)
+                        chunk = (StructArray)ArrowArrayConcatenator.Concatenate([chunk, rest]);
+                }
+            }
+        }
+        else
+        {
+            CurrentBatch = (StructArray)CurrentBatch.Slice(n, CurrentBatch.Length - n);
+        }
+        return chunk;
+    }
+
+    async ValueTask<bool> MoveNextAsyncWithProcess(bool doProcess)
+    {
+        if (CurrentIndex == null)
+        {
+            if (!await Initialize())
+            {
+                return false;
+            }
+        }
+        if (CurrentIndex == null)
+        {
+            return false;
+        }
+        var nextBatch = await ExtractForCurrentIndex();
+        if (nextBatch == null)
+        {
+            return false;
+        }
+        ulong z0 = 0;
+        ulong z1 = 0;
+        ulong zn = (ulong)nextBatch.Length;
+
+        if (doProcess)
+        {
+            nextBatch = LayoutReader.ProcessSegment(
+                (ulong)CurrentIndex,
+                nextBatch,
+                ref z0,
+                ref z1,
+                ref zn
+            );
+        }
+        NextItem = ((ulong)CurrentIndex, nextBatch);
+        CurrentIndex += 1;
+        return true;
+    }
+
+    public async ValueTask<bool> MoveNextAsync()
+    {
+        return await MoveNextAsyncWithProcess(true);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return new ValueTask();
+    }
+
+    public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        CancellationToken = cancellationToken;
+        return this;
+    }
+}
