@@ -426,7 +426,7 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
     public long Length { get => Metadata.EntrySpanIndex.Length; }
 
     /// <summary>Asynchronously enumerates all entries with their index and data.</summary>
-    public DataReaderIter Enumerate()
+    public DataArraysIter Enumerate()
     {
         BaseLayoutReader reader;
         if (Metadata.Format == BufferFormat.Point)
@@ -498,12 +498,12 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
     /// <summary>Asynchronously enumerates all entries.</summary>
     public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        return new DataReaderIter(this, Reader);
+        return new DataArraysIter(this, Reader);
     }
 
-    public DataReaderIter GetIter()
+    public DataArraysIter GetIter()
     {
-        return new DataReaderIter(this, Reader);
+        return new DataArraysIter(this, Reader);
     }
 
     /// <summary>Reads rows for a specific entry within a row range.</summary>
@@ -1104,7 +1104,7 @@ public class ChunkLayoutReader : BaseLayoutReader
 }
 
 
-public class DataReaderIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<(ulong, StructArray)>
+public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<(ulong, StructArray)>
 {
     CancellationToken CancellationToken;
     BaseLayoutReader LayoutReader;
@@ -1116,7 +1116,7 @@ public class DataReaderIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
 
     public (ulong, StructArray) Current => NextItem == null ? throw new InvalidOperationException() : ((ulong, StructArray))NextItem;
 
-    public DataReaderIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
+    public DataArraysIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
     {
         LayoutReader = layoutReader;
         StreamReader = stream;

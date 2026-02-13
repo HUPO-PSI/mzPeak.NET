@@ -1212,6 +1212,31 @@ public static class Compute
         return builder.Build(allocator);
     }
 
+    public static int BinarySearch<T>(PrimitiveArray<T> array, T? value) where T: struct, INumber<T>
+    {
+        var n = array.Length;
+        var lo = 0;
+        var hi = n - 1;
+        var cmp = Comparer<T?>.Default.Compare;
+        while (lo <= hi)
+        {
+            int i = lo + ((hi - lo) >> 1);
+            int order = cmp(array.GetValue(i), value);
+
+            if (order == 0)
+                return i;
+            if (order < 0)
+            {
+                lo = i + 1;
+            }
+            else
+            {
+                hi = i - 1;
+            }
+        }
+        return -1;
+    }
+
     /// <summary>
     /// Returns the minimum value in the array.
     /// </summary>

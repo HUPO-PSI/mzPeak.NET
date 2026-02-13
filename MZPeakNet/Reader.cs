@@ -12,7 +12,7 @@ namespace MZPeak.Reader;
 /// Combines metadata and data array readers for unified access.
 /// </summary>
 /// <typeparam name="T">The metadata type (e.g., SpectrumDescription).</typeparam>
-public class DataFacet<T>
+public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
 {
     MetadataReaderBase<T> MetadataReader;
     DataArraysReader DataReader;
@@ -59,6 +59,14 @@ public class DataFacet<T>
             var item = (meta, data);
             yield return item;
             i += 1;
+        }
+    }
+
+    public async IAsyncEnumerator<(T, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        await foreach(var x in EnumerateAsync())
+        {
+            yield return x;
         }
     }
 }
@@ -245,8 +253,10 @@ public class MzPeakReader
         }
         if (spectrumPeaksArraysMeta == null)
         {
-            reader = new DataArraysReader(dataFacet, BufferContext.Spectrum);
-            reader.SpacingModels = spectrumMetadata?.GetSpacingModelIndex();
+            reader = new DataArraysReader(dataFacet, BufferContext.Spectrum)
+            {
+                SpacingModels = spectrumMetadata?.GetSpacingModelIndex()
+            };
             spectrumPeaksArraysMeta = reader.Metadata;
         }
         else

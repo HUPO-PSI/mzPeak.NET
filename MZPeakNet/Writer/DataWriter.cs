@@ -182,6 +182,13 @@ public abstract class BaseLayoutBuilder
     )
     { }
 
+    /// <summary>
+    /// Filter a collection of arrays down prior to preprocessing them, separating out arrays not covered
+    /// by the schema and explicitly capture null interpolating and zeroing arrays, plus the intensity array
+    /// if any are present.
+    /// </summary>
+    /// <param name="arrays"></param>
+    /// <returns></returns>
     protected virtual _ArrayFilterResult FilterArrays(Dictionary<ArrayIndexEntry, Array> arrays)
     {
         List<(ArrayIndexEntry, Array)> notCoveredArrays = new();
@@ -211,7 +218,6 @@ public abstract class BaseLayoutBuilder
 
         foreach (var (k, v) in notCoveredArrays)
         {
-            // Console.WriteLine($"{k} is treated as an auxiliary array");
             arrays.Remove(k);
             auxiliaryArrays.Add(AuxiliaryArray.FromValues(v, k));
         }

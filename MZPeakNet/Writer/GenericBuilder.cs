@@ -209,8 +209,10 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         ]),
         new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int8Type()),
         new CustomBuilderFromParam("MS:1000559", "spectrum type", new StringType()),
+
         // Optional spectrum properties (commonly present)
-        new CustomBuilderFromParam("MS:1003060", "number of data points", new Int64Type()),
+        new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), SpectrumProperties.NumberOfDataPoints.Name(), new Int64Type()),
+        new CustomBuilderFromParam(SpectrumProperties.NumberOfPeaks.CURIE(), SpectrumProperties.NumberOfPeaks.Name(), new Int64Type()),
         new CustomBuilderFromParam("MS:1000504", "base peak m/z", new DoubleType(), "MS:1000040"),
         new CustomBuilderFromParam("MS:1000505", "base peak intensity", new DoubleType(), "MS:1000131"),
         new CustomBuilderFromParam("MS:1000285", "total ion current", new DoubleType(), "MS:1000131"),

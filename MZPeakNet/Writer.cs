@@ -100,6 +100,36 @@ public class MZPeakWriter : IDisposable
         return reader.FileMetaData.Schema;
     }
 
+
+    protected ParquetSharp.WriterPropertiesBuilder ConfigureByteShuffleColumnsFrom(ParquetSharp.WriterPropertiesBuilder writerProps, ArrayIndex arrayIndex, ArrayType targetArrayType, Schema schema)
+    {
+        /* Three-fold API workaround
+            Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
+                ParquetSharp doesn't have a one-shot conversion method.
+            Step 2: Traverse the the index to find entries with metadata matches and then traverse the ParquetSchema
+                    which are exact or prefix matches. This makes matching list element columns easier.
+            Step 3: Disable the dictionary encoding, because the underlying C++ library **always** falls back to PLAIN encoding
+                    when the dictionary page is too large, and THEN set the desired encoding.
+        */
+        var parquetSchema = TranslateSchema(schema);
+        foreach (var arrayType in arrayIndex.Entries)
+        {
+            if (arrayType.ArrayTypeCURIE == targetArrayType.CURIE() && arrayType.BufferFormat != BufferFormat.ChunkEncoding)
+            {
+                for (var i = 0; i < parquetSchema.NumColumns; i++)
+                {
+                    var descr = parquetSchema.Column(i);
+                    var path = descr.Path.ToDotString();
+                    if (arrayType.Path == path || path.StartsWith(arrayType.Path + "."))
+                    {
+                        writerProps = writerProps.DisableDictionary(descr.Path).Encoding(descr.Path, ParquetSharp.Encoding.ByteStreamSplit);
+                    }
+                }
+            }
+        }
+        return writerProps;
+    }
+
     /// <summary>Starts writing spectrum data arrays.</summary>
     public virtual void StartSpectrumData()
     {
@@ -121,32 +151,8 @@ public class MZPeakWriter : IDisposable
                 (long)Math.Pow(1024, 2)
             ).MaxRowGroupLength(1024 * 1024 * 4);
 
-
-        /* Three-fold API workaround
-            Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
-                   ParquetSharp doesn't have a one-shot conversion method.
-            Step 2: Traverse the the index to find entries with metadata matches and then traverse the ParquetSchema
-                    which are exact or prefix matches. This makes matching list element columns easier.
-            Step 3: Disable the dictionary encoding, because the underlying C++ library **always** falls back to PLAIN encoding
-                    when the dictionary page is too large, and THEN set the desired encoding.
-        */
         var schema = SpectrumData.ArrowSchema();
-        var parquetSchema = TranslateSchema(schema);
-        foreach (var arrayType in SpectrumData.ArrayIndex.Entries)
-        {
-            if (arrayType.ArrayTypeCURIE == ArrayType.MZArray.CURIE() && arrayType.BufferFormat != BufferFormat.ChunkEncoding)
-            {
-                for(var i = 0; i < parquetSchema.NumColumns; i++)
-                {
-                    var descr = parquetSchema.Column(i);
-                    var path = descr.Path.ToDotString();
-                    if (arrayType.Path == path || path.StartsWith(arrayType.Path + "."))
-                    {
-                        writerProps = writerProps.DisableDictionary(descr.Path).Encoding(descr.Path, ParquetSharp.Encoding.ByteStreamSplit);
-                    }
-                }
-            }
-        }
+        writerProps = ConfigureByteShuffleColumnsFrom(writerProps, SpectrumData.ArrayIndex, ArrayType.MZArray, schema);
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
@@ -185,22 +191,7 @@ public class MZPeakWriter : IDisposable
                     when the dictionary page is too large, and THEN set the desired encoding.
         */
         var schema = ChromatogramData.ArrowSchema();
-        var parquetSchema = TranslateSchema(schema);
-        foreach (var arrayType in SpectrumData.ArrayIndex.Entries)
-        {
-            if (arrayType.ArrayTypeCURIE == ArrayType.TimeArray.CURIE() && arrayType.BufferFormat != BufferFormat.ChunkEncoding)
-            {
-                for (var i = 0; i < parquetSchema.NumColumns; i++)
-                {
-                    var descr = parquetSchema.Column(i);
-                    var path = descr.Path.ToDotString();
-                    if (arrayType.Path == path || path.StartsWith(arrayType.Path + "."))
-                    {
-                        writerProps = writerProps.DisableDictionary(descr.Path).Encoding(descr.Path, ParquetSharp.Encoding.ByteStreamSplit);
-                    }
-                }
-            }
-        }
+        writerProps = ConfigureByteShuffleColumnsFrom(writerProps, ChromatogramData.ArrayIndex, ArrayType.TimeArray, schema);
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
         CurrentEntry = entry;
@@ -244,16 +235,11 @@ public class MZPeakWriter : IDisposable
                 (long)Math.Pow(1024, 2)
             ).MaxRowGroupLength(1024 * 1024 * 4);
 
-        foreach (var arrayType in SpectrumPeakData.ArrayIndex.Entries)
-        {
-            if (arrayType.ArrayTypeCURIE == ArrayType.MZArray.CURIE())
-                writerProps = writerProps
-                    .DisableDictionary(arrayType.Path)
-                    .Encoding(arrayType.Path, ParquetSharp.Encoding.ByteStreamSplit);
-        }
+        var schema = SpectrumPeakData.ArrowSchema();
+        writerProps = ConfigureByteShuffleColumnsFrom(writerProps, SpectrumPeakData.ArrayIndex, ArrayType.MZArray, schema);
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-        var schema = SpectrumPeakData.ArrowSchema();
+
         var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
 
         State = WriterState.SpectrumPeakData;
@@ -523,6 +509,53 @@ public class MZPeakWriter : IDisposable
     {
         return ChromatogramMetadata.AppendChromatogram(id, dataProcessingRef, chromatogramParams ?? new(), auxiliaryArrays);
     }
+
+    /// <summary>Adds a precursor entry to a chromatogram.</summary>
+    /// <param name="sourceIndex">The parent chromatogram index.</param>
+    /// <param name="precursorIndex">The precursor chromatogram index.</param>
+    /// <param name="precursorId">Optional precursor chromatogram ID.</param>
+    /// <param name="isolationWindowParams">Isolation window parameters.</param>
+    /// <param name="activationParams">Activation parameters.</param>
+    public void AddChromatogramPrecursor(
+        ulong sourceIndex,
+        ulong precursorIndex,
+        string? precursorId,
+        List<Param> isolationWindowParams,
+        List<Param> activationParams
+    )
+    {
+        ChromatogramMetadata.AppendPrecursor(
+            sourceIndex,
+            precursorIndex,
+            precursorId,
+            isolationWindowParams,
+            activationParams
+        );
+    }
+
+    /// <summary>Adds a selected ion entry to a precursor.</summary>
+    /// <param name="sourceIndex">The parent chromatogram index.</param>
+    /// <param name="precursorIndex">The precursor index.</param>
+    /// <param name="selectedIonParams">Selected ion parameters.</param>
+    /// <param name="ionMobility">Optional ion mobility value.</param>
+    /// <param name="ionMobilityType">Optional ion mobility type CURIE.</param>
+    public void AddChromatogramSelectedIon(
+        ulong sourceIndex,
+        ulong precursorIndex,
+        List<Param> selectedIonParams,
+        double? ionMobility = null,
+        string? ionMobilityType = null
+    )
+    {
+        ChromatogramMetadata.AppendSelectedIon(
+            sourceIndex,
+            precursorIndex,
+            ionMobility,
+            ionMobilityType,
+            selectedIonParams
+        );
+    }
+
 
     /// <summary>Writes spectrum metadata to the archive.</summary>
     public void WriteSpectrumMetadata()

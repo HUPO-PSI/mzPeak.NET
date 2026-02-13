@@ -142,8 +142,20 @@ public interface IMZPeakArchiveStorage
 {
     internal static ILogger? Logger = null;
 
+    /// <summary>
+    /// Get the list of file names in the archive. This may include files not in the index.
+    /// </summary>
+    /// <returns></returns>
     public List<string> FileNames();
 
+    /// <summary>
+    /// Open the archive member corresponding to `entityType` and `dataKind`, if one exists.
+    ///
+    /// If multiple matches exist, only the first is returned.
+    /// </summary>
+    /// <param name="entityType"></param>
+    /// <param name="dataKind"></param>
+    /// <returns></returns>
     public Stream? OpenEntry(EntityType entityType, DataKind dataKind)
     {
         var entry = FileIndex().FindEntry(entityType, dataKind);
@@ -157,45 +169,83 @@ public interface IMZPeakArchiveStorage
         }
     }
 
-    public ParquetSharp.Arrow.FileReader? SpectrumData(long bufferSize=1024)
+    /// <summary>
+    /// Open the spectrum data arrays volume, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
+    public ParquetSharp.Arrow.FileReader? SpectrumData(long bufferSize= 4096)
     {
         var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
         var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
-        arrowProps.BatchSize = 4096;
+        arrowProps.BatchSize = bufferSize;
         var stream = OpenEntry(EntityType.Spectrum, DataKind.DataArrays);
         return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
     }
 
-    public ParquetSharp.Arrow.FileReader? SpectrumPeaks()
+    /// <summary>
+    /// Open the spectrum data arrays volume containing explicitly centroided peaks, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
+    public ParquetSharp.Arrow.FileReader? SpectrumPeaks(long bufferSize = 4096)
     {
         var stream = OpenEntry(EntityType.Spectrum, DataKind.Peaks);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
+        var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
+        arrowProps.BatchSize = bufferSize;
+        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
     }
 
-    public ParquetSharp.Arrow.FileReader? ChromatogramData()
+    /// <summary>
+    /// Open the chromatogram data arrays volume, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
+    public ParquetSharp.Arrow.FileReader? ChromatogramData(long bufferSize = 4096)
     {
         var stream = OpenEntry(EntityType.Chromatogram, DataKind.DataArrays);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
+        var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
+        arrowProps.BatchSize = bufferSize;
+        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
     }
 
+    /// <summary>
+    /// Open the spectrum metadata volume, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
     public ParquetSharp.Arrow.FileReader? SpectrumMetadata()
     {
         var stream = OpenEntry(EntityType.Spectrum, DataKind.Metadata);
         return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
     }
 
+    /// <summary>
+    /// Open the chromatogram metadata volume, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
     public ParquetSharp.Arrow.FileReader? ChromatogramMetadata()
     {
         var stream = OpenEntry(EntityType.Chromatogram, DataKind.Metadata);
         return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
     }
 
+    /// <summary>
+    /// Open the requested file name in the archive
+    /// </summary>
+    /// <param name="name">The file name to open</param>
+    /// <returns>Readable, seekable stream</returns>
     public Stream OpenStream(string name);
 
+    /// <summary>
+    /// Access the file index from the archive
+    /// </summary>
+    /// <returns></returns>
     public FileIndex FileIndex();
 }
 
 
+/// <summary>
+/// A facade around a single Stream that spans only a byte range
+/// </summary>
 public class StreamSegment : Stream
 {
     Stream Stream;
@@ -284,9 +334,9 @@ public class StreamSegment : Stream
         throw new NotImplementedException();
     }
 
-    private void Configure()
+    public void Configure()
     {
-        Stream.Seek((long)Offset, SeekOrigin.Begin);
+        Stream.Seek(Offset, SeekOrigin.Begin);
     }
 }
 
@@ -402,6 +452,7 @@ public class LocalZipArchive : BaseZipArchive
             stream.Close();
             stream = OpenArchiveStream();
             var segStream = new StreamSegment(stream, offset, length);
+            segStream.Configure();
             return segStream;
         }
     }
