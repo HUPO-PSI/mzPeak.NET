@@ -123,6 +123,8 @@ public enum BufferContext
     Spectrum,
     [JsonStringEnumMemberName("chromatogram")]
     Chromatogram,
+    [JsonStringEnumMemberName("wavelength spectrum")]
+    WavelengthSpectrum,
 }
 
 static class BufferContexteMethods
@@ -139,6 +141,10 @@ static class BufferContexteMethods
                 {
                     return "chromatogram_index";
                 }
+            case BufferContext.WavelengthSpectrum:
+                {
+                    return "wavelength_spectrum_index";
+                }
             default:
                 {
                     throw new InvalidOperationException("Cannot create index column name for `Other`");
@@ -153,6 +159,10 @@ static class BufferContexteMethods
             case BufferContext.Spectrum:
                 {
                     return "spectrum";
+                }
+            case BufferContext.WavelengthSpectrum:
+                {
+                    return "wavelength_spectrum";
                 }
             case BufferContext.Chromatogram:
                 {
@@ -176,6 +186,10 @@ static class BufferContexteMethods
             case BufferContext.Chromatogram:
                 {
                     return ArrayType.TimeArray;
+                }
+            case BufferContext.WavelengthSpectrum:
+                {
+                    return ArrayType.WavelengthArray;
                 }
             default: throw new InvalidOperationException("Unknown axis type for `Other`");
         }

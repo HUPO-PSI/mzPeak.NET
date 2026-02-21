@@ -83,10 +83,12 @@ public class MzPeakReader
 
     SpectrumMetadataReader? spectrumMetadata;
     ChromatogramMetadataReader? chromatogramMetadata;
+    SpectrumMetadataReader? wavelengthSpectrumMetadata;
 
     DataArraysReaderMeta? spectrumArraysMeta = null;
     DataArraysReaderMeta? chromatogramArraysMeta = null;
     DataArraysReaderMeta? spectrumPeaksArraysMeta = null;
+    DataArraysReaderMeta? wavelengthSpectrumArraysMeta = null;
 
     /// <summary>Creates a reader for the mzPeak file at the specified path.</summary>
     /// <param name="path">The file path to the mzPeak archive.</param>
@@ -102,6 +104,8 @@ public class MzPeakReader
         spectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
         stream = storage.ChromatogramMetadata();
         chromatogramMetadata = stream == null ? null : new ChromatogramMetadataReader(stream);
+        stream = storage.WavelengthSpectrumMetadata();
+        wavelengthSpectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
     }
 
     /// <summary>Gets the number of spectra (alias for SpectrumCount).</summary>
@@ -110,6 +114,13 @@ public class MzPeakReader
     public int SpectrumCount => spectrumMetadata?.Length ?? 0;
     /// <summary>Gets the number of chromatograms in the file.</summary>
     public int ChromatogramCount => chromatogramMetadata?.Length ?? 0;
+    /// <summary>Gets the number of wavelength spectra in the file.</summary>
+    public int WavelengthSpectrumCount => wavelengthSpectrumMetadata?.Length ?? 0;
+
+    public bool HasSpectrumData => spectrumMetadata != null;
+    public bool HasChromatogramData => chromatogramMetadata != null;
+    public bool HasWavelengthData => wavelengthSpectrumMetadata != null;
+
     /// <summary>Gets the file description metadata.</summary>
     public FileDescription FileDescription => spectrumMetadata?.FileDescription ?? chromatogramMetadata?.FileDescription ?? FileDescription.Empty();
     /// <summary>Gets the list of instrument configurations.</summary>
@@ -144,6 +155,9 @@ public class MzPeakReader
     /// <summary>Gets the chromatogram selected ion metadata as an Arrow RecordBatch.</summary>
     public RecordBatch? ChromatogramSelectedIonTable => chromatogramMetadata?.PrecursorMetadata;
 
+    public RecordBatch? WavelengthSpectrumTable => wavelengthSpectrumMetadata?.SpectrumMetadata;
+    public RecordBatch? WavelengthSpectrumScanTable => wavelengthSpectrumMetadata?.ScanMetadata;
+
     /// <summary>Gets the spectrum description for the specified index.</summary>
     /// <param name="index">The spectrum index.</param>
     public SpectrumDescription GetSpectrumDescription(ulong index)
@@ -158,6 +172,14 @@ public class MzPeakReader
     {
         if (chromatogramMetadata == null) throw new InvalidOperationException("Chromatogram metadata table is absent");
         return chromatogramMetadata.Get(index);
+    }
+
+    /// <summary>Gets the spectrum description for the specified index.</summary>
+    /// <param name="index">The spectrum index.</param>
+    public SpectrumDescription GetWavelengthSpectrumDescription(ulong index)
+    {
+        if (wavelengthSpectrumMetadata == null) throw new InvalidOperationException("Wavelength spectrum metadata table is absent");
+        return wavelengthSpectrumMetadata.Get(index);
     }
 
     /// <summary>Gets the buffer format used for spectrum data arrays.</summary>
@@ -286,6 +308,26 @@ public class MzPeakReader
         return reader;
     }
 
+    DataArraysReader? OpenWavelengthSpectrumDataReader()
+    {
+        var dataFacet = storage.WavelengthSpectrumData();
+        DataArraysReader reader;
+        if (dataFacet == null)
+        {
+            return null;
+        }
+        if (wavelengthSpectrumArraysMeta == null)
+        {
+            reader = new DataArraysReader(dataFacet, BufferContext.WavelengthSpectrum);
+            wavelengthSpectrumArraysMeta = reader.Metadata;
+        }
+        else
+        {
+            reader = new DataArraysReader(dataFacet, wavelengthSpectrumArraysMeta);
+        }
+        return reader;
+    }
+
     /// <summary>Gets the data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
     public async Task<StructArray?> GetSpectrumData(ulong index)
@@ -294,6 +336,16 @@ public class MzPeakReader
         if (reader == null) return null;
         return await reader.ReadForIndex(index);
     }
+
+    /// <summary>Gets the data arrays for a wavelength spectrum by index.</summary>
+    /// <param name="index">The spectrum index.</param>
+    public async Task<StructArray?> GetWavelengthSpectrumData(ulong index)
+    {
+        var reader = OpenWavelengthSpectrumDataReader();
+        if (reader == null) return null;
+        return await reader.ReadForIndex(index);
+    }
+
 
     /// <summary>Gets the peak data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>

@@ -90,6 +90,14 @@ public class MZPeakWriter : IDisposable
         return builder.Build();
     }
 
+    protected static ArrayIndex DefaultWavelengthSpectrumArrayIndex(bool useChunked = false)
+    {
+        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.WavelengthSpectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.WavelengthSpectrum);
+        builder.Add(ArrayType.WavelengthArray, BinaryDataType.Float32, Unit.Nanometer, 1);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        return builder.Build();
+    }
+
     protected ParquetSharp.SchemaDescriptor TranslateSchema(Schema schema)
     {
         var stream = new MemoryStream();

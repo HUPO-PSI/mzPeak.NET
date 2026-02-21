@@ -18,6 +18,8 @@ public enum EntityType
     Spectrum,
     [JsonStringEnumMemberName("chromatogram")]
     Chromatogram,
+    [JsonStringEnumMemberName("wavelength spectrum")]
+    WavelengthSpectrum,
     [JsonStringEnumMemberName("other")]
     Other
 }
@@ -64,6 +66,11 @@ public record FileIndexEntry
             case EntityType.Spectrum:
                 {
                     entityTypeTag = "spectra";
+                    break;
+                }
+            case EntityType.WavelengthSpectrum:
+                {
+                    entityTypeTag = "wavelength_spectra";
                     break;
                 }
             case EntityType.Other:
@@ -225,6 +232,26 @@ public interface IMZPeakArchiveStorage
     public ParquetSharp.Arrow.FileReader? ChromatogramMetadata()
     {
         var stream = OpenEntry(EntityType.Chromatogram, DataKind.Metadata);
+        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+    }
+
+    /// <summary>
+    /// Open the wavelength spectrum metadata volume, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
+    public ParquetSharp.Arrow.FileReader? WavelengthSpectrumMetadata()
+    {
+        var stream = OpenEntry(EntityType.WavelengthSpectrum, DataKind.Metadata);
+        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+    }
+
+    /// <summary>
+    /// Open the wavelength spectrum data arrays volume, if it exists, null otherwise.
+    /// </summary>
+    /// <returns></returns>
+    public ParquetSharp.Arrow.FileReader? WavelengthSpectrumData()
+    {
+        var stream = OpenEntry(EntityType.WavelengthSpectrum, DataKind.DataArrays);
         return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
     }
 
