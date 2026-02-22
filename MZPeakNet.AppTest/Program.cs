@@ -395,6 +395,10 @@ internal class Program
         var reader = new MZPeak.Reader.MzPeakReader(fileInfo.FullName);
         Logger?.LogInformation($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
         Logger?.LogInformation($"Spectrum storage format = {reader.SpectrumDataFormat}");
+        if (reader.HasWavelengthData)
+        {
+            Logger?.LogInformation($"Wavelength spectrum count {reader.WavelengthSpectrumCount} in format {reader.WavelengthSpectrumDataFormat}");
+        }
 
         var isProfile = 0;
         var isCentroid = 0;

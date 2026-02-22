@@ -772,3 +772,129 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         ParamList.Clear();
     }
 }
+
+public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<Param>, List<AuxiliaryArray>)>
+{
+    UInt64Array.Builder Index;
+    StringArray.Builder Id;
+    DoubleArray.Builder Time;
+    StringArray.Builder DataProcessingRef;
+    Int32Array.Builder NumberOfAuxiliaryArrays;
+    AuxiliaryArrayListBuilder AuxiliaryArrays;
+
+    public int Length => Index.Length;
+
+    public WavelengthSpectrumBuilder() : base(new()
+    {
+        // Required CV terms
+        new ChildTermParamBuilder("MS:1000525", "spectrum representation", [
+            SpectrumRepresentation.CentroidSpectrum.CURIE(),
+            SpectrumRepresentation.ProfileSpectrum.CURIE()
+        ]),
+        new CustomBuilderFromParam("MS:1000559", "spectrum type", new StringType()),
+
+        // Optional spectrum properties (commonly present)
+        new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), SpectrumProperties.NumberOfDataPoints.Name(), new Int64Type()),
+        new CustomBuilderFromParam("MS:1000504", "base peak m/z", new DoubleType(), Unit.Nanometer.CURIE()),
+        new CustomBuilderFromParam("MS:1000505", "base peak intensity", new DoubleType(), "MS:1000131"),
+        new CustomBuilderFromParam("MS:1000285", "total ion current", new DoubleType(), "MS:1000131"),
+        new CustomBuilderFromParam("MS:1000619", "lowest observed wavelength", new DoubleType(), Unit.Nanometer.CURIE()),
+        new CustomBuilderFromParam("MS:1000618", "highest observed wavelength", new DoubleType(), Unit.Nanometer.CURIE()),
+    })
+    {
+        Index = new();
+        Id = new();
+        Time = new();
+        DataProcessingRef = new();
+        NumberOfAuxiliaryArrays = new();
+        AuxiliaryArrays = new();
+    }
+
+    public void Append((ulong, string, double, string?, List<Param>, List<AuxiliaryArray>) value)
+    {
+        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6);
+    }
+
+    public void Append(ulong index, string id, double time, string? dataProcessingRef, List<Param> parameters, List<AuxiliaryArray>? auxiliaryArrays = null)
+    {
+        Index.Append(index);
+        Id.Append(id);
+        Time.Append(time);
+        if (dataProcessingRef != null) DataProcessingRef.Append(dataProcessingRef);
+        else DataProcessingRef.AppendNull();
+        NumberOfAuxiliaryArrays.Append(auxiliaryArrays?.Count ?? 0);
+        AuxiliaryArrays.Append(auxiliaryArrays ?? []);
+        VisitParameters(parameters);
+    }
+
+    public override void AppendNull()
+    {
+        Index.AppendNull();
+        Id.AppendNull();
+        Time.AppendNull();
+        DataProcessingRef.AppendNull();
+        NumberOfAuxiliaryArrays.AppendNull();
+        AuxiliaryArrays.AppendNull();
+        base.AppendNull();
+    }
+
+    public List<Field> ArrowType()
+    {
+        var fields = new List<Field>()
+        {
+            new Field("index", new UInt64Type(), true),
+            new Field("id", new StringType(), true),
+            new Field("time", new DoubleType(), true),
+        };
+        foreach (var vis in ParamVisitors)
+        {
+            fields.AddRange(vis.ArrowType());
+        }
+        fields.AddRange(ParamList.ArrowType());
+        fields.AddRange([
+            new Field("data_processing_ref", new StringType(), true),
+            new Field("number_of_auxiliary_arrays", new Int32Type(), true),
+            new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
+        ]);
+        FreezeSchema();
+        return new() { new Field("spectrum", new StructType(fields), true) };
+    }
+
+    public List<IArrowArray> Build()
+    {
+        List<IArrowArray> fields = new()
+        {
+            Index.Build(),
+            Id.Build(),
+            Time.Build(),
+        };
+        foreach (var vis in ParamVisitors)
+        {
+            fields.AddRange(vis.Build());
+        }
+        fields.AddRange(ParamList.Build());
+        fields.AddRange([
+            DataProcessingRef.Build(),
+            NumberOfAuxiliaryArrays.Build(),
+            AuxiliaryArrays.Build()[0]
+        ]);
+        var size = Index.Length;
+
+        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
+    }
+
+    public void Clear()
+    {
+        Index.Clear();
+        Id.Clear();
+        Time.Clear();
+        DataProcessingRef.Clear();
+        NumberOfAuxiliaryArrays.Clear();
+        AuxiliaryArrays.Clear();
+        foreach (var vis in ParamVisitors)
+        {
+            vis.Clear();
+        }
+        ParamList.Clear();
+    }
+}

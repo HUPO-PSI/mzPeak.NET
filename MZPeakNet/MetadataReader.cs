@@ -367,10 +367,27 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             if (arr != null) spectra.Add(arr);
             arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("scan"));
             if (arr != null) scans.Add(arr);
-            arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("precursor"));
-            if (arr != null) precursors.Add(arr);
-            arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("selected_ion"));
-            if (arr != null) selectedIons.Add(arr);
+            try
+            {
+                arr = batch.Column("precursor");
+                if (arr != null)
+                {
+                    arr = ArrowCompatibilityVisitor.MakeNetCompatible(arr);
+                    if (arr != null) precursors.Add(arr);
+                }
+            } catch(ArgumentOutOfRangeException) {}
+
+
+            try
+            {
+                arr = batch.Column("selected_ion");
+                if (arr != null)
+                {
+                    arr = ArrowCompatibilityVisitor.MakeNetCompatible(arr);
+                    if (arr != null) selectedIons.Add(arr);
+                }
+            }
+            catch (ArgumentOutOfRangeException) { }
         }
 
         if (spectra.Count > 0)

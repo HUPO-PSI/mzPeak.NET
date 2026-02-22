@@ -123,7 +123,7 @@ public enum BufferContext
     Spectrum,
     [JsonStringEnumMemberName("chromatogram")]
     Chromatogram,
-    [JsonStringEnumMemberName("wavelength spectrum")]
+    [JsonStringEnumMemberName("wavelength_spectrum")]
     WavelengthSpectrum,
 }
 

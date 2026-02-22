@@ -212,6 +212,21 @@ public class MzPeakReader
         }
     }
 
+    /// <summary>Gets the buffer format used for chromatogram data arrays.</summary>
+    public BufferFormat? WavelengthSpectrumDataFormat
+    {
+        get
+        {
+            if (wavelengthSpectrumArraysMeta != null) return wavelengthSpectrumArraysMeta.Format;
+            else
+            {
+                var reader = OpenWavelengthSpectrumDataReader();
+                if (reader == null) return null;
+                return reader.Metadata.Format;
+            }
+        }
+    }
+
     /// <summary>Gets whether the file contains spectrum peak data.</summary>
     public bool HasSpectrumPeaks => spectrumPeaksArraysMeta != null ? true : SpectrumPeaksDataReaderMeta != null;
 

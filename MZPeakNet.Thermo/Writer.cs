@@ -367,7 +367,7 @@ public class ConversionContextHelper
             var label = header.Label.TrimEnd(':');
             TrailerMap[label] = i;
         }
-        Headers = headers.ToList();
+        Headers = [.. headers];
         BuildScanTypeMap(accessor);
     }
 
@@ -558,6 +558,152 @@ public class ConversionContextHelper
             ]);
         descr.SourceFiles.Add(sfile);
         return descr;
+    }
+
+    public List<(Device, int)> InstrumentCountsOf(IRawDataPlus accessor)
+    {
+        return [
+            (Device.MS, accessor.GetInstrumentCountOfType(Device.MS)),
+            (Device.UV, accessor.GetInstrumentCountOfType(Device.UV)),
+            (Device.Pda, accessor.GetInstrumentCountOfType(Device.Pda)),
+            (Device.Analog, accessor.GetInstrumentCountOfType(Device.Analog)),
+            (Device.Other, accessor.GetInstrumentCountOfType(Device.Other)),
+        ];
+    }
+
+    public List<ArrowStatusLog> TuneData(IRawDataPlus accessor)
+    {
+        var nEntries = accessor.GetTuneDataCount();
+
+        var headers = accessor.GetTuneDataHeaderInformation();
+
+        Dictionary<string, StatusLogBuilder> logs = new();
+
+        for (var i = 0; i < nEntries; i++)
+        {
+            var values = accessor.GetTuneDataValues(i);
+            foreach(var (datum, header) in values.Zip(headers))
+            {
+                var dType = header.DataType;
+                if (dType == GenericDataTypes.NULL)
+                {
+                    continue;
+                }
+                switch (dType)
+                {
+                    case GenericDataTypes.YESNO:
+                    case GenericDataTypes.ONOFF:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int32(header.Label));
+                            }
+                            logs[header.Label].Add(i, (bool)datum);
+                            break;
+                        }
+                    case GenericDataTypes.Bool:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int32(header.Label));
+                            }
+
+                            logs[header.Label].Add(i, (bool)datum);
+                            break;
+                        }
+                    case GenericDataTypes.CHAR:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.String(header.Label));
+                            }
+                            logs[header.Label].Add(i, datum.ToString() ?? "");
+                            break;
+                        }
+                    case GenericDataTypes.CHAR_STRING:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.String(header.Label));
+                            }
+                            logs[header.Label].Add(i, datum.ToString() ?? "");
+                            break;
+                        }
+                    case GenericDataTypes.WCHAR_STRING:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.String(header.Label));
+                            }
+                            logs[header.Label].Add(i, (string)datum);
+                            break;
+                        }
+                    case GenericDataTypes.FLOAT:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Double(header.Label));
+                            }
+                            logs[header.Label].Add(i, (double)(float)datum);
+                            break;
+                        }
+                    case GenericDataTypes.DOUBLE:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Double(header.Label));
+                            }
+                            logs[header.Label].Add(i, (double)datum);
+                            break;
+                        }
+                    case GenericDataTypes.Int:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(i, (int)datum);
+                            break;
+                        }
+                    case GenericDataTypes.ULONG:
+                        {
+
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(i, (uint)datum);
+                            break;
+                        }
+                    case GenericDataTypes.SHORT:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(i, (short)datum);
+                            break;
+                        }
+                    case GenericDataTypes.USHORT:
+                        {
+                            if (!logs.ContainsKey(header.Label))
+                            {
+                                logs.Add(header.Label, StatusLogBuilder.Int(header.Label));
+                            }
+                            logs[header.Label].Add(i, (ushort)datum);
+                            break;
+                        }
+                    default:
+                        {
+                            System.Console.Error.WriteLine("Skipping {0} {1}", header.Label, header.DataType);
+                            break;
+                        }
+                }
+            }
+        }
+
+        var logArrays = logs.Values.Select(b => b.Build()).ToList();
+        return logArrays;
     }
 
     public List<ArrowStatusLog> StatusLogs(IRawDataPlus accessor)
@@ -1078,6 +1224,11 @@ public class ThermoMZPeakWriter : IDisposable
         FileDescription = ConversionHelper.GetFileDescription(accessor);
         Softwares = ConversionHelper.GetSoftwares(accessor);
         DataProcessingMethods = [ConversionHelper.GetDataProcessingMethod(accessor)];
+
+        Run.DefaultDataProcessingId = DataProcessingMethods.Last().Id;
+        Run.DefaultSourceFileId = FileDescription.SourceFiles[0].Id;
+        Run.DefaultInstrumentId = (int)InstrumentConfigurations[0].Id;
+        Run.StartTime = accessor.CreationDate;
     }
 
     public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
@@ -1306,6 +1457,59 @@ public class ThermoMZPeakWriter : IDisposable
     )
     {
         return Writer.AddChromatogram(id, dataProcessingRef, chromatogramParams, auxiliaryArrays);
+    }
+
+    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
+    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
+
+    /// <summary>Adds a wavelength spectrum entry with metadata.</summary>
+    /// <param name="id">The spectrum native ID.</param>
+    /// <param name="time">The retention time.</param>
+    /// <param name="dataProcessingRef">Optional data processing reference.</param>
+    /// <param name="spectrumParams">Optional spectrum parameters.</param>
+    /// <param name="auxiliaryArrays">Optional auxiliary arrays.</param>
+    public ulong AddWavelengthSpectrum(
+        string id,
+        double time,
+        string? dataProcessingRef,
+        List<Param>? spectrumParams = null,
+        List<AuxiliaryArray>? auxiliaryArrays = null
+    )
+    {
+        return Writer.AddWavelengthSpectrum(
+            id,
+            time,
+            dataProcessingRef,
+            spectrumParams,
+            auxiliaryArrays
+        );
+    }
+
+    /// <summary>Adds a scan entry to a wavelength spectrum.</summary>
+    /// <param name="sourceIndex">The parent spectrum index.</param>
+    /// <param name="instrumentConfigurationRef">Optional instrument configuration reference.</param>
+    /// <param name="scanParams">Scan parameters.</param>
+    /// <param name="ionMobility">Optional ion mobility value.</param>
+    /// <param name="ionMobilityType">Optional ion mobility type CURIE.</param>
+    /// <param name="scanWindows">Optional scan windows parameters.</param>
+    public void AddWavelengthScan(
+        ulong sourceIndex,
+        uint? instrumentConfigurationRef,
+        List<Param> scanParams,
+        double? ionMobility = null,
+        string? ionMobilityType = null,
+        List<List<Param>>? scanWindows = null
+    )
+    {
+        Writer.AddWavelengthScan(
+            sourceIndex,
+            instrumentConfigurationRef,
+            scanParams,
+            ionMobility,
+            ionMobilityType,
+            scanWindows
+        );
     }
 
     public void CloseCurrentWriter() => Writer.CloseCurrentWriter();

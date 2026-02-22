@@ -202,4 +202,134 @@ public class SpectrumMetadataBuilder
         Clear();
         return new RecordBatch(schema, arrays, spectrumLength);
     }
+
+}
+
+
+public class WavelengthSpectrumMetadataBuilder
+{
+    public WavelengthSpectrumBuilder Spectrum { get; }
+    public ScanBuilder Scan { get; }
+    public ulong SpectrumCounter { get; protected set; }
+
+    public int Length { get; private set; }
+
+    public WavelengthSpectrumMetadataBuilder()
+    {
+        Spectrum = new();
+        Scan = new();
+        SpectrumCounter = 0;
+    }
+
+    /// <summary>
+    /// Append a spectrum row with all associated metadata.
+    /// </summary>
+    public ulong AppendSpectrum(
+        string id,
+        double time,
+        string? dataProcessingRef,
+        List<Param> spectrumParams,
+        List<AuxiliaryArray>? auxiliaryArrays = null
+    )
+    {
+        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, spectrumParams, auxiliaryArrays);
+        var index = SpectrumCounter;
+        SpectrumCounter += 1;
+        return index;
+    }
+
+    /// <summary>
+    /// Append a null spectrum row (for packed parallel table alignment).
+    /// </summary>
+    public void AppendNull()
+    {
+        Spectrum.AppendNull();
+        Scan.AppendNull();
+    }
+
+    /// <summary>
+    /// Append a scan row associated with a spectrum.
+    /// </summary>
+    public void AppendScan(
+        ulong sourceIndex,
+        uint? instrumentConfigurationRef,
+        double? ionMobility,
+        string? ionMobilityType,
+        List<Param> scanParams,
+        List<List<Param>>? scanWindows = null
+    )
+    {
+        if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException($"Source index {sourceIndex} is greater than {SpectrumCounter - 1}");
+        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanParams, scanWindows);
+    }
+
+
+    /// <summary>
+    /// Get the Arrow schema for the packed parallel metadata table.
+    /// </summary>
+    public Schema ArrowSchema(IReadOnlyDictionary<string, string>? metadata = null)
+    {
+        var fields = new List<Field>();
+        fields.AddRange(Spectrum.ArrowType());
+        fields.AddRange(Scan.ArrowType());
+        return new Schema(fields, metadata);
+    }
+
+    /// <summary>
+    /// Verify that all sub-builders have the same number of rows.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when facet lengths don't match.</exception>
+    public bool ValidateLengths()
+    {
+        var spectrumLength = Spectrum.Length;
+        var scanLength = Scan.Length;
+
+        if (spectrumLength != scanLength)
+            return false;
+        return true;
+    }
+
+    public void EqualizeLengths()
+    {
+        var spectrumLength = Spectrum.Length;
+        var scanLength = Scan.Length;
+        var nMax = Math.Max(spectrumLength, scanLength);
+        while (spectrumLength < nMax)
+        {
+            Spectrum.AppendNull();
+            spectrumLength += 1;
+        }
+        while (scanLength < nMax)
+        {
+            Scan.AppendNull();
+            scanLength += 1;
+        }
+    }
+
+    public void Clear()
+    {
+        Spectrum.Clear();
+        Scan.Clear();
+    }
+
+    /// <summary>
+    /// Build the packed parallel metadata table as a RecordBatch.
+    /// </summary>
+    public RecordBatch Build()
+    {
+        EqualizeLengths();
+
+        var schema = ArrowSchema();
+        var arrays = new List<IArrowArray>();
+
+        var spectrumArrays = Spectrum.Build();
+        var scanArrays = Scan.Build();
+        int spectrumLength = spectrumArrays[0].Length;
+
+        arrays.AddRange(spectrumArrays);
+        arrays.AddRange(scanArrays);
+        Clear();
+        return new RecordBatch(schema, arrays, spectrumLength);
+    }
+
 }

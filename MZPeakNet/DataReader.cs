@@ -217,7 +217,8 @@ public class DataArraysReaderMeta
 
     void LoadArrayIndex(FileReader reader)
     {
-        var key = string.Format("{0}_array_index", Context.ToString().ToLower());
+
+        var key = string.Format("{0}_array_index", Context.Name());
         var arrayIndex = JsonSerializer.Deserialize<ArrayIndex>(reader.ParquetReader.FileMetaData.KeyValueMetadata[key]);
         if (arrayIndex == null)
         {
@@ -446,20 +447,7 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
 
     public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        BaseLayoutReader reader;
-        if (Metadata.Format == BufferFormat.Point)
-        {
-            reader = new PointLayoutReader(FileReader.GetRecordBatchReader(), ArrayIndex, SpacingModels);
-        }
-        else if (Metadata.Format == BufferFormat.ChunkValues)
-        {
-            reader = new ChunkLayoutReader(FileReader.GetRecordBatchReader(), ArrayIndex, SpacingModels);
-        }
-        else
-        {
-            throw new InvalidDataException("Data layout not recognized");
-        }
-        return reader.GetIter();
+        return Enumerate();
     }
 }
 
@@ -1132,13 +1120,17 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         CurrentBatch = null;
         var batch = await StreamReader.ReadNextRecordBatchAsync(CancellationToken);
         if (batch == null)
+        {
             return false;
+        }
 
         var root = batch.Column(0);
 
         var rootStruct = (StructArray?)root;
         if (rootStruct == null)
+        {
             return false;
+        }
 
         CurrentBatch = rootStruct;
 
@@ -1154,7 +1146,9 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
     async Task<bool> Initialize()
     {
         if (!await ReadNextBatch()) return false;
-        if (CurrentBatch == null) return false;
+        if (CurrentBatch == null) {
+            return false;
+        }
         var idxCol = (UInt64Array)CurrentBatch.Fields[0];
         CurrentIndex = Compute.Min(idxCol);
         return true;
@@ -1163,7 +1157,7 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
     bool BatchHasCurrentIndex()
     {
         if (CurrentBatch == null || CurrentIndex == null) return false;
-        return Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex).Any();
+        return Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex).Any((v) => v ?? false);
     }
 
     public async Task<bool> Seek(ulong index)
