@@ -1362,13 +1362,9 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
                 var i = Offsets[j];
                 if (arr.IsNull(i)) continue;
                 var chunk = arr.GetSlicedValues(i);
-                try
-                {
-                    var visitor = new AuxiliaryArrayVisitor();
-                    visitor.Visit(chunk);
-                    Values[j].AuxiliaryArrays.AddRange(visitor.Values);
-                }
-                catch (NullReferenceException) {}
+                var visitor = new AuxiliaryArrayVisitor();
+                visitor.Visit(chunk);
+                Values[j].AuxiliaryArrays.AddRange(visitor.Values);
             }
         }
         else if (array.Data.DataType.TypeId == ArrowTypeId.LargeList)

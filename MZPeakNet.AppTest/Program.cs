@@ -10,6 +10,8 @@ using MZPeak.Thermo;
 using MZPeak.Compute;
 using MZPeak.Metadata;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Writer.Data;
+using System.ComponentModel;
 
 
 namespace MZPeakCliConverter;
@@ -171,7 +173,8 @@ internal class Program
             var writer = new ThermoMZPeakWriter(
                 writerStorage,
                 spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, false),
-                useChunked: useChunked
+                useChunked: useChunked,
+                includeNoise: true
             );
 
             if (useNullMarking)
@@ -213,6 +216,12 @@ internal class Program
                     writer.CurrentSpectrum,
                     segments,
                     statistics);
+
+                var packets = accessor.GetAdvancedPacketData(scanNumber);
+                if (packets.NoiseData != null && packets.NoiseData.Length > 0)
+                {
+                    writer.AddNoisePacketData(writer.CurrentSpectrum, packets.NoiseData);
+                }
 
                 if (!statistics.IsCentroidScan)
                 {
@@ -279,6 +288,8 @@ internal class Program
                 traceInfo.AuxiliaryArrays
             );
 
+            Logger?.LogInformation("Writing traces");
+
             foreach(var log in writer.ConversionHelper.StatusLogs(accessor))
             {
                 (traceInfo, var traceArrays) = log.AsChromatogramInfo();
@@ -292,6 +303,9 @@ internal class Program
                 );
             }
 
+
+
+            Logger?.LogInformation("Closing writer...");
             writer.Close();
         }
 

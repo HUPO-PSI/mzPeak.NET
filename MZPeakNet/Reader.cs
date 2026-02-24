@@ -134,29 +134,29 @@ public class MzPeakReader
     /// <summary>Gets the run-level metadata.</summary>
     public MSRun Run => spectrumMetadata?.Run ?? chromatogramMetadata?.Run ?? new();
 
-    /// <summary>Gets the spectrum metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? SpectrumTable => spectrumMetadata?.SpectrumMetadata;
+    /// <summary>Gets the spectrum metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? SpectrumTable => spectrumMetadata?.SpectrumMetadata;
 
-    /// <summary>Gets the scan metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? ScanTable => spectrumMetadata?.ScanMetadata;
+    /// <summary>Gets the scan metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? ScanTable => spectrumMetadata?.ScanMetadata;
 
-    /// <summary>Gets the precursor metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? PrecursorTable => spectrumMetadata?.PrecursorMetadata;
+    /// <summary>Gets the precursor metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? PrecursorTable => spectrumMetadata?.PrecursorMetadata;
 
-    /// <summary>Gets the selected ion metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? SelectedIonTable => spectrumMetadata?.PrecursorMetadata;
+    /// <summary>Gets the selected ion metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? SelectedIonTable => spectrumMetadata?.PrecursorMetadata;
 
-    /// <summary>Gets the chromatogram metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? ChromatogramTable => chromatogramMetadata?.ChromatogramMetadata;
+    /// <summary>Gets the chromatogram metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? ChromatogramTable => chromatogramMetadata?.ChromatogramMetadata;
 
-    /// <summary>Gets the chromatogram precursor metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? ChromatogramPrecursorTable => chromatogramMetadata?.PrecursorMetadata;
+    /// <summary>Gets the chromatogram precursor metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? ChromatogramPrecursorTable => chromatogramMetadata?.PrecursorMetadata;
 
-    /// <summary>Gets the chromatogram selected ion metadata as an Arrow RecordBatch.</summary>
-    public RecordBatch? ChromatogramSelectedIonTable => chromatogramMetadata?.PrecursorMetadata;
+    /// <summary>Gets the chromatogram selected ion metadata as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? ChromatogramSelectedIonTable => chromatogramMetadata?.PrecursorMetadata;
 
-    public RecordBatch? WavelengthSpectrumTable => wavelengthSpectrumMetadata?.SpectrumMetadata;
-    public RecordBatch? WavelengthSpectrumScanTable => wavelengthSpectrumMetadata?.ScanMetadata;
+    public ChunkedArray? WavelengthSpectrumTable => wavelengthSpectrumMetadata?.SpectrumMetadata;
+    public ChunkedArray? WavelengthSpectrumScanTable => wavelengthSpectrumMetadata?.ScanMetadata;
 
     /// <summary>Gets the spectrum description for the specified index.</summary>
     /// <param name="index">The spectrum index.</param>

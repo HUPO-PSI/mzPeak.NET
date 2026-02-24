@@ -127,7 +127,7 @@ public enum BufferContext
     WavelengthSpectrum,
 }
 
-static class BufferContexteMethods
+public static class BufferContexteMethods
 {
     public static string IndexName(this BufferContext bufferContext)
     {
@@ -503,14 +503,18 @@ public class ArrayIndexBuilder
         }
     }
 
-    bool ApplyChunkedFormat()
+    bool ApplyChunkedFormat(ArrayType? primaryAxis=null)
     {
         if (Format != BufferFormat.ChunkValues)
             return true;
+        if (primaryAxis == null)
+        {
+            primaryAxis = Context.DefaultPrimaryAxis();
+        }
         bool foundMainAxis = false;
         foreach(var entry in Entries.ToList())
         {
-            if (entry.GetArrayType() == Context.DefaultPrimaryAxis() && entry.BufferPriority == BufferPriority.Primary)
+            if (entry.GetArrayType() == primaryAxis && entry.BufferPriority == BufferPriority.Primary)
             {
                 var newEntry = entry with {BufferFormat = BufferFormat.ChunkStart};
                 newEntry.Path = $"{Prefix}.{newEntry.CreateColumnName()}_chunk_start";
@@ -606,7 +610,7 @@ public class AuxiliaryArray : IHasParameters
     public static AuxiliaryArray FromValues<T>(List<T> values, ArrayIndexEntry entry) where T : struct
     {
         var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(values)).ToArray();
-        var name = new Param(entry.ArrayName, entry.ArrayTypeCURIE, null, entry.UnitCURIE);
+        var name = new Param(name: entry.ArrayName, accession: entry.ArrayTypeCURIE, rawValue: null, unit: entry.UnitCURIE);
         var dataType = BinaryDataTypeMethods.FromCURIE[entry.DataTypeCURIE];
         var unit = entry.GetUnit();
         return new AuxiliaryArray(bytes, name, dataType, unit, Compression.NoCompression);
@@ -661,15 +665,14 @@ public class AuxiliaryArray : IHasParameters
     public static AuxiliaryArray FromValues(StringArray values, ArrayIndexEntry entry)
     {
         var buffer = new MemoryStream();
-        var stringWriter = new StreamWriter(buffer, Encoding.ASCII);
         for(var i = 0; i < values.Length; i++)
         {
             if (values.IsNull(i))
-                stringWriter.Write('\0');
+                buffer.Write([0]);
             else
             {
-                stringWriter.Write(values.GetString(i));
-                stringWriter.Write('\0');
+                buffer.Write(values.GetBytes(i));
+                buffer.Write([0]);
             }
         }
         var name = new Param(entry.ArrayName, entry.ArrayTypeCURIE, null, entry.UnitCURIE);

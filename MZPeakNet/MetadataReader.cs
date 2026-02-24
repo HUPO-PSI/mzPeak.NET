@@ -36,21 +36,22 @@ public abstract class MetadataReaderBase<T>
         this.mzPeakMetadata = mzPeakMetadata;
     }
 
-    protected Dictionary<ulong, string?> GetNativeIdsFrom(RecordBatch? table)
+    protected void GetNativeIdsFrom(StructArray? table, ref Dictionary<ulong, string?> nativeIds)
     {
         if (table == null)
         {
-            return new();
-        }
-        var fieldIdx = table.Schema.GetFieldIndex("id");
-        if (fieldIdx < 0)
-        {
-            return new();
+            return;
         }
 
-        var indexArr = (UInt64Array)table.Column(0);
-        var modelArr = (LargeStringArray)table.Column(fieldIdx);
-        Dictionary<ulong, string?> nativeIds = new();
+        var dtype = (StructType)table.Data.DataType;
+        var fieldIdx = dtype.GetFieldIndex("id");
+        if (fieldIdx < 0)
+        {
+            return;
+        }
+
+        var indexArr = (UInt64Array)table.Fields[0];
+        var modelArr = (LargeStringArray)table.Fields[fieldIdx];
         nativeIds.EnsureCapacity(indexArr.Length);
         for (var i = 0; i < indexArr.Length; i++)
         {
@@ -62,7 +63,6 @@ public abstract class MetadataReaderBase<T>
             var nativeId = modelArr.GetString(i);
             nativeIds.Add((ulong)index, nativeId);
         }
-        return nativeIds;
     }
 
     /// <summary>Gets the number of entries in the metadata table.</summary>
@@ -85,13 +85,13 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     /// <summary>The underlying Parquet file reader.</summary>
     public ParquetSharp.Arrow.FileReader FileReader;
 
-    RecordBatch? spectrumMetadata = null;
+    ChunkedArray? spectrumMetadata = null;
     List<ColumnParam> spectrumMetadataColumns;
-    RecordBatch? scanMetadata = null;
+    ChunkedArray? scanMetadata = null;
     List<ColumnParam> scanMetadataColumns;
-    RecordBatch? precursorMetadata = null;
+    ChunkedArray? precursorMetadata = null;
     List<ColumnParam> precursorMetadataColumns;
-    RecordBatch? selectedIonMetadata = null;
+    ChunkedArray? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
     /// <summary>Gets the number of spectra.</summary>
@@ -103,7 +103,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             {
                 InitializeTables().Wait();
             }
-            return SpectrumMetadata == null ? 0 : SpectrumMetadata.Length;
+            return SpectrumMetadata == null ? 0 : (int)SpectrumMetadata.Length;
         }
     }
 
@@ -125,9 +125,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
     }
 
-    Dictionary<ulong, SpacingInterpolationModel<double>> loadSpectrumInterpolationModels(ListArray modelArr, UInt64Array indexArr)
+    void loadSpectrumInterpolationModels(ListArray modelArr, UInt64Array indexArr, ref Dictionary<ulong, SpacingInterpolationModel<double>> accumulator)
     {
-        Dictionary<ulong, SpacingInterpolationModel<double>> accumulator = new();
         for (var i = 0; i < indexArr.Length; i++)
         {
             var index = indexArr.GetValue(i);
@@ -146,12 +145,10 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
                 accumulator[(ulong)index] = coefs;
             }
         }
-        return accumulator;
     }
 
-    Dictionary<ulong, SpacingInterpolationModel<double>> loadSpectrumInterpolationModels(LargeListArray modelArr, UInt64Array indexArr)
+    void loadSpectrumInterpolationModels(LargeListArray modelArr, UInt64Array indexArr, ref Dictionary<ulong, SpacingInterpolationModel<double>> accumulator)
     {
-        Dictionary<ulong, SpacingInterpolationModel<double>> accumulator = new();
         for (var i = 0; i < indexArr.Length; i++)
         {
             var index = indexArr.GetValue(i);
@@ -170,45 +167,68 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
                 accumulator[(ulong)index] = coefs;
             }
         }
-        return accumulator;
     }
 
     /// <summary>Gets spacing interpolation models keyed by spectrum index.</summary>
     public Dictionary<ulong, SpacingInterpolationModel<double>> GetSpacingModelIndex()
     {
+        Dictionary<ulong, SpacingInterpolationModel<double>> acc = new();
         if (SpectrumMetadata == null)
         {
-            return new();
+            return acc;
         }
-        var fieldIdx = SpectrumMetadata.Schema.GetFieldIndex("mz_delta_model");
+
+        if (SpectrumMetadata.ArrayCount == 0)
+        {
+            return acc;
+        }
+
+        var dtype = (StructType)SpectrumMetadata.Array(0).Data.DataType;
+        var fieldIdx = dtype.GetFieldIndex("mz_delta_model");
+
         if (fieldIdx < 0)
         {
             return new();
         }
 
-        var indexArr = (UInt64Array)SpectrumMetadata.Column(0);
-        var modelArr = SpectrumMetadata.Column(fieldIdx);
-        if (modelArr.Data.DataType.TypeId == ArrowTypeId.List)
+        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
         {
-            return loadSpectrumInterpolationModels((ListArray)modelArr, indexArr);
+            var chunk = (StructArray)SpectrumMetadata.Array(i);
+            var indexArr = (UInt64Array)chunk.Fields[0];
+            var modelArr = chunk.Fields[fieldIdx];
+            if (modelArr.Data.DataType.TypeId == ArrowTypeId.List)
+            {
+                loadSpectrumInterpolationModels((ListArray)modelArr, indexArr, ref acc);
+            }
+            else if (modelArr.Data.DataType.TypeId == ArrowTypeId.LargeList)
+            {
+                loadSpectrumInterpolationModels((LargeListArray)modelArr, indexArr, ref acc);
+            }
+            else
+            {
+                throw new NotImplementedException($"{modelArr.Data.DataType.Name} not supported");
+            }
         }
-        else if (modelArr.Data.DataType.TypeId == ArrowTypeId.LargeList)
-        {
-            return loadSpectrumInterpolationModels((LargeListArray)modelArr, indexArr);
-        }
-        else
-        {
-            throw new NotImplementedException($"{modelArr.Data.DataType.Name} not supported");
-        }
+        return acc;
     }
     /// <summary>Gets native IDs keyed by spectrum index.</summary>
     public Dictionary<ulong, string?> GetNativeIds()
     {
-        return GetNativeIdsFrom(SpectrumMetadata);
+        var tab = new Dictionary<ulong, string?>();
+        if (SpectrumMetadata == null)
+        {
+            return tab;
+        }
+        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        {
+            var chunk = SpectrumMetadata.Array(i);
+            GetNativeIdsFrom((StructArray)chunk, ref tab);
+        }
+        return tab;
     }
 
     /// <summary>Gets or sets the spectrum metadata table.</summary>
-    public RecordBatch? SpectrumMetadata
+    public ChunkedArray? SpectrumMetadata
     {
         get
         {
@@ -222,7 +242,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     }
 
     /// <summary>Gets or sets the scan metadata table.</summary>
-    public RecordBatch? ScanMetadata
+    public ChunkedArray? ScanMetadata
     {
         get
         {
@@ -236,7 +256,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     }
 
     /// <summary>Gets or sets the precursor metadata table.</summary>
-    public RecordBatch? PrecursorMetadata
+    public ChunkedArray? PrecursorMetadata
     {
         get
         {
@@ -250,7 +270,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     }
 
     /// <summary>Gets or sets the selected ion metadata table.</summary>
-    public RecordBatch? SelectedIonMetadata
+    public ChunkedArray? SelectedIonMetadata
     {
         get
         {
@@ -267,34 +287,48 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     public override List<SpectrumDescription> BulkLoad()
     {
         if (SpectrumMetadata == null) return new();
-        var spectra = new SpectrumVisitor();
-        spectra.Visit(SpectrumMetadata);
-        var descrs = spectra.Values.Select(s => new SpectrumDescription(s, new(), new(), new())).ToList();
+        var spectra = new List<SpectrumInfo>();
+        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        {
+            var vis = new SpectrumVisitor();
+            vis.Visit(SpectrumMetadata.Array(i));
+            spectra.AddRange(vis.Values);
+        }
+        var descrs = spectra.Select(s => new SpectrumDescription(s, new(), new(), new())).ToList();
         if (ScanMetadata != null)
         {
-            var visitor = new ScanVisitor();
-            visitor.Visit(ScanMetadata);
-            foreach (var rec in visitor.Values)
+            for (var i = 0; i < ScanMetadata.ArrayCount; i++)
             {
-                descrs[(int)rec.SourceIndex].Scans.Add(rec);
+                var vis = new ScanVisitor();
+                vis.Visit(ScanMetadata.Array(i));
+                foreach (var rec in vis.Values)
+                {
+                    descrs[(int)rec.SourceIndex].Scans.Add(rec);
+                }
             }
         }
         if (PrecursorMetadata != null)
         {
-            var visitor = new PrecursorVisitor();
-            visitor.Visit(PrecursorMetadata);
-            foreach (var rec in visitor.Values)
+            for (var i = 0; i < PrecursorMetadata.ArrayCount; i++)
             {
-                descrs[(int)rec.SourceIndex].Precursors.Add(rec);
+                var vis = new PrecursorVisitor();
+                vis.Visit(PrecursorMetadata.Array(i));
+                foreach (var rec in vis.Values)
+                {
+                    descrs[(int)rec.SourceIndex].Precursors.Add(rec);
+                }
             }
         }
         if (SelectedIonMetadata != null)
         {
-            var visitor = new SelectedIonVisitor();
-            visitor.Visit(SelectedIonMetadata);
-            foreach (var rec in visitor.Values)
+            for (var i = 0; i < SelectedIonMetadata.ArrayCount; i++)
             {
-                descrs[(int)rec.SourceIndex].SelectedIons.Add(rec);
+                var vis = new SelectedIonVisitor();
+                vis.Visit(SelectedIonMetadata.Array(i));
+                foreach (var rec in vis.Values)
+                {
+                    descrs[(int)rec.SourceIndex].SelectedIons.Add(rec);
+                }
             }
         }
         return descrs;
@@ -303,43 +337,78 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     SpectrumDescription GetSpectrum(ulong index)
     {
         if (SpectrumMetadata == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
+        UInt64Array idxArr;
+        SpectrumInfo? rec = null;
+        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        {
+            var chunk = (StructArray)SpectrumMetadata.Array(i);
+            idxArr = (UInt64Array)chunk.Fields[0];
+            var first = Compute.Compute.FirstNotNull(idxArr);
+            var last = Compute.Compute.LastNotNull(idxArr);
+            if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+            var mask = Compute.Compute.Equal(idxArr, index);
+            var recs = Compute.Compute.Filter(chunk, mask);
+            var visitor = new SpectrumVisitor();
+            visitor.Visit(recs);
+            rec = visitor.Values[0];
+            break;
+        }
+        if (rec == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
 
-        var idxArr = (UInt64Array)SpectrumMetadata.Column(0);
-        var mask = Compute.Compute.Equal(idxArr, index);
-        var recs = Compute.Compute.Filter(SpectrumMetadata, mask);
-        var visitor = new SpectrumVisitor();
-        visitor.Visit(recs);
-        var rec = visitor.Values[0];
         var pn = rec.Parameters.Find(p => p.AccessionCURIE == "MS:1000127");
         List<ScanInfo> scanRecs = new();
         if (ScanMetadata != null)
         {
-            idxArr = (UInt64Array)ScanMetadata.Column(0);
-            mask = Compute.Compute.Equal(idxArr, index);
-            recs = Compute.Compute.Filter(ScanMetadata, mask);
-            var scanVisitor = new ScanVisitor();
-            scanVisitor.Visit(recs);
-            scanRecs = scanVisitor.Values;
+            for (var i = 0; i < ScanMetadata.ArrayCount; i++)
+            {
+                var chunk = (StructArray)ScanMetadata.Array(i);
+                idxArr = (UInt64Array)chunk.Fields[0];
+                var first = Compute.Compute.FirstNotNull(idxArr);
+                var last = Compute.Compute.LastNotNull(idxArr);
+                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+                var mask = Compute.Compute.Equal(idxArr, index);
+                var recs = Compute.Compute.Filter(chunk, mask);
+                var visitor = new ScanVisitor();
+                visitor.Visit(recs);
+                scanRecs.AddRange(visitor.Values);
+                break;
+            }
         }
         List<PrecursorInfo> precursorInfos = new();
         if (PrecursorMetadata != null)
         {
-            idxArr = (UInt64Array)PrecursorMetadata.Column(0);
-            mask = Compute.Compute.Equal(idxArr, index);
-            recs = Compute.Compute.Filter(PrecursorMetadata, mask);
-            var scanVisitor = new PrecursorVisitor();
-            scanVisitor.Visit(recs);
-            precursorInfos = scanVisitor.Values;
+            for (var i = 0; i < PrecursorMetadata.ArrayCount; i++)
+            {
+                var chunk = (StructArray)PrecursorMetadata.Array(i);
+                idxArr = (UInt64Array)chunk.Fields[0];
+                var first = Compute.Compute.FirstNotNull(idxArr);
+                var last = Compute.Compute.LastNotNull(idxArr);
+                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+                var mask = Compute.Compute.Equal(idxArr, index);
+                var recs = Compute.Compute.Filter(chunk, mask);
+                var visitor = new PrecursorVisitor();
+                visitor.Visit(recs);
+                precursorInfos.AddRange(visitor.Values);
+                break;
+            }
         }
         List<SelectedIonInfo> selectedIons = new();
         if (SelectedIonMetadata != null)
         {
-            idxArr = (UInt64Array)SelectedIonMetadata.Column(0);
-            mask = Compute.Compute.Equal(idxArr, index);
-            recs = Compute.Compute.Filter(SelectedIonMetadata, mask);
-            var scanVisitor = new SelectedIonVisitor();
-            scanVisitor.Visit(recs);
-            selectedIons = scanVisitor.Values;
+            for (var i = 0; i < SelectedIonMetadata.ArrayCount; i++)
+            {
+                var chunk = (StructArray)SelectedIonMetadata.Array(i);
+                idxArr = (UInt64Array)chunk.Fields[0];
+                var first = Compute.Compute.FirstNotNull(idxArr);
+                var last = Compute.Compute.LastNotNull(idxArr);
+                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+                var mask = Compute.Compute.Equal(idxArr, index);
+                var recs = Compute.Compute.Filter(chunk, mask);
+                var visitor = new SelectedIonVisitor();
+                visitor.Visit(recs);
+                selectedIons.AddRange(visitor.Values);
+                break;
+            }
         }
 
         return new SpectrumDescription(rec, scanRecs, precursorInfos, selectedIons);
@@ -363,16 +432,15 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             }
             Logger?.LogDebug("batch {ctr}, {batch.Length} items", batch, ctr);
             ctr++;
-            var arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("spectrum"));
+            var arr = batch.Column("spectrum");
             if (arr != null) spectra.Add(arr);
-            arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("scan"));
+            arr = batch.Column("scan");
             if (arr != null) scans.Add(arr);
             try
             {
                 arr = batch.Column("precursor");
                 if (arr != null)
                 {
-                    arr = ArrowCompatibilityVisitor.MakeNetCompatible(arr);
                     if (arr != null) precursors.Add(arr);
                 }
             } catch(ArgumentOutOfRangeException) {}
@@ -383,7 +451,6 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
                 arr = batch.Column("selected_ion");
                 if (arr != null)
                 {
-                    arr = ArrowCompatibilityVisitor.MakeNetCompatible(arr);
                     if (arr != null) selectedIons.Add(arr);
                 }
             }
@@ -392,24 +459,20 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
 
         if (spectra.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(spectra);
-            SpectrumMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            SpectrumMetadata = new ChunkedArray(spectra);
         }
 
         if (scans.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(scans);
-            ScanMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            ScanMetadata = new ChunkedArray(scans);
         }
         if (precursors.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(precursors);
-            PrecursorMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            PrecursorMetadata = new ChunkedArray(precursors);
         }
         if (selectedIons.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(selectedIons);
-            SelectedIonMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            SelectedIonMetadata = new ChunkedArray(selectedIons);
         }
     }
 
@@ -429,11 +492,11 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     /// <summary>The underlying Parquet file reader.</summary>
     public ParquetSharp.Arrow.FileReader FileReader;
 
-    RecordBatch? chromatogramMetadata = null;
+    ChunkedArray? chromatogramMetadata = null;
     List<ColumnParam> chromatogramMetadataColumns;
-    RecordBatch? precursorMetadata = null;
+    ChunkedArray? precursorMetadata = null;
     List<ColumnParam> precursorMetadataColumns;
-    RecordBatch? selectedIonMetadata = null;
+    ChunkedArray? selectedIonMetadata = null;
     List<ColumnParam> selectedIonMetadataColumns;
 
     /// <summary>Gets the number of chromatograms.</summary>
@@ -445,7 +508,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             {
                 InitializeTables().Wait();
             }
-            return ChromatogramMetadata == null ? 0 : ChromatogramMetadata.Length;
+            return ChromatogramMetadata == null ? 0 : (int)ChromatogramMetadata.Length;
         }
     }
 
@@ -465,7 +528,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     }
 
     /// <summary>Gets or sets the chromatogram metadata table.</summary>
-    public RecordBatch? ChromatogramMetadata
+    public ChunkedArray? ChromatogramMetadata
     {
         get
         {
@@ -479,7 +542,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     }
 
     /// <summary>Gets or sets the precursor metadata table.</summary>
-    public RecordBatch? PrecursorMetadata
+    public ChunkedArray? PrecursorMetadata
     {
         get
         {
@@ -493,7 +556,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     }
 
     /// <summary>Gets or sets the selected ion metadata table.</summary>
-    public RecordBatch? SelectedIonMetadata
+    public ChunkedArray? SelectedIonMetadata
     {
         get
         {
@@ -509,32 +572,53 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     /// <summary>Gets native IDs keyed by chromatogram index.</summary>
     public Dictionary<ulong, string?> GetNativeIds()
     {
-        return GetNativeIdsFrom(ChromatogramMetadata);
+        var tab = new Dictionary<ulong, string?>();
+        if (ChromatogramMetadata == null)
+        {
+            return tab;
+        }
+        for (var i = 0; i < ChromatogramMetadata.ArrayCount; i++)
+        {
+            var chunk = ChromatogramMetadata.Array(i);
+            GetNativeIdsFrom((StructArray)chunk, ref tab);
+        }
+        return tab;
     }
 
     /// <summary>Loads all chromatogram descriptions.</summary>
     public override List<ChromatogramDescription> BulkLoad()
     {
-        if (ChromatogramMetadata == null) return [];
-        var chromVisitor = new ChromatogramVisitor();
-        chromVisitor.Visit(ChromatogramMetadata);
-        var descrs = chromVisitor.Values.Select(rec => new ChromatogramDescription(rec, new(), new())).ToList();
+        if (ChromatogramMetadata == null) return new();
+        var recs = new List<ChromatogramInfo>();
+        for (var i = 0; i < ChromatogramMetadata.ArrayCount; i++)
+        {
+            var vis = new ChromatogramVisitor();
+            vis.Visit(ChromatogramMetadata.Array(i));
+            recs.AddRange(vis.Values);
+        }
+        var descrs = recs.Select(s => new ChromatogramDescription(s, new(), new())).ToList();
         if (PrecursorMetadata != null)
         {
-            var visitor = new PrecursorVisitor();
-            visitor.Visit(PrecursorMetadata);
-            foreach (var rec in visitor.Values)
+            for (var i = 0; i < PrecursorMetadata.ArrayCount; i++)
             {
-                descrs[(int)rec.SourceIndex].Precursors.Add(rec);
+                var vis = new PrecursorVisitor();
+                vis.Visit(PrecursorMetadata.Array(i));
+                foreach (var rec in vis.Values)
+                {
+                    descrs[(int)rec.SourceIndex].Precursors.Add(rec);
+                }
             }
         }
         if (SelectedIonMetadata != null)
         {
-            var visitor = new SelectedIonVisitor();
-            visitor.Visit(SelectedIonMetadata);
-            foreach (var rec in visitor.Values)
+            for (var i = 0; i < SelectedIonMetadata.ArrayCount; i++)
             {
-                descrs[(int)rec.SourceIndex].SelectedIons.Add(rec);
+                var vis = new SelectedIonVisitor();
+                vis.Visit(SelectedIonMetadata.Array(i));
+                foreach (var rec in vis.Values)
+                {
+                    descrs[(int)rec.SourceIndex].SelectedIons.Add(rec);
+                }
             }
         }
         return descrs;
@@ -543,35 +627,60 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     ChromatogramDescription GetChromatogram(ulong index)
     {
         if (ChromatogramMetadata == null) throw new IndexOutOfRangeException($"{index} out of chromatogram index range");
-
-        var idxArr = (UInt64Array)ChromatogramMetadata.Column(0);
-        var mask = Compute.Compute.Equal(idxArr, index);
-        var recs = Compute.Compute.Filter(ChromatogramMetadata, mask);
-        var visitor = new ChromatogramVisitor();
-        visitor.Visit(recs);
-        var rec = visitor.Values[0];
+        UInt64Array idxArr;
+        ChromatogramInfo? rec = null;
+        for (var i = 0; i < ChromatogramMetadata.ArrayCount; i++)
+        {
+            var chunk = (StructArray)ChromatogramMetadata.Array(i);
+            idxArr = (UInt64Array)chunk.Fields[0];
+            var first = Compute.Compute.FirstNotNull(idxArr);
+            var last = Compute.Compute.LastNotNull(idxArr);
+            if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+            var mask = Compute.Compute.Equal(idxArr, index);
+            var recs = Compute.Compute.Filter(chunk, mask);
+            var visitor = new ChromatogramVisitor();
+            visitor.Visit(recs);
+            rec = visitor.Values[0];
+            break;
+        }
+        if (rec == null) throw new IndexOutOfRangeException($"{index} out of chromatogram index range");
 
         List<PrecursorInfo> precursorInfos = new();
         if (PrecursorMetadata != null)
         {
-            idxArr = (UInt64Array)PrecursorMetadata.Column(0);
-            mask = Compute.Compute.Equal(idxArr, index);
-            recs = Compute.Compute.Filter(PrecursorMetadata, mask);
-            var scanVisitor = new PrecursorVisitor();
-            scanVisitor.Visit(recs);
-            precursorInfos = scanVisitor.Values;
+            for (var i = 0; i < PrecursorMetadata.ArrayCount; i++)
+            {
+                var chunk = (StructArray)PrecursorMetadata.Array(i);
+                idxArr = (UInt64Array)chunk.Fields[0];
+                var first = Compute.Compute.FirstNotNull(idxArr);
+                var last = Compute.Compute.LastNotNull(idxArr);
+                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+                var mask = Compute.Compute.Equal(idxArr, index);
+                var recs = Compute.Compute.Filter(chunk, mask);
+                var visitor = new PrecursorVisitor();
+                visitor.Visit(recs);
+                precursorInfos.AddRange(visitor.Values);
+                break;
+            }
         }
         List<SelectedIonInfo> selectedIons = new();
         if (SelectedIonMetadata != null)
         {
-            idxArr = (UInt64Array)SelectedIonMetadata.Column(0);
-            mask = Compute.Compute.Equal(idxArr, index);
-            recs = Compute.Compute.Filter(SelectedIonMetadata, mask);
-            var scanVisitor = new SelectedIonVisitor();
-            scanVisitor.Visit(recs);
-            selectedIons = scanVisitor.Values;
+            for (var i = 0; i < SelectedIonMetadata.ArrayCount; i++)
+            {
+                var chunk = (StructArray)SelectedIonMetadata.Array(i);
+                idxArr = (UInt64Array)chunk.Fields[0];
+                var first = Compute.Compute.FirstNotNull(idxArr);
+                var last = Compute.Compute.LastNotNull(idxArr);
+                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
+                var mask = Compute.Compute.Equal(idxArr, index);
+                var recs = Compute.Compute.Filter(chunk, mask);
+                var visitor = new SelectedIonVisitor();
+                visitor.Visit(recs);
+                selectedIons.AddRange(visitor.Values);
+                break;
+            }
         }
-
         return new ChromatogramDescription(rec, precursorInfos, selectedIons);
     }
 
@@ -579,7 +688,6 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     public async Task InitializeTables()
     {
         var reader = FileReader.GetRecordBatchReader();
-        var builder = new RecordBatch.Builder();
         var ctr = 0;
         List<IArrowArray> chromatograms = [];
         List<IArrowArray> precursors = [];
@@ -594,28 +702,25 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             }
             Logger?.LogDebug("batch {ctr}, {batch.Length} items", batch, ctr);
             ctr++;
-            var arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("chromatogram"));
+            var arr = batch.Column("chromatogram");
             if (arr != null) chromatograms.Add(arr);
-            arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("precursor"));
+            arr = batch.Column("precursor");
             if (arr != null) precursors.Add(arr);
-            arr = ArrowCompatibilityVisitor.MakeNetCompatible(batch.Column("selected_ion"));
+            arr = batch.Column("selected_ion");
             if (arr != null) selectedIons.Add(arr);
         }
 
         if (chromatograms.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(chromatograms);
-            ChromatogramMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            ChromatogramMetadata = new ChunkedArray(chromatograms);
         }
         if (precursors.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(precursors);
-            PrecursorMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            PrecursorMetadata = new ChunkedArray(precursors);
         }
         if (selectedIons.Count > 0)
         {
-            StructArray bat = (StructArray)ArrowArrayConcatenator.Concatenate(selectedIons);
-            SelectedIonMetadata = new RecordBatch(new Schema(((StructType)bat.Data.DataType).Fields, []), bat.Fields, bat.Length);
+            SelectedIonMetadata = new ChunkedArray(selectedIons);
         }
     }
 

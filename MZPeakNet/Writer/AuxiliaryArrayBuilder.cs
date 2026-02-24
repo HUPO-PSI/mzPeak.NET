@@ -45,7 +45,7 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
 
     public void AppendNull()
     {
-        Data.AppendNull();
+        Data.Append();
         Name.AppendNull();
         DataType.AppendNull();
         Compression.AppendNull();
@@ -78,7 +78,8 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
             ..Parameters.Build(),
             DataProcessingRef.Build()
         ];
-        return [new StructArray(ArrowType()[0].DataType, Length, fields, default)];
+        var bat = new StructArray(ArrowType()[0].DataType, Length, fields, default);
+        return [bat];
     }
 
     public void Clear()

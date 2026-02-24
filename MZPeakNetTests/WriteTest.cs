@@ -256,8 +256,8 @@ public class WriteTest
 
         var readerStorage = new ZipArchiveStream<MemoryStream>(stream);
         var reader = new MzPeakReader(readerStorage);
-
-        var meta = reader.SpectrumTable;
+        Assert.NotNull(reader.SpectrumTable);
+        var meta = ((StructArray)reader.SpectrumTable.Array(0)).AsRecordBatch();
         Assert.NotNull(meta);
 
         var idArr = (StringArray)meta.Column("id");

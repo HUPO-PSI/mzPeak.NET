@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Reader;
@@ -121,10 +122,11 @@ public class ArchiveTest
         var meta = new SpectrumMetadataReader(stream);
         Assert.NotNull(meta);
         Assert.NotNull(meta.SpectrumMetadata);
-        var col = meta.SpectrumMetadata.Column("index");
+        var chunk = ((StructArray)meta.SpectrumMetadata.Array(0)).AsRecordBatch();
+        var col = chunk.Column("index");
         Assert.NotNull(col);
         Assert.Equal(48, col.Length);
-        var schema = meta.SpectrumMetadata.Schema;
+        var schema = chunk.Schema;
         for (var i = 0; i < schema.FieldsList.Count; i++)
         {
             // Console.WriteLine("{0} => {1} : {2}", i, schema.FieldsList[i].Name, schema.FieldsList[i].DataType);
@@ -133,7 +135,7 @@ public class ArchiveTest
         Assert.NotNull(idxArray.GetValue(0));
         Assert.Equal(0ul, idxArray.GetValue(0));
 
-        col = meta.ScanMetadata?.Column("parameters");
+        col = ((StructArray?)meta.ScanMetadata?.Array(0))?.AsRecordBatch().Column("parameters");
         Assert.NotNull(col);
         var builder = new ParamListVisitor();
         builder.Visit(col);

@@ -1,7 +1,7 @@
 namespace MZPeak.Compute;
 
 using System.Numerics;
-
+using System.Runtime.InteropServices;
 using Apache.Arrow;
 using Apache.Arrow.Memory;
 using Apache.Arrow.Types;
@@ -546,7 +546,8 @@ public static class NoCompressionCodec
 {
     public const string CURIE = "MS:1000576";
 
-    public static int Encode<T, TBuilder>(T startValue, IEnumerable<T?> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator) where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
+    public static int Encode<T, TBuilder>(T startValue, IEnumerable<T?> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator)
+        where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
         int nNulls = 0;
         foreach (var value in values)
@@ -564,7 +565,8 @@ public static class NoCompressionCodec
         return nNulls;
     }
 
-    public static int Decode<T, TBuilder>(T startValue, PrimitiveArray<T> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator) where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
+    public static int Decode<T, TBuilder>(T startValue, PrimitiveArray<T> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator)
+        where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
         int nNulls = 0;
         accumulator.Append(startValue);
@@ -588,7 +590,8 @@ public static class DeltaCodec
 {
     public const string CURIE = "MS:1003089";
 
-    public static int Encode<T, TBuilder>(T? startValue, IEnumerable<T?> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator) where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
+    public static int Encode<T, TBuilder>(T? startValue, IEnumerable<T?> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator)
+        where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
         int nNulls = 0;
 
@@ -624,17 +627,15 @@ public static class DeltaCodec
         return nNulls;
     }
 
-    public static int Decode<T, TBuilder>(T startValue, PrimitiveArray<T> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator) where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
+    public static int Decode<T, TBuilder>(T startValue, PrimitiveArray<T> values, IArrowArrayBuilder<T, PrimitiveArray<T>, TBuilder> accumulator)
+        where T : struct, INumber<T> where TBuilder : IArrowArrayBuilder<PrimitiveArray<T>>
     {
         int nNulls = 0;
-        if (values.Length < 2)
-        {
-            throw new IndexOutOfRangeException("Cannot have a delta encoded chunk value slice size of less than two");
-        }
+
         T? last = startValue;
-        if (values.ElementAt(0) == null)
+        if (values.Length > 0 && values.ElementAt(0) == null)
         {
-            if (values.ElementAt(1) == null)
+            if (values.Length > 1 && values.ElementAt(1) == null)
             {
                 accumulator.Append(startValue);
             }
@@ -671,120 +672,6 @@ public static class DeltaCodec
     }
 }
 
-
-public class ArrowCompatibilityVisitor : IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<LargeListArray>, IArrowArrayVisitor<LargeStringArray>, IArrowArrayVisitor<LargeBinaryArray>
-{
-    public IArrowArray? Result = null;
-
-    public static IArrowArray MakeNetCompatible(IArrowArray array)
-    {
-        var visitor = new ArrowCompatibilityVisitor();
-        visitor.Visit(array);
-        if (visitor.Result == null) throw new InvalidOperationException();
-        return visitor.Result;
-    }
-
-    public StructArray HandleStruct(StructArray array)
-    {
-        var dtype = (StructType)array.Data.DataType;
-        var newFields = new List<Field>();
-        var newVals = new List<IArrowArray>();
-        int size = 0;
-        foreach (var (field, arr) in dtype.Fields.Zip(array.Fields))
-        {
-            var visitor = new ArrowCompatibilityVisitor();
-            visitor.Visit(arr);
-            if (visitor.Result == null) throw new InvalidOperationException();
-            newFields.Add(new Field(field.Name, visitor.Result.Data.DataType, field.IsNullable));
-            newVals.Add(visitor.Result);
-            if (size != 0 && visitor.Result.Length != 0 && visitor.Result.Length != size) throw new InvalidDataException();
-            size = visitor.Result.Length;
-        }
-        var result = new StructArray(new StructType(newFields), size, newVals, array.NullBitmapBuffer);
-        if (result.Fields.Count > 0) { }
-        return result;
-    }
-
-    public void Visit(StructArray array)
-    {
-        Result = HandleStruct(array);
-    }
-
-    public void Visit(IArrowArray array)
-    {
-        switch (array.Data.DataType.TypeId)
-        {
-            case ArrowTypeId.Struct:
-                {
-                    Visit((StructArray)array);
-                    break;
-                }
-            case ArrowTypeId.LargeList:
-                {
-                    Visit((LargeListArray)array);
-                    break;
-                }
-            case ArrowTypeId.LargeString:
-                {
-                    Visit((LargeStringArray)array);
-                    break;
-                }
-            case ArrowTypeId.LargeBinary:
-                {
-                    Visit((LargeBinaryArray)array);
-                    break;
-                }
-            default:
-                {
-                    Result = array;
-                    break;
-                }
-        }
-    }
-
-    public void Visit(LargeListArray array)
-    {
-        ArrowCompatibilityVisitor visitor = new();
-        visitor.Visit(array.Values);
-        var offsetsBuffer = new ArrowBuffer.Builder<int>();
-        foreach (var v in array.ValueOffsets)
-        {
-            offsetsBuffer.Append((int)v);
-        }
-        if (visitor.Result == null) throw new InvalidOperationException();
-        Result = new ListArray(
-            new ListType(((LargeListType)array.Data.DataType).ValueDataType),
-            array.Length,
-            offsetsBuffer.Build(),
-            visitor.Result,
-            array.NullBitmapBuffer,
-            array.NullCount,
-            array.Offset
-        );
-    }
-
-    public void Visit(LargeStringArray array)
-    {
-        var offsetsBuffer = new ArrowBuffer.Builder<int>();
-        foreach (var v in array.ValueOffsets)
-        {
-            offsetsBuffer.Append((int)v);
-        }
-        Result = new StringArray(
-            array.Length,
-            offsetsBuffer.Build(),
-            array.ValueBuffer,
-            array.NullBitmapBuffer,
-            array.NullCount,
-            array.Offset
-        );
-    }
-
-    public void Visit(LargeBinaryArray type)
-    {
-        throw new NotImplementedException();
-    }
-}
 
 /// <summary>
 /// Specifies how null values should be handled in aggregate computations.
@@ -902,7 +789,7 @@ public static class Compute
         List<string> indenting = Enumerable.Repeat(indenter, indent).ToList();
         string indentString = string.Concat(indenting);
 
-        stream.WriteLine($"{indentString}[");
+        stream.WriteLine($"{indentString}[ {array.Length}");
         var pad = indentString + indenter;
         switch (array.Data.DataType.TypeId)
         {
@@ -1091,7 +978,7 @@ public static class Compute
                     var valArray = (StructArray)array;
                     foreach(var (f, col) in dtype.Fields.Zip(valArray.Fields))
                     {
-                        stream.WriteLine($"{indentString}{f.Name}: {f.DataType.Name}");
+                        stream.WriteLine($"{indentString}{f.Name}: {f.DataType.Name} {col.Length}");
                         PrettyPrintFormat(col, stream, indent + 1, indenter);
                     }
                     break;
@@ -1269,6 +1156,44 @@ public static class Compute
     }
 
     /// <summary>
+    /// Find the first value in the array that is not null
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="array">The array to search</param>
+    /// <returns>The first non-null value and the index it was found at</returns>
+    public static (T, int)? FirstNotNull<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    {
+        for(var i = 0; i < array.Length; i++)
+        {
+            var v = array.GetValue(i);
+            if (v != null)
+            {
+                return ((T)v, i);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Find the last value in the array that is not null
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="array">The array to search</param>
+    /// <returns>The last non-null value and the index it was found at</returns>
+    public static (T, int)? LastNotNull<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
+    {
+        for (var i = array.Length - 1; i >= 0; i--)
+        {
+            var v = array.GetValue(i);
+            if (v != null)
+            {
+                return ((T)v, i);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Returns the maximum value in the array.
     /// </summary>
     /// <typeparam name="T">The numeric type of array elements.</typeparam>
@@ -1438,7 +1363,7 @@ public static class Compute
     {
         var nullCount = mask.Sum(v => (v != null && (bool)v) ? 1 : 0);
         return (PrimitiveArray<T>)ArrowArrayFactory.BuildArray(
-            new ArrayData(array.Data.DataType, array.Length, nullCount, offset: array.Data.Offset, [mask.ValueBuffer, array.ValueBuffer], [])
+            new ArrayData(array.Data.DataType, array.Length, nullCount, offset: array.Data.Offset, [mask.ValueBuffer.Clone(), array.ValueBuffer.Clone()], [])
         );
     }
 
@@ -2072,6 +1997,7 @@ public static class Compute
     public static BooleanArray Equal<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2085,6 +2011,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2098,6 +2025,7 @@ public static class Compute
     public static BooleanArray Equal(StringArray lhs, string rhs, MemoryAllocator? allocator = null)
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetString(i);
@@ -2111,6 +2039,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetString(i);
@@ -2124,6 +2053,7 @@ public static class Compute
     public static BooleanArray Equal(LargeStringArray lhs, string rhs, MemoryAllocator? allocator = null)
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetString(i);
@@ -2137,6 +2067,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetString(i);
@@ -2163,6 +2094,7 @@ public static class Compute
     public static BooleanArray GreaterThan<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2176,6 +2108,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2189,6 +2122,7 @@ public static class Compute
     public static BooleanArray LessThan<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2202,6 +2136,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2215,6 +2150,7 @@ public static class Compute
     public static BooleanArray GreaterThanOrEqual<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2228,6 +2164,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2241,6 +2178,7 @@ public static class Compute
     public static BooleanArray LessThanOrEqual<T>(PrimitiveArray<T> lhs, T rhs, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var cmp = new BooleanArray.Builder();
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2254,6 +2192,7 @@ public static class Compute
     {
         var cmp = new BooleanArray.Builder();
         if (lhs.Length != rhs.Length) throw new InvalidOperationException("Arrays must have the same length");
+        cmp.Reserve(lhs.Length);
         for (int i = 0; i < lhs.Length; i++)
         {
             var a = lhs.GetValue(i);
@@ -2405,5 +2344,16 @@ public static class Compute
     {
         var spans = IndicesToSpans(indices);
         return Take(batch, spans, allocator);
+    }
+
+}
+
+public static class StructArrayExtensions
+{
+    public static RecordBatch AsRecordBatch(this StructArray array)
+    {
+        var dtype = (StructType)array.Data.DataType;
+        var schema = new Schema(dtype.Fields, null);
+        return new RecordBatch(schema, array.Fields, array.Length);
     }
 }

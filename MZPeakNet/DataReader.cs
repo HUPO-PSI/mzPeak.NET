@@ -217,7 +217,6 @@ public class DataArraysReaderMeta
 
     void LoadArrayIndex(FileReader reader)
     {
-
         var key = string.Format("{0}_array_index", Context.Name());
         var arrayIndex = JsonSerializer.Deserialize<ArrayIndex>(reader.ParquetReader.FileMetaData.KeyValueMetadata[key]);
         if (arrayIndex == null)
@@ -238,6 +237,10 @@ public class DataArraysReaderMeta
             if (pathOf.EndsWith(".list.item"))
             {
                 pathOf = pathOf.Replace(".list.item", "");
+            }
+            else if (pathOf.EndsWith(".list.element"))
+            {
+                pathOf = pathOf.Replace(".list.element", "");
             }
             foreach (var arrEnt in ArrayIndex.Entries)
             {
@@ -931,7 +934,17 @@ public class ChunkLayoutReader : BaseLayoutReader
                     }
                 case DeltaCodec.CURIE:
                     {
-                        decodedValues.Add(DecodeDelta(entryIndex, (double)startValue, valueList, mainAxis));
+                        try
+                        {
+                            decodedValues.Add(DecodeDelta(entryIndex, (double)startValue, valueList, mainAxis));
+                        }
+                        catch (System.IndexOutOfRangeException e)
+                        {
+                            throw new IndexOutOfRangeException(
+                                $"Failed to delta decode chunk for entry {entryIndex} starting at {startValue} with {valueList.Length} values",
+                                innerException: e
+                            );
+                        }
                         break;
                     }
                 case NUMPRESS_LINEAR_CURIE:

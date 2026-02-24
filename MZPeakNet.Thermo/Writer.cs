@@ -10,7 +10,7 @@ using MZPeak.Metadata;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using MZPeak.Writer;
-
+using MZPeak.Writer.Data;
 using ThermoFisher.CommonCore.Data;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
@@ -1162,6 +1162,8 @@ public class ThermoMZPeakWriter : IDisposable
     bool IncludeResolution;
     bool IncludeCharge;
 
+    PointLayoutBuilder? NoiseBuilder;
+
     public ulong CurrentSpectrum => Writer.CurrentSpectrum;
     public ulong CurrentChromatogram => Writer.CurrentChromatogram;
 
@@ -1184,6 +1186,7 @@ public class ThermoMZPeakWriter : IDisposable
             builder.Add(ArrayType.ResolutionArray, BinaryDataType.Float32);
         if (includeCharge)
             builder.Add(ArrayType.ChargeArray, BinaryDataType.Int32);
+
         return builder.Build();
     }
 
@@ -1196,6 +1199,7 @@ public class ThermoMZPeakWriter : IDisposable
                               ArrayIndex? spectrumArrayIndex = null,
                               ArrayIndex? chromatogramArrayIndex = null,
                               ArrayIndex? spectrumPeakArrayIndex = null,
+                              bool includeNoise = false,
                               bool useChunked = false)
     {
         if (spectrumArrayIndex == null)
@@ -1213,6 +1217,14 @@ public class ThermoMZPeakWriter : IDisposable
         ConversionHelper = new();
         IncludeResolution = Writer.SpectrumPeaksHasArrayType(ArrayType.ResolutionArray);
         IncludeCharge = Writer.SpectrumPeaksHasArrayType(ArrayType.ChargeArray);
+        if (includeNoise)
+        {
+            NoiseBuilder = new PointLayoutBuilder(ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum)
+                .Add(ArrayType.SampledNoiseMZArray, BinaryDataType.Float32, Unit.MZ)
+                .Add(ArrayType.SampledNoiseBaselineArray, BinaryDataType.Float32)
+                .Add(ArrayType.SampledNoiseIntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts)
+                .Build());
+        }
     }
 
     public void InitializeHelper(IRawDataPlus accessor)
@@ -1256,6 +1268,24 @@ public class ThermoMZPeakWriter : IDisposable
             arrays.Add(Compute.Compute.CastFloat(centroids.Resolutions));
         }
         return Writer.AddSpectrumPeakData(entryIndex, arrays).Item2;
+    }
+
+    public void AddNoisePacketData(ulong entryIndex, NoiseAndBaseline[] noiseAndBaselines)
+    {
+        if (NoiseBuilder == null) return;
+
+        var mzs = new FloatArray.Builder();
+        var bases = new FloatArray.Builder();
+        var intens = new FloatArray.Builder();
+
+        foreach(var pt in noiseAndBaselines)
+        {
+            mzs.Append(pt.Mass);
+            bases.Append(pt.Baseline);
+            intens.Append(pt.Noise);
+        }
+
+        NoiseBuilder.Add(entryIndex, [mzs.Build(), bases.Build(), intens.Build()], false);
     }
 
     Param GetMSLevel(IScanFilter scanFilter)
@@ -1526,7 +1556,46 @@ public class ThermoMZPeakWriter : IDisposable
     public void WriteChromatogramMetadata() => Writer.WriteChromatogramMetadata();
 
     /// <summary>Closes the writer and finalizes the archive.</summary>
-    public void Close() => Writer.Close();
+    public void Close() {
+        FlushStandardContent();
+        WriteNoiseData();
+        Writer.Close();
+    }
+
+    public void FlushStandardContent() => Writer.FlushStandardContent();
+
+    public void WriteNoiseData()
+    {
+        if (NoiseBuilder == null) return;
+        if (Writer.State < WriterState.OtherData)
+        {
+            FlushStandardContent();
+            Writer.State = WriterState.OtherData;
+        }
+        var noiseEntry = new FileIndexEntry("spectrum_noise_data.parquet", EntityType.Spectrum, DataKind.Proprietary);
+        var managedStream = Writer.StartParquetEntry(noiseEntry);
+        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .EnableDictionary()
+            .EnableStatistics()
+            .EnableWritePageIndex()
+            .DisableDictionary($"{NoiseBuilder.LayoutName()}.{NoiseBuilder.BufferContext.IndexName()}")
+            .Encoding(
+                $"{NoiseBuilder.LayoutName()}.{NoiseBuilder.BufferContext.IndexName()}",
+                ParquetSharp.Encoding.DeltaBinaryPacked
+            ).DataPagesize(
+                (long)Math.Pow(1024, 2)
+            ).MaxRowGroupLength(1024 * 1024 * 4);
+
+        var schema = NoiseBuilder.ArrowSchema();
+
+        var arrowProps = new ParquetSharp.Arrow.ArrowWriterPropertiesBuilder().StoreSchema();
+
+        var writer = new ParquetSharp.Arrow.FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
+        var batch = NoiseBuilder.GetRecordBatch();
+        writer.WriteRecordBatch(batch);
+        writer.Close();
+    }
 
     public void Dispose() => Close();
 

@@ -91,7 +91,7 @@ public class ParamValueBuilder : IArrowBuilder<string>, IArrowBuilder<long>, IAr
     public List<IArrowArray> Build()
     {
         List<IArrowArray> values = new() { new StructArray(ArrowType()[0].DataType, String.Length, [String.Build(), Integer.Build(), Float.Build(), Boolean.Build()], default) };
-        Clear();
+        // Clear();
         return values;
     }
 
@@ -139,7 +139,7 @@ public class ParamBuilder : IArrowBuilder<Param>
             new Field("param", new StructType([
             new Field("name", new StringType(), false),
             new Field("accession", new StringType(), true),
-            new Field("value", Value.ArrowType()[0].DataType, false),
+            new Field("value", Value.ArrowType()[0].DataType, true),
             new Field("unit", new StringType(), true),
         ]), true)};
     }

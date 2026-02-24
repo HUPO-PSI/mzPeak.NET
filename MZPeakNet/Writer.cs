@@ -64,9 +64,12 @@ public class MZPeakWriter : IDisposable
     BaseLayoutBuilder? SpectrumPeakData = null;
     BaseLayoutBuilder? WavelengthSpectrumData;
 
+    bool standardContentFlushed = false;
+
     public bool SpectrumHasArrayType(ArrayType arrayType) => SpectrumData.HasArrayType(arrayType);
     public bool SpectrumPeaksHasArrayType(ArrayType arrayType) => SpectrumPeakData?.HasArrayType(arrayType) ?? false;
     public bool ChromatogramHasArrayType(ArrayType arrayType) => ChromatogramData.HasArrayType(arrayType);
+
 
     FileIndexEntry? CurrentEntry;
     FileWriter? CurrentWriter;
@@ -125,7 +128,7 @@ public class MZPeakWriter : IDisposable
         WavelengthSpectrumMetadata = new Visitors.WavelengthSpectrumMetadataBuilder();
     }
 
-    protected ParquetSharp.WriterPropertiesBuilder ConfigureByteShuffleColumnsFrom(ParquetSharp.WriterPropertiesBuilder writerProps, ArrayIndex arrayIndex, ArrayType targetArrayType, Schema schema)
+    public ParquetSharp.WriterPropertiesBuilder ConfigureByteShuffleColumnsFrom(ParquetSharp.WriterPropertiesBuilder writerProps, ArrayIndex arrayIndex, ArrayType targetArrayType, Schema schema)
     {
         /* Three-fold API workaround
             Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
@@ -343,7 +346,7 @@ public class MZPeakWriter : IDisposable
         ChromatogramData.ShouldRemoveZeroRuns = false;
         if (includeSpectrumPeakData)
             SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
-        WavelengthSpectrumMetadata = new();
+        WavelengthSpectrumMetadata = null;
         StartSpectrumData();
     }
 
@@ -712,7 +715,7 @@ public class MZPeakWriter : IDisposable
     /// <summary>Writes spectrum metadata to the archive.</summary>
     public void WriteSpectrumMetadata()
     {
-        if (State > WriterState.SpectrumMetadata)
+        if (State >= WriterState.SpectrumMetadata)
             return;
         CloseCurrentWriter();
         State = WriterState.SpectrumMetadata;
@@ -759,7 +762,7 @@ public class MZPeakWriter : IDisposable
     /// <summary>Writes chromatogram data to the archive.</summary>
     public void WriteChromatogramData()
     {
-        if (State > WriterState.ChromatogramData)
+        if (State >= WriterState.ChromatogramData)
             return;
         State = WriterState.ChromatogramData;
         if (ChromatogramData.BufferedRows == 0) return;
@@ -771,10 +774,11 @@ public class MZPeakWriter : IDisposable
 
     public void WriteWavelengthData()
     {
-        if (State > WriterState.WavelengthData || WavelengthSpectrumData == null)
+        if (State >= WriterState.WavelengthData || WavelengthSpectrumData == null)
             return;
         State = WriterState.WavelengthData;
         if (WavelengthSpectrumData.BufferedRows == 0) return;
+        Logger?.LogDebug($"Writing wavelength spectrum data, {WavelengthSpectrumData.BufferedRows} rows to write");
         StartWavelengthSpectrumData();
         var batch = WavelengthSpectrumData.GetRecordBatch();
         CurrentWriter?.WriteBufferedRecordBatch(batch);
@@ -783,12 +787,13 @@ public class MZPeakWriter : IDisposable
 
     public void WriteWavelengthMetadata()
     {
-        if (State > WriterState.WavelengthMetadata || WavelengthSpectrumMetadata == null)
+        if (State >= WriterState.WavelengthMetadata || WavelengthSpectrumMetadata == null)
             return;
         State = WriterState.WavelengthMetadata;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.Metadata);
-        var stream = Storage.OpenStream(entry);
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.Metadata);
 
+        Logger?.LogInformation($"Writing wavelength spectrum metadata, {WavelengthSpectrumMetadata.Length} rows to write");
+        var stream = Storage.OpenStream(entry);
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
@@ -799,13 +804,13 @@ public class MZPeakWriter : IDisposable
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
         var meta = PrepareRunLevelMetadataDictionary();
-        meta["wavelength_spectrum_count"] = ChromatogramMetadata.Length.ToString();
-        meta["wavelength_spectrum_data_point_count"] = ChromatogramData.NumberOfPoints.ToString();
+        meta["wavelength_spectrum_count"] = WavelengthSpectrumMetadata.Length.ToString();
+        meta["wavelength_spectrum_data_point_count"] = (WavelengthSpectrumData?.NumberOfPoints ?? 0).ToString();
 
         CurrentEntry = entry;
-        CurrentWriter = new FileWriter(managedStream, ChromatogramMetadata.ArrowSchema(meta), writerProps.Build(), arrowProps.Build());
+        CurrentWriter = new FileWriter(managedStream, WavelengthSpectrumMetadata.ArrowSchema(meta), writerProps.Build(), arrowProps.Build());
         CurrentWriter.NewBufferedRowGroup();
-        var batch = ChromatogramMetadata.Build();
+        var batch = WavelengthSpectrumMetadata.Build();
         CurrentWriter.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }
@@ -825,7 +830,7 @@ public class MZPeakWriter : IDisposable
     /// <summary>Writes chromatogram metadata to the archive.</summary>
     public void WriteChromatogramMetadata()
     {
-        if (State > WriterState.ChromatogramMetadata)
+        if (State >= WriterState.ChromatogramMetadata)
             return;
         State = WriterState.ChromatogramMetadata;
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.Metadata);
@@ -852,9 +857,10 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
     }
 
-    /// <summary>Closes the writer and finalizes the archive.</summary>
-    public void Close()
+    public void FlushStandardContent()
     {
+        if (standardContentFlushed) return;
+        Logger?.LogInformation("Flushing standard content");
         FlushSpectrumData();
         if (State == WriterState.SpectrumData)
             CloseCurrentWriter();
@@ -869,6 +875,26 @@ public class MZPeakWriter : IDisposable
         WriteChromatogramMetadata();
         WriteWavelengthData();
         WriteWavelengthMetadata();
+        standardContentFlushed = true;
+    }
+
+    public Stream StartEntry(FileIndexEntry entry)
+    {
+        CloseCurrentWriter();
+        var stream = Storage.OpenStream(entry);
+        CurrentEntry = entry;
+        return stream;
+    }
+
+    public ParquetSharp.IO.ManagedOutputStream StartParquetEntry(FileIndexEntry entry)
+    {
+        return new ParquetSharp.IO.ManagedOutputStream(StartEntry(entry));
+    }
+
+    /// <summary>Closes the writer and finalizes the archive.</summary>
+    public void Close()
+    {
+        FlushStandardContent();
         Storage.Dispose();
     }
 
