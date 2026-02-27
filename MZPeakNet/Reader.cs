@@ -28,7 +28,7 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
     }
 
     /// <summary>Gets the number of entries in the facet.</summary>
-    public int Length => MetadataReader.Length;
+    public long Length => MetadataReader.Length;
 
     /// <summary>Gets the metadata and data arrays for a specific index.</summary>
     /// <param name="index">The entry index.</param>
@@ -109,13 +109,13 @@ public class MzPeakReader
     }
 
     /// <summary>Gets the number of spectra (alias for SpectrumCount).</summary>
-    public int Length => spectrumMetadata?.Length ?? 0;
+    public long Length => spectrumMetadata?.Length ?? 0;
     /// <summary>Gets the number of spectra in the file.</summary>
-    public int SpectrumCount => spectrumMetadata?.Length ?? 0;
+    public long SpectrumCount => spectrumMetadata?.Length ?? 0;
     /// <summary>Gets the number of chromatograms in the file.</summary>
-    public int ChromatogramCount => chromatogramMetadata?.Length ?? 0;
+    public long ChromatogramCount => chromatogramMetadata?.Length ?? 0;
     /// <summary>Gets the number of wavelength spectra in the file.</summary>
-    public int WavelengthSpectrumCount => wavelengthSpectrumMetadata?.Length ?? 0;
+    public long WavelengthSpectrumCount => wavelengthSpectrumMetadata?.Length ?? 0;
 
     public bool HasSpectrumData => spectrumMetadata != null;
     public bool HasChromatogramData => chromatogramMetadata != null;
@@ -134,28 +134,31 @@ public class MzPeakReader
     /// <summary>Gets the run-level metadata.</summary>
     public MSRun Run => spectrumMetadata?.Run ?? chromatogramMetadata?.Run ?? new();
 
-    /// <summary>Gets the spectrum metadata as an Arrow ChunkedArray.</summary>
+    /// <summary>Gets the mass spectrum metadata as an Arrow ChunkedArray.</summary>
     public ChunkedArray? SpectrumTable => spectrumMetadata?.SpectrumMetadata;
 
-    /// <summary>Gets the scan metadata as an Arrow ChunkedArray.</summary>
+    /// <summary>Gets the scan metadata for mass spectra as an Arrow ChunkedArray.</summary>
     public ChunkedArray? ScanTable => spectrumMetadata?.ScanMetadata;
 
-    /// <summary>Gets the precursor metadata as an Arrow ChunkedArray.</summary>
+    /// <summary>Gets the precursor metadata for mass spectra as an Arrow ChunkedArray.</summary>
     public ChunkedArray? PrecursorTable => spectrumMetadata?.PrecursorMetadata;
 
-    /// <summary>Gets the selected ion metadata as an Arrow ChunkedArray.</summary>
+    /// <summary>Gets the selected ion metadata for mass spectra as an Arrow ChunkedArray.</summary>
     public ChunkedArray? SelectedIonTable => spectrumMetadata?.PrecursorMetadata;
 
     /// <summary>Gets the chromatogram metadata as an Arrow ChunkedArray.</summary>
     public ChunkedArray? ChromatogramTable => chromatogramMetadata?.ChromatogramMetadata;
 
-    /// <summary>Gets the chromatogram precursor metadata as an Arrow ChunkedArray.</summary>
+    /// <summary>Gets the precursor metadata for chromatograms as an Arrow ChunkedArray.</summary>
     public ChunkedArray? ChromatogramPrecursorTable => chromatogramMetadata?.PrecursorMetadata;
 
-    /// <summary>Gets the chromatogram selected ion metadata as an Arrow ChunkedArray.</summary>
+    /// <summary>Gets the selected ion metadata for chromatograms as an Arrow ChunkedArray.</summary>
     public ChunkedArray? ChromatogramSelectedIonTable => chromatogramMetadata?.PrecursorMetadata;
 
+    /// <summary>Gets the wavelength spectrum metadata as an Arrow ChunkedArray.</summary>
     public ChunkedArray? WavelengthSpectrumTable => wavelengthSpectrumMetadata?.SpectrumMetadata;
+
+    /// <summary>Gets the scan metadata for wavelength spectra as an Arrow ChunkedArray.</summary>
     public ChunkedArray? WavelengthSpectrumScanTable => wavelengthSpectrumMetadata?.ScanMetadata;
 
     /// <summary>Gets the spectrum description for the specified index.</summary>
@@ -182,7 +185,7 @@ public class MzPeakReader
         return wavelengthSpectrumMetadata.Get(index);
     }
 
-    /// <summary>Gets the buffer format used for spectrum data arrays.</summary>
+    /// <summary>Gets the buffer format used for mass spectrum data arrays.</summary>
     public BufferFormat? SpectrumDataFormat
     {
         get
@@ -212,7 +215,7 @@ public class MzPeakReader
         }
     }
 
-    /// <summary>Gets the buffer format used for chromatogram data arrays.</summary>
+    /// <summary>Gets the buffer format used for wavelength spectrum data arrays.</summary>
     public BufferFormat? WavelengthSpectrumDataFormat
     {
         get
@@ -227,7 +230,7 @@ public class MzPeakReader
         }
     }
 
-    /// <summary>Gets whether the file contains spectrum peak data.</summary>
+    /// <summary>Gets whether the file contains mass spectrum peak data.</summary>
     public bool HasSpectrumPeaks => spectrumPeaksArraysMeta != null ? true : SpectrumPeaksDataReaderMeta != null;
 
     /// <summary>Gets the metadata for the spectrum data reader.</summary>
@@ -255,6 +258,17 @@ public class MzPeakReader
         if (dataReader != null && chromatogramMetadata != null)
         {
             await foreach (var item in new DataFacet<ChromatogramDescription>(chromatogramMetadata, dataReader).EnumerateAsync())
+                yield return item;
+        }
+    }
+
+    /// <summary>Asynchronously enumerates all spectra with their descriptions and data.</summary>
+    public async IAsyncEnumerable<(SpectrumDescription, StructArray)> EnumerateWavelengthSpectraAsync()
+    {
+        var dataReader = OpenWavelengthSpectrumDataReader();
+        if (dataReader != null && wavelengthSpectrumMetadata != null)
+        {
+            await foreach (var item in new DataFacet<SpectrumDescription>(wavelengthSpectrumMetadata, dataReader).EnumerateAsync())
                 yield return item;
         }
     }

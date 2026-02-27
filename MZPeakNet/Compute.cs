@@ -967,7 +967,7 @@ public static class Compute
                         else
                         {
                             var slc = valArray.GetString(i);
-                            stream.WriteLine($"{pad}{slc}");
+                            stream.WriteLine($"{pad}\"{slc}\"");
                         }
                     }
                     break;

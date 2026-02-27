@@ -9,6 +9,10 @@ using Microsoft.Extensions.Logging;
 namespace MZPeak.Metadata;
 
 
+using SpacingModels = Dictionary<ulong, SpacingInterpolationModel<double>>;
+using NativeIdIndex = Dictionary<ulong, string?>;
+
+
 /// <summary>
 /// A base class for generic metadata table reading
 /// </summary>
@@ -36,7 +40,7 @@ public abstract class MetadataReaderBase<T>
         this.mzPeakMetadata = mzPeakMetadata;
     }
 
-    protected void GetNativeIdsFrom(StructArray? table, ref Dictionary<ulong, string?> nativeIds)
+    protected void GetNativeIdsFrom(StructArray? table, ref NativeIdIndex nativeIds)
     {
         if (table == null)
         {
@@ -66,7 +70,7 @@ public abstract class MetadataReaderBase<T>
     }
 
     /// <summary>Gets the number of entries in the metadata table.</summary>
-    public abstract int Length { get; }
+    public abstract long Length { get; }
 
     /// <summary>Loads all metadata entries into a list.</summary>
     public abstract List<T> BulkLoad();
@@ -95,7 +99,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     List<ColumnParam> selectedIonMetadataColumns;
 
     /// <summary>Gets the number of spectra.</summary>
-    public override int Length
+    public override long Length
     {
         get
         {
@@ -103,7 +107,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             {
                 InitializeTables().Wait();
             }
-            return SpectrumMetadata == null ? 0 : (int)SpectrumMetadata.Length;
+            return SpectrumMetadata == null ? 0 : SpectrumMetadata.Length;
         }
     }
 
@@ -125,7 +129,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
     }
 
-    void loadSpectrumInterpolationModels(ListArray modelArr, UInt64Array indexArr, ref Dictionary<ulong, SpacingInterpolationModel<double>> accumulator)
+    void loadSpectrumInterpolationModels(ListArray modelArr, UInt64Array indexArr, ref SpacingModels accumulator)
     {
         for (var i = 0; i < indexArr.Length; i++)
         {
@@ -147,7 +151,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
     }
 
-    void loadSpectrumInterpolationModels(LargeListArray modelArr, UInt64Array indexArr, ref Dictionary<ulong, SpacingInterpolationModel<double>> accumulator)
+    void loadSpectrumInterpolationModels(LargeListArray modelArr, UInt64Array indexArr, ref SpacingModels accumulator)
     {
         for (var i = 0; i < indexArr.Length; i++)
         {
@@ -170,9 +174,9 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     }
 
     /// <summary>Gets spacing interpolation models keyed by spectrum index.</summary>
-    public Dictionary<ulong, SpacingInterpolationModel<double>> GetSpacingModelIndex()
+    public SpacingModels GetSpacingModelIndex()
     {
-        Dictionary<ulong, SpacingInterpolationModel<double>> acc = new();
+        SpacingModels acc = new();
         if (SpectrumMetadata == null)
         {
             return acc;
@@ -212,9 +216,9 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         return acc;
     }
     /// <summary>Gets native IDs keyed by spectrum index.</summary>
-    public Dictionary<ulong, string?> GetNativeIds()
+    public NativeIdIndex GetNativeIds()
     {
-        var tab = new Dictionary<ulong, string?>();
+        var tab = new NativeIdIndex();
         if (SpectrumMetadata == null)
         {
             return tab;
@@ -500,7 +504,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     List<ColumnParam> selectedIonMetadataColumns;
 
     /// <summary>Gets the number of chromatograms.</summary>
-    public override int Length
+    public override long Length
     {
         get
         {
@@ -508,7 +512,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             {
                 InitializeTables().Wait();
             }
-            return ChromatogramMetadata == null ? 0 : (int)ChromatogramMetadata.Length;
+            return ChromatogramMetadata == null ? 0 : ChromatogramMetadata.Length;
         }
     }
 
@@ -570,9 +574,9 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     }
 
     /// <summary>Gets native IDs keyed by chromatogram index.</summary>
-    public Dictionary<ulong, string?> GetNativeIds()
+    public NativeIdIndex GetNativeIds()
     {
-        var tab = new Dictionary<ulong, string?>();
+        var tab = new NativeIdIndex();
         if (ChromatogramMetadata == null)
         {
             return tab;

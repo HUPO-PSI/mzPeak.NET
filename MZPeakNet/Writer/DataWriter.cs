@@ -13,24 +13,62 @@ using ComputeFn = Compute.Compute;
 
 
 
-public abstract class BaseLayoutBuilder
+public abstract class BaseDataLayoutWriter
 {
+    /// <summary>
+    /// The kind of entity this data writer handles
+    /// </summary>
     public BufferContext BufferContext { get; protected set; }
 
+    /// <summary>
+    /// Whether or not to remove runs of zero intensity values. This is reasonable for high resolution
+    /// mass spectra, but maybe not for chromatographic traces.
+    /// </summary>
     public bool ShouldRemoveZeroRuns { get; set; } = true;
+
+    /// <summary>
+    /// A counter on the total number of data points written
+    /// </summary>
     public ulong NumberOfPoints = 0;
 
+    /// <summary>
+    /// The array builder for the <c>{layout}.{namespace}_index</c> column. This array is simply populated with runs of index values.
+    /// </summary>
     protected UInt64Array.Builder Index;
+
+    /// <summary>
+    /// The array builders for all of the other columns in the table. They run parallel to <see cref="DataTypes"> and <see cref="ArrayIndex"/>
+    /// </summary>
     protected List<IArrowArrayBuilder> Arrays;
+    /// <summary>
+    /// The Arrow types for all of the other columns in the table. They run parallel to <see cref="Arrays"> and <see cref="ArrayIndex"/>
+    /// </summary>
     protected List<IArrowType> DataTypes;
+
+    /// <summary>
+    /// The formalized <c>ArrayIndex</c> associated with this data writer. All columns beyond the index column are defined here, and this dictates
+    /// the order of columns as they are written. This in turn influences how the list-based overloads of <see cref="Add"/>  methods work.
+    /// </summary>
     public ArrayIndex ArrayIndex { get; protected set; }
 
+    /// <summary>
+    /// The number of rows currently stored in the writer. This may not be the total number of rows written by this writer as they are removed and
+    /// flushed to disk by <c>GetRecordBatch</c>.
+    /// </summary>
     public int BufferedRows => Index.Length;
+    /// <summary>
+    /// Get an estimate of the total number of values currently stored in the writer. This is not precise as it does not take into account any values
+    /// not stored explicitly.
+    /// </summary>
     public int BufferedSize => Index.Length + DataTypes.Zip(Arrays).Sum(dtBuilder => dtBuilder.Second.Length);
 
+    /// <summary>
+    /// The name of the layout as it will appear in the Parquet schema, e.g. <c>point</c> or <c>chunk</c>
+    /// </summary>
+    /// <returns>The layout name as a string</returns>
     public abstract string LayoutName();
 
-    public BaseLayoutBuilder(ArrayIndex arrayIndex)
+    public BaseDataLayoutWriter(ArrayIndex arrayIndex)
     {
         ArrayIndex = arrayIndex;
         Index = new();
@@ -39,6 +77,11 @@ public abstract class BaseLayoutBuilder
         InitializeBuilders();
     }
 
+    /// <summary>
+    /// Test whether there are any columns in this writer which correspond to the requested array type. See <see cref="ArrayIndex.HasArrayType(ArrayType)"/>
+    /// </summary>
+    /// <param name="arrayType"></param>
+    /// <returns></returns>
     public bool HasArrayType(ArrayType arrayType) => ArrayIndex.HasArrayType(arrayType);
 
     protected virtual void InitializeBuilders()
@@ -133,31 +176,31 @@ public abstract class BaseLayoutBuilder
     {
         BooleanArray mask;
         var weights = arrays[intensityEntry];
-        if (weights.Data.DataType.TypeId == ArrowTypeId.Float)
+        switch (weights.Data.DataType.TypeId)
         {
-            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((FloatArray)weights));
-            arrays[intensityEntry] = ComputeFn.NullifyAt((FloatArray)weights, mask);
-        }
-        else if (weights.Data.DataType.TypeId == ArrowTypeId.Double)
-        {
-            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((DoubleArray)weights));
-            arrays[intensityEntry] = ComputeFn.NullifyAt((DoubleArray)weights, mask);
-        }
-        else if (weights.Data.DataType.TypeId == ArrowTypeId.Int32)
-        {
-            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((Int32Array)weights));
-            arrays[intensityEntry] = ComputeFn.NullifyAt((Int32Array)weights, mask);
-        }
-        else if (weights.Data.DataType.TypeId == ArrowTypeId.Int64)
-        {
-            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((Int64Array)weights));
-            arrays[intensityEntry] = ComputeFn.NullifyAt((Int64Array)weights, mask);
-        }
-        else
-        {
-            var v = ComputeFn.CastFloat(weights);
-            mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask(v));
-            arrays[intensityEntry] = ComputeFn.NullifyAt(v, mask);
+            case ArrowTypeId.Float:
+                mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((FloatArray)weights));
+                arrays[intensityEntry] = ComputeFn.NullifyAt((FloatArray)weights, mask);
+                break;
+            case ArrowTypeId.Double:
+                mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((DoubleArray)weights));
+                arrays[intensityEntry] = ComputeFn.NullifyAt((DoubleArray)weights, mask);
+                break;
+            case ArrowTypeId.Int32:
+                mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((Int32Array)weights));
+                arrays[intensityEntry] = ComputeFn.NullifyAt((Int32Array)weights, mask);
+                break;
+            case ArrowTypeId.Int64:
+                mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask((Int64Array)weights));
+                arrays[intensityEntry] = ComputeFn.NullifyAt((Int64Array)weights, mask);
+                break;
+            default:
+                {
+                    var v = ComputeFn.CastFloat(weights);
+                    mask = ComputeFn.Invert(ZeroRunRemoval.IsZeroPairMask(v));
+                    arrays[intensityEntry] = ComputeFn.NullifyAt(v, mask);
+                    break;
+                }
         }
 
         var coordinatesToNull = arrays[coordinateEntry];
@@ -209,6 +252,15 @@ public abstract class BaseLayoutBuilder
         return new _ArrayFilterResult(arrays, notCoveredArrays, nullInterpolate, nullZero, intensityArray);
     }
 
+    /// <summary>
+    /// Preprocess a collection of arrays, applying any signal transformations and separating out unmapped arrays.
+    /// </summary>
+    /// <param name="entryIndex">The index in the metadata collection these rows refer to</param>
+    /// <param name="arrays">The columns to write and their values. All other columns in will be padded with <c>null</c></param>
+    /// <param name="isProfile"> Whether the signal being written is a continuous profile or discrete centroids. If the writer is configured to remove zero intensity runs and/or use null marking, this behavior will only trigger on profile data.
+    /// </param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
     public (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         SpacingInterpolationModel<double>? deltaModel = null;
@@ -363,7 +415,7 @@ public abstract class BaseLayoutBuilder
 }
 
 
-public class PointLayoutBuilder : BaseLayoutBuilder
+public class PointLayoutBuilder : BaseDataLayoutWriter
 {
     public PointLayoutBuilder(ArrayIndex arrayIndex) : base(arrayIndex) { }
 
@@ -474,7 +526,7 @@ public class PointLayoutBuilder : BaseLayoutBuilder
 }
 
 
-public class ChunkLayoutBuilder : BaseLayoutBuilder
+public class ChunkLayoutBuilder : BaseDataLayoutWriter
 {
     public string DefaultMainAxisEncodingCURIE { get; set; }
 

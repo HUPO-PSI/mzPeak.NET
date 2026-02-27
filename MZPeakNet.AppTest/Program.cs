@@ -12,6 +12,7 @@ using MZPeak.Metadata;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Writer.Data;
 using System.ComponentModel;
+using ThermoFisher.CommonCore.Data;
 
 
 namespace MZPeakCliConverter;
@@ -163,7 +164,11 @@ internal class Program
     {
         var readerManager = RawFileReaderAdapter.RandomAccessThreadedFileFactory(sourceFile.FullName, RandomAccessFileManager.Instance);
         var accessor = readerManager.CreateThreadAccessor();
-        accessor.SelectInstrument(Device.MS, 1);
+        if (!accessor.SelectMsData())
+        {
+            Logger?.LogWarning("No MS data detected! Exiting Early!");
+            return;
+        }
         accessor.IncludeReferenceAndExceptionData = true;
 
         using (var fileStream = File.Create(destinationFile.FullName))
@@ -303,7 +308,28 @@ internal class Program
                 );
             }
 
+            if (accessor.GetInstrumentCountOfType(Device.Pda) > 0)
+            {
+                Logger?.LogInformation("Reading PDA spectra");
+                accessor.SelectInstrument(Device.Pda, 1);
 
+                for(var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
+                {
+                    var scan = accessor.GetSimplifiedScan(i);
+                    Console.WriteLine($"{scan.Masses.Length}");
+                }
+            }
+            if (accessor.GetInstrumentCountOfType(Device.UV) > 0)
+            {
+                Logger?.LogInformation("Reading UV spectra");
+                accessor.SelectInstrument(Device.UV, 1);
+
+                for (var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
+                {
+                    var scan = accessor.GetSimplifiedScan(i);
+                    Console.WriteLine($"{scan.Masses.Length}");
+                }
+            }
 
             Logger?.LogInformation("Closing writer...");
             writer.Close();

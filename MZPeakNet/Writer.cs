@@ -18,25 +18,28 @@ public enum WriterState
 {
     /// <summary>Initial state.</summary>
     Start = 0,
+
     /// <summary>Writing spectrum data arrays.</summary>
     SpectrumData = 1,
     /// <summary>Writing spectrum peak data.</summary>
     SpectrumPeakData = 2,
     /// <summary>Writing spectrum metadata.</summary>
     SpectrumMetadata = 3,
+
     /// <summary>Writing chromatogram data arrays.</summary>
     ChromatogramData = 4,
     /// <summary>Writing chromatogram metadata.</summary>
     ChromatogramMetadata = 5,
 
+    /// <summary>Writing wavelength spectrum data arrays.</summary>
     WavelengthData = 6,
+    /// <summary>Writing wavelength spectrum metadata.</summary>
     WavelengthMetadata = 7,
 
     /// <summary>Writing other data.</summary>
     OtherData = 900,
     /// <summary>Writing other metadata.</summary>
     OtherMetadata = 901,
-
 
     /// <summary>Writing complete.</summary>
     Done = 999,
@@ -55,14 +58,14 @@ public class MZPeakWriter : IDisposable
     MzPeakMetadata MzPeakMetadata;
     IMZPeakArchiveWriter Storage;
 
-    Visitors.SpectrumMetadataBuilder SpectrumMetadata;
-    Visitors.ChromatogramMetadataBuilder ChromatogramMetadata;
-    Visitors.WavelengthSpectrumMetadataBuilder? WavelengthSpectrumMetadata;
+    SpectrumMetadataBuilder SpectrumMetadata;
+    ChromatogramMetadataBuilder ChromatogramMetadata;
+    WavelengthSpectrumMetadataBuilder? WavelengthSpectrumMetadata;
 
-    BaseLayoutBuilder SpectrumData;
-    BaseLayoutBuilder ChromatogramData;
-    BaseLayoutBuilder? SpectrumPeakData = null;
-    BaseLayoutBuilder? WavelengthSpectrumData;
+    BaseDataLayoutWriter SpectrumData;
+    BaseDataLayoutWriter ChromatogramData;
+    BaseDataLayoutWriter? SpectrumPeakData = null;
+    BaseDataLayoutWriter? WavelengthSpectrumData;
 
     bool standardContentFlushed = false;
 
@@ -125,7 +128,7 @@ public class MZPeakWriter : IDisposable
     [System.Diagnostics.CodeAnalysis.MemberNotNull(nameof(WavelengthSpectrumMetadata))]
     void initializeWavelengthMetadata()
     {
-        WavelengthSpectrumMetadata = new Visitors.WavelengthSpectrumMetadataBuilder();
+        WavelengthSpectrumMetadata = new WavelengthSpectrumMetadataBuilder();
     }
 
     public ParquetSharp.WriterPropertiesBuilder ConfigureByteShuffleColumnsFrom(ParquetSharp.WriterPropertiesBuilder writerProps, ArrayIndex arrayIndex, ArrayType targetArrayType, Schema schema)
@@ -224,7 +227,6 @@ public class MZPeakWriter : IDisposable
         CurrentEntry = entry;
         CurrentWriter = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
     }
-
 
     /// <summary>Starts writing spectrum data arrays.</summary>
     public virtual void StartWavelengthSpectrumData()
