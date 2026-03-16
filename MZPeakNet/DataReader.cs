@@ -1128,7 +1128,7 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         NextItem = null;
     }
 
-    public async Task<bool> ReadNextBatch(bool updateIndex=false)
+    public async Task<bool> ReadNextBatch(bool updateIndex = false)
     {
         CurrentBatch = null;
         var batch = await StreamReader.ReadNextRecordBatchAsync(CancellationToken);
@@ -1159,7 +1159,8 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
     async Task<bool> Initialize()
     {
         if (!await ReadNextBatch()) return false;
-        if (CurrentBatch == null) {
+        if (CurrentBatch == null)
+        {
             return false;
         }
         var idxCol = (UInt64Array)CurrentBatch.Fields[0];

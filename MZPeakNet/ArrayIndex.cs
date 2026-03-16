@@ -503,7 +503,7 @@ public class ArrayIndexBuilder
         }
     }
 
-    bool ApplyChunkedFormat(ArrayType? primaryAxis=null)
+    bool ApplyChunkedFormat(ArrayType? primaryAxis = null)
     {
         if (Format != BufferFormat.ChunkValues)
             return true;
@@ -512,11 +512,11 @@ public class ArrayIndexBuilder
             primaryAxis = Context.DefaultPrimaryAxis();
         }
         bool foundMainAxis = false;
-        foreach(var entry in Entries.ToList())
+        foreach (var entry in Entries.ToList())
         {
             if (entry.GetArrayType() == primaryAxis && entry.BufferPriority == BufferPriority.Primary)
             {
-                var newEntry = entry with {BufferFormat = BufferFormat.ChunkStart};
+                var newEntry = entry with { BufferFormat = BufferFormat.ChunkStart };
                 newEntry.Path = $"{Prefix}.{newEntry.CreateColumnName()}_chunk_start";
                 Entries.Add(newEntry);
                 newEntry = entry with { BufferFormat = BufferFormat.ChunkEnd };
@@ -665,7 +665,7 @@ public class AuxiliaryArray : IHasParameters
     public static AuxiliaryArray FromValues(StringArray values, ArrayIndexEntry entry)
     {
         var buffer = new MemoryStream();
-        for(var i = 0; i < values.Length; i++)
+        for (var i = 0; i < values.Length; i++)
         {
             if (values.IsNull(i))
                 buffer.Write([0]);

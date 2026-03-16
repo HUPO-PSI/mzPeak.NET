@@ -37,7 +37,7 @@ public class ThermoTranslationTest
         var startScan = accessor.RunHeader.FirstSpectrum;
         var lastScan = accessor.RunHeader.LastSpectrum;
 
-        for(var scanNumber = startScan; scanNumber < lastScan; scanNumber++)
+        for (var scanNumber = startScan; scanNumber < lastScan; scanNumber++)
         {
             var scanFilter = accessor.GetFilterForScanNumber(scanNumber);
             var segments = accessor.GetSegmentedScanFromScanNumber(scanNumber);

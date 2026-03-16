@@ -582,7 +582,7 @@ public class ConversionContextHelper
         for (var i = 0; i < nEntries; i++)
         {
             var values = accessor.GetTuneDataValues(i);
-            foreach(var (datum, header) in values.Zip(headers))
+            foreach (var (datum, header) in values.Zip(headers))
             {
                 var dType = header.DataType;
                 if (dType == GenericDataTypes.NULL)
@@ -1022,12 +1022,13 @@ public class StatusLogBuilder
 }
 
 
-public record ArrowStatusLog {
+public record ArrowStatusLog
+{
 
-    public string Name {get; set; }
-    public DoubleArray Time {get; set; }
-    public Apache.Arrow.Array Data {get; set; }
-    public IArrowType DataType {get; set; }
+    public string Name { get; set; }
+    public DoubleArray Time { get; set; }
+    public Apache.Arrow.Array Data { get; set; }
+    public IArrowType DataType { get; set; }
 
     public ArrowStatusLog(string name, DoubleArray time, Apache.Arrow.Array data, IArrowType dataType)
     {
@@ -1080,7 +1081,8 @@ public record ArrowStatusLog {
         {
             var name = match.Groups[1];
             var unitName = match.Groups[2];
-            switch (unitName.Value) {
+            switch (unitName.Value)
+            {
                 case "°C":
                 case "C":
                     {
@@ -1167,7 +1169,7 @@ public class ThermoMZPeakWriter : IDisposable
     public ulong CurrentSpectrum => Writer.CurrentSpectrum;
     public ulong CurrentChromatogram => Writer.CurrentChromatogram;
 
-    protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked=false)
+    protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)
     {
         var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
@@ -1175,7 +1177,7 @@ public class ThermoMZPeakWriter : IDisposable
         return builder.Build();
     }
 
-    public static ArrayIndex PeakArrayIndex(bool includeResolution=false, bool includeCharge=false)
+    public static ArrayIndex PeakArrayIndex(bool includeResolution = false, bool includeCharge = false)
     {
         var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
@@ -1278,7 +1280,7 @@ public class ThermoMZPeakWriter : IDisposable
         var bases = new FloatArray.Builder();
         var intens = new FloatArray.Builder();
 
-        foreach(var pt in noiseAndBaselines)
+        foreach (var pt in noiseAndBaselines)
         {
             mzs.Append(pt.Mass);
             bases.Append(pt.Baseline);
@@ -1556,7 +1558,8 @@ public class ThermoMZPeakWriter : IDisposable
     public void WriteChromatogramMetadata() => Writer.WriteChromatogramMetadata();
 
     /// <summary>Closes the writer and finalizes the archive.</summary>
-    public void Close() {
+    public void Close()
+    {
         FlushStandardContent();
         WriteNoiseData();
         Writer.Close();

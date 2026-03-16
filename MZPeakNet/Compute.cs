@@ -783,7 +783,7 @@ public static class Compute
 {
     public static ILogger? Logger = null;
 
-    public static void PrettyPrintFormat(IArrowArray array, StreamWriter stream, int indent=0, string indenter="    ")
+    public static void PrettyPrintFormat(IArrowArray array, StreamWriter stream, int indent = 0, string indenter = "    ")
     {
 
         List<string> indenting = Enumerable.Repeat(indenter, indent).ToList();
@@ -941,7 +941,7 @@ public static class Compute
             case ArrowTypeId.List:
                 {
                     var valArray = (ListArray)array;
-                    for(var i = 0; i < valArray.Length; i++)
+                    for (var i = 0; i < valArray.Length; i++)
                     {
                         if (valArray.IsNull(i))
                         {
@@ -976,7 +976,7 @@ public static class Compute
                 {
                     var dtype = (StructType)array.Data.DataType;
                     var valArray = (StructArray)array;
-                    foreach(var (f, col) in dtype.Fields.Zip(valArray.Fields))
+                    foreach (var (f, col) in dtype.Fields.Zip(valArray.Fields))
                     {
                         stream.WriteLine($"{indentString}{f.Name}: {f.DataType.Name} {col.Length}");
                         PrettyPrintFormat(col, stream, indent + 1, indenter);
@@ -988,7 +988,7 @@ public static class Compute
         stream.WriteLine($"{indentString}]");
     }
 
-    public static string PrettyPrintFormat(IArrowArray array, int indent=0, string indenter="    ")
+    public static string PrettyPrintFormat(IArrowArray array, int indent = 0, string indenter = "    ")
     {
         using (var bufferStream = new MemoryStream())
         {
@@ -1099,7 +1099,7 @@ public static class Compute
         return builder.Build(allocator);
     }
 
-    public static int BinarySearch<T>(PrimitiveArray<T> array, T? value) where T: struct, INumber<T>
+    public static int BinarySearch<T>(PrimitiveArray<T> array, T? value) where T : struct, INumber<T>
     {
         var n = array.Length;
         var lo = 0;
@@ -1163,7 +1163,7 @@ public static class Compute
     /// <returns>The first non-null value and the index it was found at</returns>
     public static (T, int)? FirstNotNull<T>(PrimitiveArray<T> array) where T : struct, INumber<T>
     {
-        for(var i = 0; i < array.Length; i++)
+        for (var i = 0; i < array.Length; i++)
         {
             var v = array.GetValue(i);
             if (v != null)

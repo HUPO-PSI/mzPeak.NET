@@ -10,8 +10,7 @@ using MZPeak.Thermo;
 using MZPeak.Compute;
 using MZPeak.Metadata;
 using MZPeak.ControlledVocabulary;
-using MZPeak.Writer.Data;
-using System.ComponentModel;
+using ParquetSharp;
 using ThermoFisher.CommonCore.Data;
 
 
@@ -64,16 +63,19 @@ internal class Program
         var cmd = new Command("read", "Read an existing mzPeak file");
         Argument<FileInfo> filePath = new Argument<FileInfo>("file").AcceptExistingOnly();
         cmd.Arguments.Add(filePath);
+        Option<string> decryptionKey = new Option<string>("--decryption-key", ["-d"]);
+        cmd.Options.Add(decryptionKey);
         cmd.SetAction(parseResult =>
         {
             var fp = parseResult.GetValue(filePath);
+            var decryptionKeyVal = parseResult.GetValue(decryptionKey);
             if (fp == null)
             {
                 parseResult.RootCommandResult.AddError("File argument was missing");
             }
             else
             {
-                ReadFile(fp).Wait();
+                ReadFile(fp, decryptionKeyVal).Wait();
             }
         });
         return cmd;
@@ -160,7 +162,7 @@ internal class Program
         }
     }
 
-    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking=false, bool useChunked=false)
+    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false)
     {
         var readerManager = RawFileReaderAdapter.RandomAccessThreadedFileFactory(sourceFile.FullName, RandomAccessFileManager.Instance);
         var accessor = readerManager.CreateThreadAccessor();
@@ -185,7 +187,7 @@ internal class Program
             if (useNullMarking)
             {
                 Logger?.LogInformation("Using null marking");
-                foreach(var e in writer.SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
+                foreach (var e in writer.SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
                     e.Transform = NullInterpolation.NullInterpolateCURIE;
                 foreach (var e in writer.SpectrumArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
                     e.Transform = NullInterpolation.NullZeroCURIE;
@@ -295,7 +297,7 @@ internal class Program
 
             Logger?.LogInformation("Writing traces");
 
-            foreach(var log in writer.ConversionHelper.StatusLogs(accessor))
+            foreach (var log in writer.ConversionHelper.StatusLogs(accessor))
             {
                 (traceInfo, var traceArrays) = log.AsChromatogramInfo();
 
@@ -313,7 +315,7 @@ internal class Program
                 Logger?.LogInformation("Reading PDA spectra");
                 accessor.SelectInstrument(Device.Pda, 1);
 
-                for(var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
+                for (var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
                 {
                     var scan = accessor.GetSimplifiedScan(i);
                     Console.WriteLine($"{scan.Masses.Length}");
@@ -355,14 +357,15 @@ internal class Program
             var writer = new MZPeak.Writer.MZPeakWriter(
                 writerStorage,
                 spectrumArrays
-            );
-
-            writer.FileDescription = reader.FileDescription;
-            writer.InstrumentConfigurations = reader.InstrumentConfigurations;
-            writer.DataProcessingMethods = reader.DataProcessingMethods;
-            writer.Samples = reader.Samples;
-            writer.Run = reader.Run;
-            writer.Softwares = reader.Softwares;
+            )
+            {
+                FileDescription = reader.FileDescription,
+                InstrumentConfigurations = reader.InstrumentConfigurations,
+                DataProcessingMethods = reader.DataProcessingMethods,
+                Samples = reader.Samples,
+                Run = reader.Run,
+                Softwares = reader.Softwares
+            };
 
             await foreach (var (descr, data) in reader.EnumerateSpectraAsync())
             {
@@ -429,10 +432,21 @@ internal class Program
         Logger?.LogInformation($"Wrote {destinationFile.Length / 1000000.0} MB");
     }
 
-    static async Task ReadFile(FileInfo fileInfo)
+    static async Task ReadFile(FileInfo fileInfo, string? decryptionKey = null)
     {
+        Dictionary<string, FileDecryptionProperties> decryptionConfigs = new();
+        if (decryptionKey != null)
+        {
+            Logger?.LogInformation("Setting basic decryption configuration");
+            var baseDecrypt = new FileDecryptionPropertiesBuilder();
+            baseDecrypt.FooterKey(
+                System.Text.UTF8Encoding.UTF8.GetBytes(decryptionKey));
+            var config = baseDecrypt.Build();
+
+            decryptionConfigs = FileIndex.UniformDecryption(config);
+        }
         Logger?.LogInformation($"Reading {fileInfo}");
-        var reader = new MZPeak.Reader.MzPeakReader(fileInfo.FullName);
+        var reader = new MZPeak.Reader.MzPeakReader(fileInfo.FullName, decryptionConfigs: decryptionConfigs);
         Logger?.LogInformation($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
         Logger?.LogInformation($"Spectrum storage format = {reader.SpectrumDataFormat}");
         if (reader.HasWavelengthData)

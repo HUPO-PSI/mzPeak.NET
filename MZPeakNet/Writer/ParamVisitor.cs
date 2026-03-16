@@ -702,10 +702,10 @@ public class ChildTermParamBuilder : CustomBuilderFromParam
 public class ParamVisitorCollection
 {
     protected List<CustomBuilderFromParam> ParamVisitors;
-    public ParamListBuilder ParamList;
-    public HashSet<string> Visited;
+    protected ParamListBuilder ParamList;
+    protected HashSet<string> Visited;
 
-    public bool Frozen { get; protected set;}
+    public bool Frozen { get; protected set; }
 
     protected void FreezeSchema()
     {
@@ -731,6 +731,8 @@ public class ParamVisitorCollection
         if (Frozen) throw new InvalidOperationException($"Cannot add new visitor after the schema has been frozen");
         ParamVisitors.AddRange(visitors);
     }
+
+    public IReadOnlyList<CustomBuilderFromParam> Visitors => ParamVisitors;
 
     public void VisitParameters(List<Param> @params)
     {

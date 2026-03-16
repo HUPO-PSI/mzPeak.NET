@@ -10,6 +10,9 @@ using MZPeak.Storage;
 using MZPeak.Writer.Data;
 using MZPeak.Writer.Visitors;
 using ParquetSharp.Arrow;
+using ParquetSharp.Encryption;
+
+using EncryptionConfigurations = Dictionary<string, ParquetSharp.FileEncryptionProperties>;
 
 /// <summary>
 /// Represents the current state of the writer during file creation.
@@ -73,6 +76,7 @@ public class MZPeakWriter : IDisposable
     public bool SpectrumPeaksHasArrayType(ArrayType arrayType) => SpectrumPeakData?.HasArrayType(arrayType) ?? false;
     public bool ChromatogramHasArrayType(ArrayType arrayType) => ChromatogramData.HasArrayType(arrayType);
 
+    public EncryptionConfigurations EncryptionConfigurations { get; set; }
 
     FileIndexEntry? CurrentEntry;
     FileWriter? CurrentWriter;
@@ -324,8 +328,10 @@ public class MZPeakWriter : IDisposable
                         ArrayIndex? chromatogramArrayIndex = null,
                         bool includeSpectrumPeakData = false,
                         ArrayIndex? spectrumPeakArrayIndex = null,
-                        bool useChunked = false)
+                        bool useChunked = false,
+                        EncryptionConfigurations? encryptionConfigurations=null)
     {
+        EncryptionConfigurations = encryptionConfigurations ?? new();
         if (spectrumArrayIndex == null)
             spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
         if (chromatogramArrayIndex == null)
@@ -333,7 +339,8 @@ public class MZPeakWriter : IDisposable
         Storage = storage;
         MzPeakMetadata = new();
         SpectrumMetadata = new();
-        SpectrumData = spectrumArrayIndex.InferBufferFormat() switch {
+        SpectrumData = spectrumArrayIndex.InferBufferFormat() switch
+        {
             BufferFormat.Point => new PointLayoutBuilder(spectrumArrayIndex),
             BufferFormat.ChunkValues => new ChunkLayoutBuilder(spectrumArrayIndex),
             _ => throw new NotImplementedException($"Buffer format {spectrumArrayIndex.InferBufferFormat()} not recognized")

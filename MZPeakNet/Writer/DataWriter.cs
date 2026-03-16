@@ -533,14 +533,14 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     public string CurrentMainAxisEncodingCURIE { get; set; }
 
     public double ChunkSize { get; set; } = 50.0;
-    public ArrayIndexEntry MainAxisEntry {get; set;}
+    public ArrayIndexEntry MainAxisEntry { get; set; }
 
     int MainAxisBuilderIdx;
     int StartValueBuilderIdx;
     int EndValueBuilderIdx;
     int EncodingBuilderIdx;
 
-    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE=DeltaCodec.CURIE, double chunkSize=50.0) : base(arrayIndex)
+    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE = DeltaCodec.CURIE, double chunkSize = 50.0) : base(arrayIndex)
     {
         DefaultMainAxisEncodingCURIE = mainAxisEncodingCURIE;
         CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
@@ -606,7 +606,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
             }
         }
 
-        foreach(var entry in ArrayIndex.Entries)
+        foreach (var entry in ArrayIndex.Entries)
         {
             var idx = (entry.SchemaIndex ?? throw new InvalidOperationException()) - 1;
             if (entry.BufferFormat == BufferFormat.ChunkValues)

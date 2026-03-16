@@ -6,10 +6,13 @@ using System.Text.Json.Serialization;
 using System.IO.Compression;
 
 using ParquetSharp.IO;
-using MZPeak.Metadata;
+using ParquetSharp.Encryption;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using MathNet.Numerics;
+
+using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
+using ParquetSharp;
+using ParquetSharp.Arrow;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EntityType
@@ -134,7 +137,25 @@ public class FileIndex
 
     public FileIndexEntry? FindEntry(EntityType entityType, DataKind dataKind)
     {
-        return Files.Find((entry) => entry.DataKind == dataKind && entry.EntityType == entityType);
+        foreach(var entry in Files)
+        {
+            if (entry.DataKind == dataKind && entry.EntityType == entityType)
+                return entry;
+        }
+        return null;
+    }
+
+    public static DecryptionConfigurations UniformDecryption(FileDecryptionProperties decryptionProperties)
+    {
+        DecryptionConfigurations decryptionConfigs = new();
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays).Name] = decryptionProperties;
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks).Name] = decryptionProperties;
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Metadata).Name] = decryptionProperties;
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays).Name] = decryptionProperties;
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.Metadata).Name] = decryptionProperties;
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.DataArrays).Name] = decryptionProperties;
+        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.Metadata).Name] = decryptionProperties;
+        return decryptionConfigs;
     }
 
     public FileIndex()
@@ -148,6 +169,8 @@ public class FileIndex
 public interface IMZPeakArchiveStorage
 {
     internal static ILogger? Logger = null;
+
+    public DecryptionConfigurations DecryptionConfigurations { get; set; }
 
     /// <summary>
     /// Get the list of file names in the archive. This may include files not in the index.
@@ -176,53 +199,75 @@ public interface IMZPeakArchiveStorage
         }
     }
 
+    public FileReader? OpenFromFileIndexEntry(FileIndexEntry entry, ReaderProperties? props=null, ArrowReaderProperties? arrowProps=null)
+    {
+        if (props == null)
+            props = ReaderProperties.GetDefaultReaderProperties();
+        if (arrowProps == null)
+            arrowProps = ArrowReaderProperties.GetDefault();
+        if (entry == null) return null;
+        var stream = OpenStream(entry.Name);
+        Logger?.LogTrace("Opening {entry}", entry);
+        if (DecryptionConfigurations.ContainsKey(entry.Name))
+        {
+            Logger?.LogTrace("{entry} has decryption config", entry);
+            props.FileDecryptionProperties = DecryptionConfigurations[entry.Name];
+        }
+        return stream == null ? null : new FileReader(
+            new ManagedRandomAccessFile(stream),
+            props,
+            arrowProps
+        );
+    }
+
     /// <summary>
     /// Open the spectrum data arrays volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? SpectrumData(long bufferSize= 4096)
+    public FileReader? SpectrumData(long bufferSize = 4096)
     {
-        var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
-        var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
+        var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.DataArrays);
+        var arrowProps = ArrowReaderProperties.GetDefault();
         arrowProps.BatchSize = bufferSize;
-        var stream = OpenEntry(EntityType.Spectrum, DataKind.DataArrays);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, arrowProps);
     }
 
     /// <summary>
     /// Open the spectrum data arrays volume containing explicitly centroided peaks, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? SpectrumPeaks(long bufferSize = 4096)
+    public FileReader? SpectrumPeaks(long bufferSize = 4096)
     {
-        var stream = OpenEntry(EntityType.Spectrum, DataKind.Peaks);
-        var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
-        var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
+        var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.Peaks);
+        var arrowProps = ArrowReaderProperties.GetDefault();
         arrowProps.BatchSize = bufferSize;
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, arrowProps);
     }
 
     /// <summary>
     /// Open the chromatogram data arrays volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? ChromatogramData(long bufferSize = 4096)
+    public FileReader? ChromatogramData(long bufferSize = 4096)
     {
-        var stream = OpenEntry(EntityType.Chromatogram, DataKind.DataArrays);
-        var props = ParquetSharp.ReaderProperties.GetDefaultReaderProperties();
-        var arrowProps = ParquetSharp.Arrow.ArrowReaderProperties.GetDefault();
+        var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.DataArrays);
+        var arrowProps = ArrowReaderProperties.GetDefault();
         arrowProps.BatchSize = bufferSize;
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream), props, arrowProps);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, arrowProps);
     }
 
     /// <summary>
     /// Open the spectrum metadata volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? SpectrumMetadata()
+    public FileReader? SpectrumMetadata()
     {
-        var stream = OpenEntry(EntityType.Spectrum, DataKind.Metadata);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.Metadata);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
     }
 
     /// <summary>
@@ -231,18 +276,20 @@ public interface IMZPeakArchiveStorage
     /// <returns></returns>
     public ParquetSharp.Arrow.FileReader? ChromatogramMetadata()
     {
-        var stream = OpenEntry(EntityType.Chromatogram, DataKind.Metadata);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.Metadata);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry);
     }
 
     /// <summary>
     /// Open the wavelength spectrum metadata volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? WavelengthSpectrumMetadata()
+    public FileReader? WavelengthSpectrumMetadata()
     {
-        var stream = OpenEntry(EntityType.WavelengthSpectrum, DataKind.Metadata);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        var entry = FileIndex().FindEntry(EntityType.WavelengthSpectrum, DataKind.Metadata);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry);
     }
 
     /// <summary>
@@ -251,8 +298,9 @@ public interface IMZPeakArchiveStorage
     /// <returns></returns>
     public ParquetSharp.Arrow.FileReader? WavelengthSpectrumData()
     {
-        var stream = OpenEntry(EntityType.WavelengthSpectrum, DataKind.DataArrays);
-        return stream == null ? null : new ParquetSharp.Arrow.FileReader(new ManagedRandomAccessFile(stream));
+        var entry = FileIndex().FindEntry(EntityType.WavelengthSpectrum, DataKind.DataArrays);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry);
     }
 
     /// <summary>
@@ -373,11 +421,13 @@ public abstract class BaseZipArchive : IMZPeakArchiveStorage
     protected List<string> fileNames;
     protected FileIndex fileIndex;
 
+    public DecryptionConfigurations DecryptionConfigurations { get; set; }
 
-    public BaseZipArchive()
+    public BaseZipArchive(DecryptionConfigurations? decryptionConfigurations = null)
     {
         fileNames = new List<string>();
         fileIndex = new FileIndex();
+        DecryptionConfigurations = decryptionConfigurations ?? new();
     }
 
     public List<string> FileNames()
@@ -432,11 +482,9 @@ public class LocalZipArchive : BaseZipArchive
 {
     public string Path;
 
-    public LocalZipArchive(string path)
+    public LocalZipArchive(string path, DecryptionConfigurations? decryptionConfigurations = null) : base(decryptionConfigurations)
     {
         Path = path;
-        fileNames = new List<string>();
-        fileIndex = new FileIndex();
         extractInitialMetadata();
     }
 
@@ -489,13 +537,11 @@ public class ZipArchiveStream<T> : BaseZipArchive where T : Stream
 {
     T Stream;
 
-    public ZipArchiveStream(T stream)
+    public ZipArchiveStream(T stream, DecryptionConfigurations? decryptionConfigurations = null) : base(decryptionConfigurations)
     {
         Stream = stream;
         if (!Stream.CanRead) throw new InvalidOperationException("Stream must be readable");
         if (!Stream.CanSeek) throw new InvalidOperationException("Stream must be seekable");
-        fileNames = new List<string>();
-        fileIndex = new FileIndex();
         extractInitialMetadata();
     }
 
@@ -545,12 +591,14 @@ public class DirectoryArchive : IMZPeakArchiveStorage
     public string Path;
     List<string> fileNames;
     FileIndex fileIndex;
+    public DecryptionConfigurations DecryptionConfigurations { get; set; }
 
-    public DirectoryArchive(string path)
+    public DirectoryArchive(string path, DecryptionConfigurations? decryptionConfigurations = null)
     {
         Path = path;
         fileNames = new List<string>();
         fileIndex = new FileIndex();
+        DecryptionConfigurations = decryptionConfigurations ?? new();
         extractInitialMetadata();
     }
 
@@ -661,7 +709,6 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 
 public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
 {
-
     public static ILogger? Logger = null;
 
     ZipArchive Archive;
@@ -673,7 +720,7 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
     public ZipStreamArchiveWriter(T stream)
     {
         OuterStream = stream;
-        Archive = new(OuterStream, ZipArchiveMode.Create, true, Encoding.UTF8);
+        Archive = new(OuterStream, ZipArchiveMode.Create, true, System.Text.Encoding.UTF8);
         CurrentStream = null;
         CurrentEntry = null;
         FileIndex = new();

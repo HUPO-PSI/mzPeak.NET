@@ -5,6 +5,7 @@ using MZPeak.Metadata;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using Microsoft.Extensions.Logging;
+using ParquetSharp;
 
 namespace MZPeak.Reader;
 
@@ -64,7 +65,7 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
 
     public async IAsyncEnumerator<(T, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        await foreach(var x in EnumerateAsync())
+        await foreach (var x in EnumerateAsync())
         {
             yield return x;
         }
@@ -92,13 +93,20 @@ public class MzPeakReader
 
     /// <summary>Creates a reader for the mzPeak file at the specified path.</summary>
     /// <param name="path">The file path to the mzPeak archive.</param>
-    public MzPeakReader(string path) : this(new LocalZipArchive(path))
+    public MzPeakReader(string path, Dictionary<string, FileDecryptionProperties>? decryptionConfigs=null) : this(new LocalZipArchive(path), decryptionConfigs)
     { }
 
     /// <summary>Creates a reader using the specified storage backend.</summary>
     /// <param name="storage">The archive storage implementation.</param>
-    public MzPeakReader(IMZPeakArchiveStorage storage)
+    public MzPeakReader(IMZPeakArchiveStorage storage, Dictionary<string, FileDecryptionProperties>? decryptionConfigs = null)
     {
+        if (decryptionConfigs != null)
+        {
+            foreach(var (k, v) in decryptionConfigs)
+            {
+                storage.DecryptionConfigurations[k] = v;
+            }
+        }
         this.storage = storage;
         var stream = storage.SpectrumMetadata();
         spectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);

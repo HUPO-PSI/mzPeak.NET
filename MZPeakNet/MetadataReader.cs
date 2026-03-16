@@ -195,7 +195,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             return new();
         }
 
-        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        for (var i = 0; i < SpectrumMetadata.ArrayCount; i++)
         {
             var chunk = (StructArray)SpectrumMetadata.Array(i);
             var indexArr = (UInt64Array)chunk.Fields[0];
@@ -223,7 +223,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         {
             return tab;
         }
-        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        for (var i = 0; i < SpectrumMetadata.ArrayCount; i++)
         {
             var chunk = SpectrumMetadata.Array(i);
             GetNativeIdsFrom((StructArray)chunk, ref tab);
@@ -292,7 +292,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     {
         if (SpectrumMetadata == null) return new();
         var spectra = new List<SpectrumInfo>();
-        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        for (var i = 0; i < SpectrumMetadata.ArrayCount; i++)
         {
             var vis = new SpectrumVisitor();
             vis.Visit(SpectrumMetadata.Array(i));
@@ -343,7 +343,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         if (SpectrumMetadata == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
         UInt64Array idxArr;
         SpectrumInfo? rec = null;
-        for(var i = 0; i < SpectrumMetadata.ArrayCount; i++)
+        for (var i = 0; i < SpectrumMetadata.ArrayCount; i++)
         {
             var chunk = (StructArray)SpectrumMetadata.Array(i);
             idxArr = (UInt64Array)chunk.Fields[0];
@@ -447,7 +447,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
                 {
                     if (arr != null) precursors.Add(arr);
                 }
-            } catch(ArgumentOutOfRangeException) {}
+            }
+            catch (ArgumentOutOfRangeException) { }
 
 
             try

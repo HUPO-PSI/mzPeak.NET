@@ -89,7 +89,7 @@ public class WriteTest
         bool hasEnd = false;
         bool hasChunkValues = false;
         bool hasPointFormat = false;
-        foreach(var entry in index.Entries)
+        foreach (var entry in index.Entries)
         {
             switch (entry.BufferFormat)
             {

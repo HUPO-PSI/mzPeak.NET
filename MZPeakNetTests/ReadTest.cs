@@ -157,7 +157,7 @@ public class ArchiveTest
         var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
         var iter = dataReader.Enumerate();
         ulong i = 0;
-        await foreach(var pair in iter)
+        await foreach (var pair in iter)
         {
             if (pair.Item1 > 10) break;
             Assert.Equal(i++, pair.Item1);
