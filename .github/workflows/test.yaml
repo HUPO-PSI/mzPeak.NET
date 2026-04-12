@@ -1,14 +1,7 @@
 name: test
 
 on:
-  push:
-    paths:
-      - '**.cs'
-      - '.github/workflows/*.yml'
-  pull_request:
-    paths:
-      - '**.cs'
-      - '.github/workflows/*.yml'
+  push
 
 
 
