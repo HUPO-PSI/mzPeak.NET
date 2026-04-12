@@ -47,11 +47,13 @@ public class ArchiveTest
         var reader = PointArchive.SpectrumData();
         Assert.NotNull(reader);
 
-        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
-        dataReader.SpacingModels = models;
+        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum)
+        {
+            SpacingModels = models
+        };
         Assert.Equal(BufferFormat.Point, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
-        Assert.Equal(48, dataReader.EntrySpanIndex.Length);
+        Assert.Equal(48, dataReader.Length);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
         await dataReader.ReadForIndex(0);
         await dataReader.ReadForIndex(1);
@@ -82,7 +84,7 @@ public class ArchiveTest
 
         Assert.Equal(BufferFormat.ChunkValues, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
-        Assert.Equal(48, dataReader.EntrySpanIndex.Length);
+        Assert.Equal(48, dataReader.Length);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
         var data = await dataReader.ReadForIndex(10);
         Assert.NotNull(data);

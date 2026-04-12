@@ -145,8 +145,6 @@ public class DataArraysReaderMeta
     public ArrayIndex ArrayIndex;
     /// <summary>Index mapping entry keys to row groups.</summary>
     public RangeIndex RowGroupIndex;
-    /// <summary>Index mapping entry keys to row spans.</summary>
-    public RangeIndex EntrySpanIndex;
     /// <summary>The buffer format used.</summary>
     public BufferFormat Format;
 
@@ -160,12 +158,11 @@ public class DataArraysReaderMeta
     /// <param name="entrySpanIndex">The entry span index.</param>
     /// <param name="bufferFormat">The buffer format.</param>
     /// <param name="spacingModels">Optional spacing models.</param>
-    public DataArraysReaderMeta(BufferContext context, ArrayIndex arrayIndex, RangeIndex rowGroupIndex, RangeIndex entrySpanIndex, BufferFormat bufferFormat, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null)
+    public DataArraysReaderMeta(BufferContext context, ArrayIndex arrayIndex, RangeIndex rowGroupIndex, BufferFormat bufferFormat, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null)
     {
         Context = context;
         ArrayIndex = arrayIndex;
         RowGroupIndex = rowGroupIndex;
-        EntrySpanIndex = entrySpanIndex;
         Format = bufferFormat;
         SpacingModels = spacingModels;
     }
@@ -182,7 +179,6 @@ public class DataArraysReaderMeta
             Prefix = "?"
         };
         RowGroupIndex = new RangeIndex(new List<GroupTagBounds<ulong>>());
-        EntrySpanIndex = new RangeIndex(new List<GroupTagBounds<ulong>>());
         InferBufferFormat(reader);
         LoadArrayIndex(reader);
         AnnotateSchemaIndices(reader);
@@ -252,10 +248,6 @@ public class DataArraysReaderMeta
     void BuildRowGroupIndex(FileReader reader)
     {
         List<GroupTagBounds<ulong>> index = new();
-        ulong start = 0;
-        ulong lastIdx = 0;
-        ulong offset = 0;
-        List<GroupTagBounds<ulong>> rowSpans = new();
         for (ulong i = 0; i < (ulong)reader.ParquetReader.FileMetaData.NumRowGroups; i++)
         {
             var rg = reader.ParquetReader.RowGroup((int)i);
@@ -272,33 +264,8 @@ public class DataArraysReaderMeta
                 };
                 index.Add(bounds);
             }
-            var col = rg.Column(0);
-            var colReader = col.LogicalReader<ulong?>();
-            foreach (ulong? srcIdx in colReader)
-            {
-                offset += 1;
-                if (srcIdx == null) continue;
-                if (srcIdx != lastIdx)
-                {
-                    rowSpans.Add(new GroupTagBounds<ulong>
-                    {
-                        Key = lastIdx,
-                        Start = start,
-                        End = offset - 1
-                    });
-                    lastIdx = (ulong)srcIdx;
-                    start = offset;
-                }
-            }
         }
-        rowSpans.Add(new GroupTagBounds<ulong>
-        {
-            Key = lastIdx,
-            Start = start,
-            End = offset - 1
-        });
         RowGroupIndex = new RangeIndex(index);
-        EntrySpanIndex = new RangeIndex(rowSpans);
     }
 }
 
@@ -319,8 +286,6 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
     public ArrayIndex ArrayIndex { get => Metadata.ArrayIndex; }
     /// <summary>Gets the row group index from metadata.</summary>
     public RangeIndex RowGroupIndex { get => Metadata.RowGroupIndex; }
-    /// <summary>Gets the entry span index from metadata.</summary>
-    public RangeIndex EntrySpanIndex { get => Metadata.EntrySpanIndex; }
 
     /// <summary>Gets or sets the spacing interpolation models.</summary>
     public Dictionary<ulong, SpacingInterpolationModel<double>>? SpacingModels
@@ -385,12 +350,7 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
         {
             return null;
         }
-        var rowSpanExists = EntrySpanIndex.FindByKey(key);
-        if (rowSpanExists == null)
-        {
-            return null;
-        }
-        var rowSpan = (GroupTagBounds<ulong>)rowSpanExists;
+        ;
         ulong offset = 0;
         for (var i = 0; (ulong)i < rowGroups[0]; i++)
         {
@@ -417,14 +377,19 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
             throw new InvalidDataException("Data layout not recognized");
         }
 
-        var startFrom = rowSpan.Start - offset;
-        var endAt = rowSpan.End - offset;
-        var result = await reader.ReadRowsOf(key, startFrom, endAt);
+        var result = await reader.ReadRowsOf(key);
         return (StructArray?)ArrowArrayConcatenator.Concatenate(Enumerable.Range(0, result.ArrayCount).Select(i => result.Array(i)).ToList());
     }
 
     /// <summary>Gets the number of entries.</summary>
-    public long Length { get => Metadata.EntrySpanIndex.Length; }
+    public long Length
+    {
+        get
+        {
+            if (RowGroupIndex.Length == 0) return 0;
+            return (long)(RowGroupIndex.Last().End - RowGroupIndex.First().Start) + 1;
+        }
+    }
 
     /// <summary>Asynchronously enumerates all entries with their index and data.</summary>
     public DataArraysIter Enumerate()
@@ -474,12 +439,11 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
         SpacingModels = spacingModels;
     }
 
-    public virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
+    public virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct)
     {
         var indexArr = (UInt64Array)rootStruct.Fields[0];
         var mask = Compute.Equal(indexArr, entryIndex);
         rootStruct = (StructArray)Compute.Filter(rootStruct, mask);
-        rowCountRead += (ulong)rootStruct.Length;
         return rootStruct;
     }
 
@@ -496,11 +460,8 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
 
     /// <summary>Reads rows for a specific entry within a row range.</summary>
     /// <param name="entryIndex">The entry index.</param>
-    /// <param name="startFrom">The starting row offset.</param>
-    /// <param name="endAt">The ending row offset.</param>
-    public async Task<ChunkedArray> ReadRowsOf(ulong entryIndex, ulong startFrom, ulong endAt)
+    public async Task<ChunkedArray> ReadRowsOf(ulong entryIndex)
     {
-        ulong rowCountRead = 0;
         var chunks = new List<Array>();
         while (true)
         {
@@ -514,26 +475,27 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
             var rootStruct = (StructArray?)root;
             if (rootStruct == null)
             {
-                rowCountRead += (ulong)batch.Length;
                 continue;
             }
 
-            ulong rowCountReadPlusBatch = rowCountRead + (ulong)batch.Length;
-            if (rowCountReadPlusBatch < startFrom)
+            // Assumes that the index column is sorted
+            var indexArr = (UInt64Array)rootStruct.Fields[0];
+            (ulong, int)? first = Compute.FirstNotNull(indexArr);
+            if (first != null)
             {
-                rowCountRead += (ulong)batch.Length;
-                continue;
+                if (first.Value.Item1 > entryIndex) break;
+            }
+            (ulong, int)? last = Compute.LastNotNull(indexArr);
+            if (last != null)
+            {
+                if (last.Value.Item1 < entryIndex) continue;
             }
 
-            if (rowCountRead >= endAt)
-            {
-                break;
-            }
-
-            // Console.WriteLine("{0}-{1} out of {2}-{3}", rowCountRead, rowCountReadPlusBatch, startFrom, endAt);
-            var chunk = ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
+            var chunk = ProcessSegment(entryIndex, rootStruct);
+            if (chunk.Length == 0 && chunks.Count > 0) break;
             chunks.Add(chunk);
         }
+        if (chunks.Count == 0) throw new InvalidOperationException($"Cannot handle empty row range");
         return new ChunkedArray(chunks);
     }
 }
@@ -550,10 +512,9 @@ public class PointLayoutReader : BaseLayoutReader
     /// <param name="spacingModels">Optional spacing interpolation models.</param>
     public PointLayoutReader(IArrowArrayStream reader, ArrayIndex arrayIndex, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null) : base(reader, arrayIndex, spacingModels) { }
 
-    public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
+    public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct)
     {
-        var rows = base.ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
-        // Console.WriteLine("Processing {0}", rowCountRead);
+        var rows = base.ProcessSegment(entryIndex, rootStruct);
         var fields = ((StructType)rows.Data.DataType).Fields;
         var columnsAfter = new List<IArrowArray?>(fields.Count);
         Dictionary<int, IArrowArray> converted = new();
@@ -893,9 +854,9 @@ public class ChunkLayoutReader : BaseLayoutReader
         throw new KeyNotFoundException($"No entry was found for {TransformKey.FromArrayIndexEntry(query)} with transform  = {transform}");
     }
 
-    public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct, ref ulong rowCountRead, ref ulong startFrom, ref ulong endAt)
+    public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct)
     {
-        var rows = base.ProcessSegment(entryIndex, rootStruct, ref rowCountRead, ref startFrom, ref endAt);
+        var rows = base.ProcessSegment(entryIndex, rootStruct);
         var encodingMethod = (StringArray)rows.Fields[chunkEncodingIndex];
         var chunkStart = rows.Fields[chunkStartIndex];
         var chunkValues = rows.Fields[chunkValuesIndex];
@@ -935,7 +896,7 @@ public class ChunkLayoutReader : BaseLayoutReader
                         {
                             decodedValues.Add(DecodeDelta(entryIndex, (double)startValue, valueList, mainAxis));
                         }
-                        catch (System.IndexOutOfRangeException e)
+                        catch (IndexOutOfRangeException e)
                         {
                             throw new IndexOutOfRangeException(
                                 $"Failed to delta decode chunk for entry {entryIndex} starting at {startValue} with {valueList.Length} values",
@@ -1094,11 +1055,82 @@ public class ChunkLayoutReader : BaseLayoutReader
             var chunk = new StructArray(dataType, n, cols, bitmapBuilder.Build());
             rowChunks.Add(chunk);
         }
+        if (rowChunks.Count == 0)
+        {
+            return CreateEmpty(dataType);
+        }
         var combined = (StructArray)ArrowArrayConcatenator.Concatenate(rowChunks);
-
+        if (combined == null) throw new InvalidDataException($"root array cannot be null");
         return combined;
     }
 
+    protected StructArray CreateEmpty(StructType dataType)
+    {
+        List<IArrowArray> arrays = new();
+        foreach(var f in dataType.Fields)
+        {
+            switch (f.DataType.TypeId)
+            {
+                case ArrowTypeId.Float:
+                    {
+                        arrays.Add(new FloatArray.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.Double:
+                    {
+                        arrays.Add(new DoubleArray.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.Int32:
+                    {
+                        arrays.Add(new Int32Array.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.Int64:
+                    {
+                        arrays.Add(new Int64Array.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.UInt32:
+                    {
+                        arrays.Add(new UInt32Array.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.UInt64:
+                    {
+                        arrays.Add(new UInt64Array.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.UInt16:
+                    {
+                        arrays.Add(new UInt16Array.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.UInt8:
+                    {
+                        arrays.Add(new UInt8Array.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.Boolean:
+                    {
+                        arrays.Add(new BooleanArray.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.String:
+                    {
+                        arrays.Add(new StringArray.Builder().Build());
+                        break;
+                    }
+                case ArrowTypeId.Binary:
+                    {
+                        arrays.Add(new BinaryArray.Builder().Build());
+                        break;
+                    }
+
+            }
+        }
+        return new StructArray(dataType, 0, arrays, ArrowBuffer.Empty);
+    }
 }
 
 
@@ -1250,18 +1282,12 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         {
             return false;
         }
-        ulong z0 = 0;
-        ulong z1 = 0;
-        ulong zn = (ulong)nextBatch.Length;
 
         if (doProcess)
         {
             nextBatch = LayoutReader.ProcessSegment(
                 (ulong)CurrentIndex,
-                nextBatch,
-                ref z0,
-                ref z1,
-                ref zn
+                nextBatch
             );
         }
         NextItem = ((ulong)CurrentIndex, nextBatch);

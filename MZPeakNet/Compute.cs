@@ -789,7 +789,7 @@ public static class Compute
         List<string> indenting = Enumerable.Repeat(indenter, indent).ToList();
         string indentString = string.Concat(indenting);
 
-        stream.WriteLine($"{indentString}[ {array.Length}");
+        stream.WriteLine($"{indentString}[ ({array.Length})");
         var pad = indentString + indenter;
         switch (array.Data.DataType.TypeId)
         {
@@ -978,7 +978,7 @@ public static class Compute
                     var valArray = (StructArray)array;
                     foreach (var (f, col) in dtype.Fields.Zip(valArray.Fields))
                     {
-                        stream.WriteLine($"{indentString}{f.Name}: {f.DataType.Name} {col.Length}");
+                        stream.WriteLine($"{indentString}{f.Name}: {f.DataType.Name}");
                         PrettyPrintFormat(col, stream, indent + 1, indenter);
                     }
                     break;
