@@ -1,6 +1,8 @@
 
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Metadata;
 using MZPeak.Storage;
 using MZPeak.Thermo;
 
@@ -9,6 +11,7 @@ using ThermoFisher.CommonCore.RandomAccessReaderPlugin;
 using ThermoFisher.CommonCore.RawFileReader;
 
 namespace MzPeakTests;
+
 public class ThermoTranslationTest
 {
     string TestRAWPath;
@@ -90,7 +93,90 @@ public class ThermoTranslationTest
                 );
             }
         }
+    }
 
+    [Fact]
+    public void TranslatePoint()
+    {
+        var job = new MZPeakCliConverter.ThermoTranslateTask(new FileInfo(TestRAWPath), new FileInfo("NUL"), false, false);
+        var handle = job.OpenThermoHandle();
+        Assert.NotNull(handle);
+        var accessor = handle.Value.accessor;
 
+        var stream = new MemoryStream();
+        var writerStorage = new ZipStreamArchiveWriter<MemoryStream>(stream);
+        var writer = job.OpenWriterFrom(writerStorage);
+        job.TranslateSpectraTo(accessor, writer);
+        job.TranslateTracesTo(accessor, writer);
+        Console.WriteLine("Closing Writer");
+        writer.Close();
+        Console.WriteLine("Flushing Stream");
+        stream.Flush();
+        stream.Seek(0, SeekOrigin.Begin);
+
+        Console.WriteLine("Opening Reader");
+        var readerStorage = new ZipArchiveStream<MemoryStream>(stream);
+        var reader = new MZPeak.Reader.MzPeakReader(readerStorage);
+        Assert.Equal(48, reader.SpectrumCount);
+        Assert.True(reader.HasSpectrumData);
+        Assert.NotNull(reader.SpectrumDataReaderMeta);
+        Assert.Equal(BufferFormat.Point, reader.SpectrumDataReaderMeta.Format);
+
+        Console.WriteLine("Checking array index");
+        foreach (var entry in reader.SpectrumDataReaderMeta.ArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
+        {
+            Assert.Null(entry.Transform);
+        }
+
+        foreach (var entry in reader.SpectrumDataReaderMeta.ArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
+        {
+            Assert.Null(entry.Transform);
+        }
+
+        Console.WriteLine("Checking descriptions");
+        var spec = reader.GetSpectrumDescription(0);
+        Assert.Equal("controllerType=0 controllerNumber=1 scan=1", spec.Id);
+        spec = reader.GetSpectrumDescription(47);
+        Assert.Equal("controllerType=0 controllerNumber=1 scan=48", spec.Id);
+    }
+
+    [Fact]
+    public void TranslateChunked()
+    {
+        var job = new MZPeakCliConverter.ThermoTranslateTask(new FileInfo(TestRAWPath), new FileInfo("NUL"), true, true);
+        var handle = job.OpenThermoHandle();
+        Assert.NotNull(handle);
+        var accessor = handle.Value.accessor;
+
+        var stream = new MemoryStream();
+        var writerStorage = new ZipStreamArchiveWriter<MemoryStream>(stream);
+        var writer = job.OpenWriterFrom(writerStorage);
+        job.TranslateSpectraTo(accessor, writer);
+        job.TranslateTracesTo(accessor, writer);
+        writer.Close();
+        stream.Flush();
+        stream.Seek(0, SeekOrigin.Begin);
+
+        var readerStorage = new ZipArchiveStream<MemoryStream>(stream);
+        var reader = new MZPeak.Reader.MzPeakReader(readerStorage);
+        Assert.Equal(48, reader.SpectrumCount);
+        Assert.True(reader.HasSpectrumData);
+        Assert.NotNull(reader.SpectrumDataReaderMeta);
+        Assert.Equal(BufferFormat.ChunkValues, reader.SpectrumDataReaderMeta.Format);
+
+        foreach (var entry in reader.SpectrumDataReaderMeta.ArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
+        {
+            Assert.Equal(MZPeak.Compute.NullInterpolation.NullInterpolateCURIE, entry.Transform);
+        }
+
+        foreach (var entry in reader.SpectrumDataReaderMeta.ArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
+        {
+            Assert.Equal(MZPeak.Compute.NullInterpolation.NullZeroCURIE, entry.Transform);
+        }
+
+        var spec = reader.GetSpectrumDescription(0);
+        Assert.Equal("controllerType=0 controllerNumber=1 scan=1", spec.Id);
+        spec = reader.GetSpectrumDescription(47);
+        Assert.Equal("controllerType=0 controllerNumber=1 scan=48", spec.Id);
     }
 }

@@ -8,8 +8,6 @@ using ThermoFisher.CommonCore.RawFileReader;
 using MZPeak.Storage;
 using MZPeak.Thermo;
 using MZPeak.Compute;
-using MZPeak.Metadata;
-using MZPeak.ControlledVocabulary;
 using ParquetSharp;
 using ThermoFisher.CommonCore.Data;
 
@@ -53,9 +51,10 @@ internal class Program
                 options.TimestampFormat = "HH:mm:ss";
             });
         });
-
         MZPeak.Util.LoggingConfig.ConfigureLogging(loggerFactory);
         Logger = loggerFactory.CreateLogger("MZPeakNet.App");
+        CLITask.Logger = Logger;
+
     }
 
     static Command CreateReadCommand()
@@ -63,7 +62,10 @@ internal class Program
         var cmd = new Command("read", "Read an existing mzPeak file");
         Argument<FileInfo> filePath = new Argument<FileInfo>("file").AcceptExistingOnly();
         cmd.Arguments.Add(filePath);
-        Option<string> decryptionKey = new Option<string>("--decryption-key", ["-d"]);
+        Option<string> decryptionKey = new Option<string>("--decryption-key", ["-d"])
+        {
+            Description = "Provide a shared decryption key for all Parquet files in the archive"
+        };
         cmd.Options.Add(decryptionKey);
         cmd.SetAction(parseResult =>
         {
@@ -106,9 +108,15 @@ internal class Program
         Argument<FileInfo> filePath = new Argument<FileInfo>("file").AcceptExistingOnly();
         cmd.Arguments.Add(filePath);
 
-        Option<bool> nullMarking = new Option<bool>("--use-null-marking", "-u");
+        Option<bool> nullMarking = new Option<bool>("--use-null-marking", "-u")
+        {
+            Description = "Use null marking to annotate low information content points that can be back-filled at read time to skip storing them."
+        };
         cmd.Options.Add(nullMarking);
-        Option<bool> useChunked = new Option<bool>("--use-chunking", "-c");
+        Option<bool> useChunked = new Option<bool>("--use-chunking", "-c")
+        {
+            Description = "Use the chunked layout for the main signal data files which can compress profile data effectively."
+        };
         cmd.Options.Add(useChunked);
 
 
@@ -153,208 +161,326 @@ internal class Program
 
     static async Task ReadSpectrum(FileInfo sourceFile, ulong spectrumIndex)
     {
-        var reader = new MZPeak.Reader.MzPeakReader(sourceFile.FullName);
-        var spec = await reader.GetSpectrumData(spectrumIndex);
-        if (spec != null)
-        {
-            Compute.PrettyPrint(spec);
-            Console.WriteLine($"{spec.Length} points");
-        }
+        var job = new ReadSpectrumTask(sourceFile, spectrumIndex);
+        await job.Main();
     }
 
     static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false)
     {
-        var readerManager = RawFileReaderAdapter.RandomAccessThreadedFileFactory(sourceFile.FullName, RandomAccessFileManager.Instance);
-        var accessor = readerManager.CreateThreadAccessor();
-        if (!accessor.SelectMsData())
+        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked);
+        job.Main();
+    }
+
+    static async Task TranscodeFile(FileInfo sourceFile, FileInfo destinationFile)
+    {
+        var job = new TranscodeFileTask(sourceFile, destinationFile);
+        await job.Main();
+    }
+
+    static async Task ReadFile(FileInfo fileInfo, string? decryptionKey = null)
+    {
+        var job = new ReadFileTask(fileInfo, decryptionKey);
+        await job.Main();
+    }
+}
+
+public class CLITask
+{
+    public static ILogger? Logger = null;
+}
+
+public class ThermoTranslateTask : CLITask
+{
+    FileInfo SourceFile;
+    FileInfo DestinationFile;
+    bool UseNullMarking = false;
+    bool UseChunked = false;
+
+    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false)
+    {
+        SourceFile = sourceFile;
+        DestinationFile = destinationFile;
+        UseNullMarking = useNullMarking;
+        UseChunked = useChunked;
+    }
+
+    public void TranslateSpectraTo(ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoMZPeakWriter writer)
+    {
+        writer.InitializeHelper(accessor);
+
+        writer.Samples.Add(writer.ConversionHelper.GetSample(accessor));
+        writer.FileDescription = writer.ConversionHelper.GetFileDescription(accessor);
+
+        writer.Run.DefaultSourceFileId = "RAW1";
+        writer.Run.StartTime = accessor.FileHeader.CreationDate;
+        writer.Run.Id = accessor.FileName;
+
+        var startScan = accessor.RunHeader.FirstSpectrum;
+        var lastScan = accessor.RunHeader.LastSpectrum;
+
+        for (var scanNumber = startScan; scanNumber <= lastScan; scanNumber++)
         {
-            Logger?.LogWarning("No MS data detected! Exiting Early!");
-            return;
-        }
-        accessor.IncludeReferenceAndExceptionData = true;
+            var scanFilter = accessor.GetFilterForScanNumber(scanNumber);
+            var segments = accessor.GetSegmentedScanFromScanNumber(scanNumber);
+            var statistics = accessor.GetScanStatsForScanNumber(scanNumber);
+            var time = accessor.RetentionTimeFromScanNumber(scanNumber);
 
-        using (var fileStream = File.Create(destinationFile.FullName))
-        {
-            var writerStorage = new ZipStreamArchiveWriter<FileStream>(fileStream);
-
-            var writer = new ThermoMZPeakWriter(
-                writerStorage,
-                spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, false),
-                useChunked: useChunked,
-                includeNoise: true
-            );
-
-            if (useNullMarking)
+            if (scanNumber % 1000 == 0)
             {
-                Logger?.LogInformation("Using null marking");
-                writer.SpectraUseNullMarking();
+                Logger?.LogInformation(
+                    $"Writing {scanNumber} with {segments.PositionCount} points"
+                );
             }
 
-            writer.InitializeHelper(accessor);
+            var (spacingModel, auxArrays) = writer.AddSpectrumData(
+                writer.CurrentSpectrum,
+                segments,
+                statistics);
 
-            writer.Samples.Add(writer.ConversionHelper.GetSample(accessor));
-            writer.FileDescription = writer.ConversionHelper.GetFileDescription(accessor);
-
-            writer.Run.DefaultSourceFileId = "RAW1";
-            writer.Run.StartTime = accessor.FileHeader.CreationDate;
-            writer.Run.Id = accessor.FileName;
-
-            var startScan = accessor.RunHeader.FirstSpectrum;
-            var lastScan = accessor.RunHeader.LastSpectrum;
-
-            for (var scanNumber = startScan; scanNumber < lastScan; scanNumber++)
+            var packets = accessor.GetAdvancedPacketData(scanNumber);
+            if (packets.NoiseData != null && packets.NoiseData.Length > 0)
             {
-                var scanFilter = accessor.GetFilterForScanNumber(scanNumber);
-                var segments = accessor.GetSegmentedScanFromScanNumber(scanNumber);
-                var statistics = accessor.GetScanStatsForScanNumber(scanNumber);
-                var time = accessor.RetentionTimeFromScanNumber(scanNumber);
+                writer.AddNoisePacketData(writer.CurrentSpectrum, packets.NoiseData);
+            }
 
-                if (scanNumber % 1000 == 0)
-                {
-                    Logger?.LogInformation(
-                        $"Writing {scanNumber} with {segments.PositionCount} points"
-                    );
-                }
-
-                var (spacingModel, auxArrays) = writer.AddSpectrumData(
-                    writer.CurrentSpectrum,
-                    segments,
-                    statistics);
-
-                var packets = accessor.GetAdvancedPacketData(scanNumber);
-                if (packets.NoiseData != null && packets.NoiseData.Length > 0)
-                {
-                    writer.AddNoisePacketData(writer.CurrentSpectrum, packets.NoiseData);
-                }
-
-                if (!statistics.IsCentroidScan)
-                {
-                    auxArrays.AddRange(
-                        writer.AddSpectrumPeakData(
-                            writer.CurrentSpectrum,
-                            accessor.GetCentroidStream(scanNumber, true)
-                        )
-                    );
-                }
-
-                var key = writer.AddSpectrum(
-                    scanNumber,
-                    time,
-                    scanFilter,
-                    statistics,
-                    spacingModel?.Coefficients,
-                    auxiliaryArrays: auxArrays);
-
-                var (precursorProps, acquisitionProperties) = writer.ExtractPrecursorAndTrailerMetadata(
-                    scanNumber,
-                    accessor,
-                    scanFilter,
-                    statistics
+            if (!statistics.IsCentroidScan)
+            {
+                auxArrays.AddRange(
+                    writer.AddSpectrumPeakData(
+                        writer.CurrentSpectrum,
+                        accessor.GetCentroidStream(scanNumber, true)
+                    )
                 );
+            }
 
-                writer.AddScan(
+            var key = writer.AddSpectrum(
+                scanNumber,
+                time,
+                scanFilter,
+                statistics,
+                spacingModel?.Coefficients,
+                auxiliaryArrays: auxArrays);
+
+            var (precursorProps, acquisitionProperties) = writer.ExtractPrecursorAndTrailerMetadata(
+                scanNumber,
+                accessor,
+                scanFilter,
+                statistics
+            );
+
+            writer.AddScan(
+                key,
+                scanNumber,
+                time,
+                scanFilter,
+                statistics,
+                acquisitionProperties
+            );
+
+            if (precursorProps != null)
+            {
+                writer.AddPrecursor(
                     key,
-                    scanNumber,
-                    time,
-                    scanFilter,
-                    statistics,
-                    acquisitionProperties
+                    precursorProps
                 );
-
-                if (precursorProps != null)
-                {
-                    writer.AddPrecursor(
-                        key,
-                        precursorProps
-                    );
-                    writer.AddSelectedIon(
-                        key,
-                        precursorProps
-                    );
-                }
+                writer.AddSelectedIon(
+                    key,
+                    precursorProps
+                );
             }
+        }
 
-            var (traceInfo, chromArrays) = writer.ConversionHelper.ReadSummaryTrace(TraceType.TIC, accessor);
-            writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
+        var (traceInfo, chromArrays) = writer.ConversionHelper.ReadSummaryTrace(TraceType.TIC, accessor);
+        writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
+        writer.AddChromatogram(
+            traceInfo.Id,
+            null,
+            traceInfo.Parameters,
+            traceInfo.AuxiliaryArrays
+        );
+
+        (traceInfo, chromArrays) = writer.ConversionHelper.ReadSummaryTrace(TraceType.BasePeak, accessor);
+        writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
+        writer.AddChromatogram(
+            traceInfo.Id,
+            null,
+            traceInfo.Parameters,
+            traceInfo.AuxiliaryArrays
+        );
+    }
+
+    public void TranslateTracesTo(ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoMZPeakWriter writer)
+    {
+        Logger?.LogInformation("Writing traces");
+
+        foreach (var log in writer.ConversionHelper.StatusLogs(accessor))
+        {
+            (var traceInfo, var traceArrays) = log.AsChromatogramInfo();
+            var auxArrays = writer.AddChromatogramData(writer.CurrentChromatogram, traceArrays);
             writer.AddChromatogram(
                 traceInfo.Id,
                 null,
                 traceInfo.Parameters,
-                traceInfo.AuxiliaryArrays
+                auxArrays
             );
+        }
+    }
 
-            (traceInfo, chromArrays) = writer.ConversionHelper.ReadSummaryTrace(TraceType.BasePeak, accessor);
-            writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
-            writer.AddChromatogram(
-                traceInfo.Id,
-                null,
-                traceInfo.Parameters,
-                traceInfo.AuxiliaryArrays
-            );
+    public void TranslatePDATo(ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoMZPeakWriter writer)
+    {
+        if (accessor.GetInstrumentCountOfType(Device.Pda) > 0)
+        {
+            Logger?.LogInformation("Reading PDA spectra");
+            accessor.SelectInstrument(Device.Pda, 1);
 
-            Logger?.LogInformation("Writing traces");
-
-            foreach (var log in writer.ConversionHelper.StatusLogs(accessor))
+            for (var i = accessor.RunHeader.FirstSpectrum; i <= accessor.RunHeader.LastSpectrum; i++)
             {
-                (traceInfo, var traceArrays) = log.AsChromatogramInfo();
-
-                var auxArrays = writer.AddChromatogramData(writer.CurrentChromatogram, traceArrays);
-                writer.AddChromatogram(
-                    traceInfo.Id,
-                    null,
-                    traceInfo.Parameters,
-                    auxArrays
-                );
+                var scan = accessor.GetSimplifiedScan(i);
+                Console.WriteLine($"{scan.Masses.Length}");
             }
-
-            if (accessor.GetInstrumentCountOfType(Device.Pda) > 0)
+        }
+        if (accessor.GetInstrumentCountOfType(Device.Pda) > 0)
+        {
+            Logger?.LogInformation($"Found photodiode array device");
+            accessor.SelectInstrument(Device.Pda, 1);
+            for (var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
             {
-                Logger?.LogInformation("Reading PDA spectra");
-                accessor.SelectInstrument(Device.Pda, 1);
-
-                for (var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
+                try
                 {
                     var scan = accessor.GetSimplifiedScan(i);
                     Console.WriteLine($"{scan.Masses.Length}");
                 }
-            }
-            if (accessor.GetInstrumentCountOfType(Device.Pda) > 0)
-            {
-                Logger?.LogInformation($"Found photodiode array device");
-                accessor.SelectInstrument(Device.Pda, 1);
-                for (var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
+                catch (NoSelectedMsDeviceException e)
                 {
-                    try
-                    {
-                        var scan = accessor.GetSimplifiedScan(i);
-                        Console.WriteLine($"{scan.Masses.Length}");
-                    }
-                    catch (NoSelectedMsDeviceException e)
-                    {
-                        Logger?.LogDebug($"Failed to read UV spectrum {i}, quitting: {e}");
-                        break;
-                    }
+                    Logger?.LogDebug($"Failed to read UV spectrum {i}, quitting: {e}");
+                    break;
                 }
             }
+        }
+    }
+
+    public (ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoFisher.CommonCore.Data.Interfaces.IRawFileThreadManager readerManager)? OpenThermoHandle()
+    {
+        var readerManager = RawFileReaderAdapter.RandomAccessThreadedFileFactory(SourceFile.FullName, RandomAccessFileManager.Instance);
+        var accessor = readerManager.CreateThreadAccessor();
+        if (!accessor.SelectMsData())
+        {
+            Logger?.LogWarning("No MS data detected! Exiting Early!");
+            return null;
+        }
+        accessor.IncludeReferenceAndExceptionData = true;
+        return (accessor, readerManager);
+    }
+
+    public ThermoMZPeakWriter OpenWriterFrom(IMZPeakArchiveWriter writerStorage)
+    {
+        var writer = new ThermoMZPeakWriter(
+                writerStorage,
+                spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, false),
+                useChunked: UseChunked,
+                includeNoise: true
+            );
+        if (UseNullMarking)
+        {
+            Logger?.LogInformation("Using null marking");
+            writer.SpectraUseNullMarking();
+        }
+        return writer;
+    }
+
+    public void Main()
+    {
+        var handles = OpenThermoHandle();
+        if (handles == null) return;
+        var (accessor, _readerManager) = handles.Value;
+
+        using (var fileStream = File.Create(DestinationFile.FullName))
+        {
+            var writerStorage = new ZipStreamArchiveWriter<FileStream>(fileStream);
+            var writer = OpenWriterFrom(writerStorage);
+
+            TranslateSpectraTo(accessor, writer);
+            TranslateTracesTo(accessor, writer);
+            TranslatePDATo(accessor, writer);
 
             Logger?.LogInformation("Closing writer...");
             writer.Close();
         }
 
-        destinationFile.Refresh();
-        Logger?.LogInformation($"Wrote {destinationFile.Length / 1000000.0} MB");
+        DestinationFile.Refresh();
+        Logger?.LogInformation($"Wrote {DestinationFile.Length / 1000000.0} MB");
+    }
+}
+
+public class ReadFileTask : CLITask
+{
+    FileInfo FileInfo;
+    string? DecryptionKey;
+
+    public ReadFileTask(FileInfo fileInfo, string? decryptionKey = null)
+    {
+        FileInfo = fileInfo;
+        DecryptionKey = decryptionKey;
     }
 
-    static async Task TranscodeFile(FileInfo sourceFile, FileInfo destinationFile)
+    public async Task Main()
     {
-        var reader = new MZPeak.Reader.MzPeakReader(sourceFile.FullName);
+        Dictionary<string, FileDecryptionProperties> decryptionConfigs = new();
+        if (DecryptionKey != null)
+        {
+            Logger?.LogInformation("Setting basic decryption configuration");
+            var baseDecrypt = new FileDecryptionPropertiesBuilder();
+            baseDecrypt.FooterKey(
+                System.Text.UTF8Encoding.UTF8.GetBytes(DecryptionKey));
+            var config = baseDecrypt.Build();
+
+            decryptionConfigs = FileIndex.UniformDecryption(config);
+        }
+        Logger?.LogInformation($"Reading {FileInfo}");
+        var reader = new MZPeak.Reader.MzPeakReader(FileInfo.FullName, decryptionConfigs: decryptionConfigs);
+        Logger?.LogInformation($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
+        Logger?.LogInformation($"Spectrum storage format = {reader.SpectrumDataFormat}");
+        if (reader.HasWavelengthData)
+        {
+            Logger?.LogInformation($"Wavelength spectrum count {reader.WavelengthSpectrumCount} in format {reader.WavelengthSpectrumDataFormat}");
+        }
+
+        var isProfile = 0;
+        var isCentroid = 0;
+        var i = 0;
+        await foreach (var (descr, spec) in reader.EnumerateSpectraAsync())
+        {
+            i++;
+            if (i % 1000 == 0) Logger?.LogInformation($"{i} spectra read...");
+            isProfile += descr.IsProfile ? 1 : 0;
+            isCentroid += descr.IsCentroid ? 1 : 0;
+        }
+
+        Logger?.LogInformation($"{isProfile} profile spectra, {isCentroid} centroid spectra");
+    }
+}
+
+public class TranscodeFileTask : CLITask
+{
+    FileInfo SourceFile;
+    FileInfo DestinationFile;
+
+    public TranscodeFileTask(FileInfo sourceFile, FileInfo destinationFile)
+    {
+        SourceFile = sourceFile;
+        DestinationFile = destinationFile;
+    }
+
+    public async Task Main()
+    {
+        var reader = new MZPeak.Reader.MzPeakReader(SourceFile.FullName);
         var spectrumArrays = reader.SpectrumDataReaderMeta?.ArrayIndex;
         if (spectrumArrays == null)
         {
             Logger?.LogError("Cannot transcode a file without spectra yet");
             return;
         }
-        using (var fileStream = File.Create(destinationFile.FullName))
+        using (var fileStream = File.Create(DestinationFile.FullName))
         {
             var writerStorage = new ZipStreamArchiveWriter<FileStream>(fileStream);
 
@@ -432,43 +558,30 @@ internal class Program
             }
             writer.Close();
         }
-        destinationFile.Refresh();
-        Logger?.LogInformation($"Wrote {destinationFile.Length / 1000000.0} MB");
+        DestinationFile.Refresh();
+        Logger?.LogInformation($"Wrote {DestinationFile.Length / 1000000.0} MB");
+    }
+}
+
+public class ReadSpectrumTask : CLITask
+{
+    FileInfo SourceFile;
+    ulong SpectrumIndex;
+
+    public ReadSpectrumTask(FileInfo sourceFile, ulong spectrumIndex)
+    {
+        SourceFile = sourceFile;
+        SpectrumIndex = spectrumIndex;
     }
 
-    static async Task ReadFile(FileInfo fileInfo, string? decryptionKey = null)
+    public async Task Main()
     {
-        Dictionary<string, FileDecryptionProperties> decryptionConfigs = new();
-        if (decryptionKey != null)
+        var reader = new MZPeak.Reader.MzPeakReader(SourceFile.FullName);
+        var spec = await reader.GetSpectrumData(SpectrumIndex);
+        if (spec != null)
         {
-            Logger?.LogInformation("Setting basic decryption configuration");
-            var baseDecrypt = new FileDecryptionPropertiesBuilder();
-            baseDecrypt.FooterKey(
-                System.Text.UTF8Encoding.UTF8.GetBytes(decryptionKey));
-            var config = baseDecrypt.Build();
-
-            decryptionConfigs = FileIndex.UniformDecryption(config);
+            Compute.PrettyPrint(spec);
+            Console.WriteLine($"{spec.Length} points");
         }
-        Logger?.LogInformation($"Reading {fileInfo}");
-        var reader = new MZPeak.Reader.MzPeakReader(fileInfo.FullName, decryptionConfigs: decryptionConfigs);
-        Logger?.LogInformation($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
-        Logger?.LogInformation($"Spectrum storage format = {reader.SpectrumDataFormat}");
-        if (reader.HasWavelengthData)
-        {
-            Logger?.LogInformation($"Wavelength spectrum count {reader.WavelengthSpectrumCount} in format {reader.WavelengthSpectrumDataFormat}");
-        }
-
-        var isProfile = 0;
-        var isCentroid = 0;
-        var i = 0;
-        await foreach (var (descr, spec) in reader.EnumerateSpectraAsync())
-        {
-            i++;
-            if (i % 1000 == 0) Logger?.LogInformation($"{i} spectra read...");
-            isProfile += descr.IsProfile ? 1 : 0;
-            isCentroid += descr.IsCentroid ? 1 : 0;
-        }
-
-        Logger?.LogInformation($"{isProfile} profile spectra, {isCentroid} centroid spectra");
     }
 }

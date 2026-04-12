@@ -48,6 +48,31 @@ public enum WriterState
     Done = 999,
 }
 
+
+/// <summary>
+/// A configuration struct that controls the size of certain important units of a Parquet file.
+/// </summary>
+/// <param name="PageSize">
+///     The number of bytes per Parquet data page. The larger this is, the greater window the compression
+///     algorithm has to reduce data size, but random access granularity when the page index is used
+/// </param>
+/// <param name="RowGroupSize">
+///     The maximum number of bytes per Parquet row group. This is a collection of data pages that must be
+///     written out together. The larger this value, the more data pages can be included in the same group
+///     and thus will share the same dictionary, indirectly affecting overall file size.
+/// </param>
+/// <param name="DictionarySize">
+///     The maximum number of bytes allowed for the dictionary data page for a column in a given row group.
+///     The larger this is, the greater the number of repeated elements that can fit in the dictionary
+///     before overflowing and forcing the writer to fall back to storing everything directly in plain encoding.
+/// </param>
+public record ParquetDataWriterConfig(
+    long PageSize = 1048576,
+    long RowGroupSize = 4194304,
+    long DictionarySize = 1048576
+);
+
+
 /// <summary>
 /// Writer for creating mzPeak archive files containing mass spectrometry data.
 /// </summary>
@@ -69,6 +94,8 @@ public class MZPeakWriter : IDisposable
     BaseDataLayoutWriter ChromatogramData;
     BaseDataLayoutWriter? SpectrumPeakData = null;
     BaseDataLayoutWriter? WavelengthSpectrumData;
+
+    public ParquetDataWriterConfig DataWriterConfig {get; set;}
 
     bool standardContentFlushed = false;
 
@@ -182,8 +209,12 @@ public class MZPeakWriter : IDisposable
                 $"{SpectrumData.LayoutName()}.{SpectrumData.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
             ).DataPagesize(
-                (long)Math.Pow(1024, 2)
-            ).MaxRowGroupLength(1024 * 1024 * 4);
+                DataWriterConfig.PageSize
+            ).MaxRowGroupLength(
+                DataWriterConfig.RowGroupSize
+            ).DictionaryPagesizeLimit(
+                DataWriterConfig.DictionarySize
+            );
 
         var schema = SpectrumData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, SpectrumData.ArrayIndex, ArrayType.MZArray, schema);
@@ -207,14 +238,18 @@ public class MZPeakWriter : IDisposable
             .Compression(ParquetSharp.Compression.Zstd)
             .EnableDictionary()
             .EnableStatistics()
-            .DataPagesize(1024 * 1024)
+            .EnableWritePageIndex()
             .DisableDictionary($"{ChromatogramData.LayoutName()}.{ChromatogramData.BufferContext.IndexName()}")
             .Encoding(
                 $"{ChromatogramData.LayoutName()}.{ChromatogramData.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
-            )
-            .MaxRowGroupLength(1024 * 1024 * 5)
-            .EnableWritePageIndex();
+            ).DataPagesize(
+                DataWriterConfig.PageSize
+            ).MaxRowGroupLength(
+                DataWriterConfig.RowGroupSize
+            ).DictionaryPagesizeLimit(
+                DataWriterConfig.DictionarySize
+            );
 
         /* Three-fold API workaround
             Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
@@ -252,8 +287,12 @@ public class MZPeakWriter : IDisposable
                 $"{WavelengthSpectrumData.LayoutName()}.{WavelengthSpectrumData.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
             ).DataPagesize(
-                (long)Math.Pow(1024, 2)
-            ).MaxRowGroupLength(1024 * 1024 * 4);
+                DataWriterConfig.PageSize
+            ).MaxRowGroupLength(
+                DataWriterConfig.RowGroupSize
+            ).DictionaryPagesizeLimit(
+                DataWriterConfig.DictionarySize
+            );
 
         var schema = WavelengthSpectrumData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, WavelengthSpectrumData.ArrayIndex, ArrayType.WavelengthArray, schema);
@@ -301,8 +340,12 @@ public class MZPeakWriter : IDisposable
                 $"{SpectrumPeakData.LayoutName()}.{SpectrumPeakData.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
             ).DataPagesize(
-                (long)Math.Pow(1024, 2)
-            ).MaxRowGroupLength(1024 * 1024 * 4);
+                DataWriterConfig.PageSize
+            ).MaxRowGroupLength(
+                DataWriterConfig.RowGroupSize
+            ).DictionaryPagesizeLimit(
+                DataWriterConfig.DictionarySize
+            );
 
         var schema = SpectrumPeakData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, SpectrumPeakData.ArrayIndex, ArrayType.MZArray, schema);
@@ -329,7 +372,8 @@ public class MZPeakWriter : IDisposable
                         bool includeSpectrumPeakData = false,
                         ArrayIndex? spectrumPeakArrayIndex = null,
                         bool useChunked = false,
-                        EncryptionConfigurations? encryptionConfigurations = null)
+                        EncryptionConfigurations? encryptionConfigurations = null,
+                        ParquetDataWriterConfig? dataWriterConfig = null)
     {
         EncryptionConfigurations = encryptionConfigurations ?? new();
         if (spectrumArrayIndex == null)
@@ -356,15 +400,26 @@ public class MZPeakWriter : IDisposable
         if (includeSpectrumPeakData)
             SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
         WavelengthSpectrumMetadata = null;
+        DataWriterConfig = dataWriterConfig ?? new();
     }
 
     public void SpectraUseNullMarking()
     {
         if (State != WriterState.Start) throw new InvalidOperationException($"Cannot enable null marking after writing has already begun");
+        int k = 0;
         foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
+        {
+            k += 1;
             e.Transform = NullInterpolation.NullInterpolateCURIE;
+        }
+        if (k == 0) throw new InvalidOperationException($"Failed to update transform for any m/z array entries from {SpectrumArrayIndex.Entries}");
+        k = 0;
         foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
+        {
+            k += 1;
             e.Transform = NullInterpolation.NullZeroCURIE;
+        }
+        if (k == 0) throw new InvalidOperationException($"Failed to update transform for any intensity array entries from {SpectrumArrayIndex.Entries}");
     }
 
     /// <summary>Gets the current spectrum index.</summary>
@@ -881,7 +936,6 @@ public class MZPeakWriter : IDisposable
     public void FlushStandardContent()
     {
         if (standardContentFlushed) return;
-        Logger?.LogInformation("Flushing standard content");
         FlushSpectrumData();
         if (State == WriterState.SpectrumData)
             CloseCurrentWriter();

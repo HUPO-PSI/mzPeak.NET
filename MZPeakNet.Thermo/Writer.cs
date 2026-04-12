@@ -1353,7 +1353,7 @@ public class ThermoMZPeakWriter : IDisposable
         else
             paramList.Add(SpectrumRepresentation.ProfileSpectrum.AsParam());
 
-        var id = $"controllerType=0 controllerNumber=1 scan={scanNumber + 1}";
+        var id = $"controllerType=0 controllerNumber=1 scan={scanNumber}";
         var index = Writer.AddSpectrum(id, time, null, spacingModel, paramList, auxiliaryArrays);
         ScanNumberToIndex[scanNumber] = index;
         return index;

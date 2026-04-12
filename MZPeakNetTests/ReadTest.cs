@@ -168,9 +168,9 @@ public class ArchiveTest
         i = 20;
         await foreach (var pair in iter)
         {
-            if (pair.Item1 > 30) break;
             Assert.Equal(i++, pair.Item1);
         }
+        Assert.Equal(48ul, i);
     }
 }
 
