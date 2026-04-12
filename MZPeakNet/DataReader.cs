@@ -1,6 +1,5 @@
 namespace MZPeak.Reader;
 
-using System.Numerics;
 using System.Collections;
 using System.Text;
 using System.Text.Json;
@@ -15,8 +14,6 @@ using Apache.Arrow.Types;
 using MZPeak.Compute;
 using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
-using System.Security;
-using ParquetSharp;
 using System.Threading;
 
 /// <summary>

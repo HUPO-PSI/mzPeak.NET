@@ -329,7 +329,7 @@ public class MZPeakWriter : IDisposable
                         bool includeSpectrumPeakData = false,
                         ArrayIndex? spectrumPeakArrayIndex = null,
                         bool useChunked = false,
-                        EncryptionConfigurations? encryptionConfigurations=null)
+                        EncryptionConfigurations? encryptionConfigurations = null)
     {
         EncryptionConfigurations = encryptionConfigurations ?? new();
         if (spectrumArrayIndex == null)
@@ -356,7 +356,15 @@ public class MZPeakWriter : IDisposable
         if (includeSpectrumPeakData)
             SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
         WavelengthSpectrumMetadata = null;
-        StartSpectrumData();
+    }
+
+    public void SpectraUseNullMarking()
+    {
+        if (State != WriterState.Start) throw new InvalidOperationException($"Cannot enable null marking after writing has already begun");
+        foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
+            e.Transform = NullInterpolation.NullInterpolateCURIE;
+        foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
+            e.Transform = NullInterpolation.NullZeroCURIE;
     }
 
     /// <summary>Gets the current spectrum index.</summary>
@@ -483,6 +491,10 @@ public class MZPeakWriter : IDisposable
     /// <summary>Flushes buffered spectrum data to the output.</summary>
     public virtual void FlushSpectrumData()
     {
+        if (State == WriterState.Start)
+        {
+            StartSpectrumData();
+        }
         if (State == WriterState.SpectrumData && CurrentWriter != null)
         {
             var batch = SpectrumData.GetRecordBatch();

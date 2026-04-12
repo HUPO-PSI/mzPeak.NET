@@ -1144,7 +1144,7 @@ public record ArrowStatusLog
             }
         }
 
-        dataKey.ArrayName = Name.Trim();
+        dataKey.ArrayName = Name.Trim().Replace(" ()", "");
         dataKey.Path = $"point.{dataKey.CreateColumnName()}";
 
         Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays = new()
@@ -1196,6 +1196,8 @@ public class ThermoMZPeakWriter : IDisposable
     public ArrayIndex SpectrumArrayIndex => Writer.SpectrumArrayIndex;
     public ArrayIndex ChromatogramArrayIndex => Writer.ChromatogramArrayIndex;
     public ArrayIndex? SpectrumPeakArrayIndex => Writer.SpectrumPeakArrayIndex;
+
+    public void SpectraUseNullMarking() => Writer.SpectraUseNullMarking();
 
     public ThermoMZPeakWriter(IMZPeakArchiveWriter storage,
                               ArrayIndex? spectrumArrayIndex = null,

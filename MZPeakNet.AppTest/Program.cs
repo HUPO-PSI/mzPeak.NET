@@ -187,10 +187,7 @@ internal class Program
             if (useNullMarking)
             {
                 Logger?.LogInformation("Using null marking");
-                foreach (var e in writer.SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
-                    e.Transform = NullInterpolation.NullInterpolateCURIE;
-                foreach (var e in writer.SpectrumArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
-                    e.Transform = NullInterpolation.NullZeroCURIE;
+                writer.SpectraUseNullMarking();
             }
 
             writer.InitializeHelper(accessor);
@@ -321,15 +318,22 @@ internal class Program
                     Console.WriteLine($"{scan.Masses.Length}");
                 }
             }
-            if (accessor.GetInstrumentCountOfType(Device.UV) > 0)
+            if (accessor.GetInstrumentCountOfType(Device.Pda) > 0)
             {
-                Logger?.LogInformation("Reading UV spectra");
-                accessor.SelectInstrument(Device.UV, 1);
-
+                Logger?.LogInformation($"Found photodiode array device");
+                accessor.SelectInstrument(Device.Pda, 1);
                 for (var i = accessor.RunHeader.FirstSpectrum; i < accessor.RunHeader.LastSpectrum; i++)
                 {
-                    var scan = accessor.GetSimplifiedScan(i);
-                    Console.WriteLine($"{scan.Masses.Length}");
+                    try
+                    {
+                        var scan = accessor.GetSimplifiedScan(i);
+                        Console.WriteLine($"{scan.Masses.Length}");
+                    }
+                    catch (NoSelectedMsDeviceException e)
+                    {
+                        Logger?.LogDebug($"Failed to read UV spectrum {i}, quitting: {e}");
+                        break;
+                    }
                 }
             }
 
