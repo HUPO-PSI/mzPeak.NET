@@ -1,0 +1,25 @@
+name: test
+
+on:
+  push:
+    paths:
+      - '**.cs'
+      - '.github/workflows/*.yml'
+  pull_request:
+    paths:
+      - '**.cs'
+      - '.github/workflows/*.yml'
+
+
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v6
+          - uses: actions/setup-dotnet@v5
+            with:
+                dotnet-version: "9.0.X"
+          - name: test
+            run: |
+                dotnet test
