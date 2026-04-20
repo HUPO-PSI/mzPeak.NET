@@ -189,7 +189,7 @@ public class WriteTest
         var meta0 = reader.GetSpectrumDescription(0);
         Assert.NotNull(dat0);
         Assert.NotNull(meta0);
-        var (deltaModel, auxArrays) = writer.AddSpectrumData(
+        var (deltaModel, auxArrays, nPoints) = writer.AddSpectrumData(
             writer.CurrentSpectrum,
             dat0.Fields.Skip(1)
         );

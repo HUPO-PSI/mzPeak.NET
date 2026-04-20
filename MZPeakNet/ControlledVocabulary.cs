@@ -963,7 +963,7 @@ public enum SpectrumProperties
     UnrelatedSpeciesDecoySpectrum,
 }
 
-public static class SpectrumPropertiesMethods
+public static partial class SpectrumPropertiesMethods
 {
     public static readonly Dictionary<string, SpectrumProperties> FromCURIE = new Dictionary<string, SpectrumProperties>(
         ((SpectrumProperties[])Enum.GetValues(typeof(SpectrumProperties))).Select((v) => new KeyValuePair<string, SpectrumProperties>(v.CURIE(), v))
@@ -1094,6 +1094,14 @@ public static class SpectrumPropertiesMethods
             case SpectrumProperties.UnrelatedSpeciesDecoySpectrum: return "MS:1003196";
         }
         throw new InvalidOperationException();
+    }
+}
+
+public static partial class SpectrumPropertiesMethods
+{
+    public static Param Param(this SpectrumProperties term, object? value=null, Unit? unit = null)
+    {
+        return new Param(term.Name(), term.CURIE(), value, unit?.CURIE());
     }
 }
 
@@ -1414,7 +1422,7 @@ public enum SpectrumType
     TimeDelayedFragmentationSpectrum,
 }
 
-public static class SpectrumTypeMethods
+public static partial class SpectrumTypeMethods
 {
     public static readonly Dictionary<string, SpectrumType> FromCURIE = new Dictionary<string, SpectrumType>(
         ((SpectrumType[])Enum.GetValues(typeof(SpectrumType))).Select((v) => new KeyValuePair<string, SpectrumType>(v.CURIE(), v))
@@ -1477,6 +1485,7 @@ public static class SpectrumTypeMethods
     }
 }
 
+
 public enum ScanAttribute
 {
     ScanAttribute,
@@ -1508,7 +1517,7 @@ public enum ScanAttribute
     FaimsCompensationVoltageRampEnd,
 }
 
-public static class ScanAttributeMethods
+public static partial class ScanAttributeMethods
 {
 
     public static string Name(this ScanAttribute term)
@@ -1579,6 +1588,14 @@ public static class ScanAttributeMethods
             case ScanAttribute.FaimsCompensationVoltageRampEnd: return "MS:1003451";
             default: throw new InvalidOperationException();
         }
+    }
+}
+
+public static partial class ScanAttributeMethods
+{
+    public static Param Param(this ScanAttribute term, object? value = null, Unit? unit = null)
+    {
+        return new Param(term.Name(), term.CURIE(), value, unit?.CURIE());
     }
 }
 

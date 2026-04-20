@@ -668,7 +668,6 @@ public class ChunkLayoutReader : BaseLayoutReader
 
     void ConfigureIndices()
     {
-
         foreach (var entry in ArrayIndex.Entries)
         {
             if (entry.SchemaIndex == null)
@@ -861,7 +860,7 @@ public class ChunkLayoutReader : BaseLayoutReader
         var chunkStart = rows.Fields[chunkStartIndex];
         var chunkValues = rows.Fields[chunkValuesIndex];
         var chunkValuesIsLarge = chunkValues.Data.DataType.TypeId == ArrowTypeId.LargeList;
-
+        var isTracing = Logger?.IsEnabled(LogLevel.Trace) ?? false;
         var chunkStartType = chunkStart.Data.DataType;
         if (!chunkStartType.IsFloatingPoint() || chunkStartType.TypeId == ArrowTypeId.HalfFloat)
         {
@@ -870,7 +869,7 @@ public class ChunkLayoutReader : BaseLayoutReader
         var chunkStartDouble = chunkStartType.TypeId == ArrowTypeId.Double;
 
         if (mainAxis == null) throw new InvalidOperationException("mainAxis cannot be null");
-        var mainAxisKey = TransformKey.FromArrayIndexEntry(mainAxis);
+        // var mainAxisKey = TransformKey.FromArrayIndexEntry(mainAxis);
         List<IArrowArray> decodedValues = new();
         Dictionary<ArrayIndexEntry, List<IArrowArray>> secondaryValues = new();
         var nRows = encodingMethod.Length;
@@ -948,6 +947,8 @@ public class ChunkLayoutReader : BaseLayoutReader
                                     var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
                                     valsAt = Compute.CastFloat(decoded);
                                 }
+                                if (isTracing)
+                                    Logger?.LogTrace($"{entry.Path} had {valsAt.Length}/{decodedValues[i].Length} values at {i}");
                                 chunks.Add((FloatArray)valsAt);
                             }
                         }
@@ -969,6 +970,8 @@ public class ChunkLayoutReader : BaseLayoutReader
                                     var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
                                     valsAt = Compute.CastDouble(decoded);
                                 }
+                                if (isTracing)
+                                    Logger?.LogTrace($"{entry.Path} had {valsAt.Length}/{decodedValues[i].Length} values at {i}");
                                 chunks.Add(valsAt);
                             }
                         }
@@ -1036,6 +1039,9 @@ public class ChunkLayoutReader : BaseLayoutReader
         for (int i = 0; i < decodedValues.Count; i++)
         {
             var n = decodedValues[i].Length;
+            if (isTracing)
+                Logger?.LogTrace($"Adding chunk of size {n}");
+
 
             var indexBuild = new UInt64Array.Builder();
             indexBuild.AppendRange(Enumerable.Repeat(entryIndex, n));
@@ -1061,6 +1067,8 @@ public class ChunkLayoutReader : BaseLayoutReader
         }
         var combined = (StructArray)ArrowArrayConcatenator.Concatenate(rowChunks);
         if (combined == null) throw new InvalidDataException($"root array cannot be null");
+        if (isTracing)
+            Logger?.LogTrace($"Chunk layout collected {combined.Length} records");
         return combined;
     }
 

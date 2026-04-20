@@ -15,6 +15,8 @@ using ComputeFn = Compute.Compute;
 
 public abstract class BaseDataLayoutWriter
 {
+    public static ILogger? Logger = null;
+
     /// <summary>
     /// The kind of entity this data writer handles
     /// </summary>
@@ -295,9 +297,9 @@ public abstract class BaseDataLayoutWriter
         return (arrays, deltaModel, auxiliaryArrays);
     }
 
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
+    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
         return Add(entryIndex, arrays.Select(a => (Array)a), isProfile);
     }
@@ -424,7 +426,7 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         return "point";
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
 
@@ -454,13 +456,61 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         }
         NumberOfPoints += (ulong)k;
 
-        return (deltaModel, auxiliaryArrays);
+        return (deltaModel, auxiliaryArrays, k);
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
         var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs, isProfile);
+    }
+
+    public void Clear()
+    {
+        Index.Clear();
+        foreach (var (dtype, builder) in DataTypes.Zip(Arrays))
+        {
+            switch (dtype.TypeId)
+            {
+                case ArrowTypeId.Double:
+                    {
+                        var builderOf = (DoubleArray.Builder)builder;
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Float:
+                    {
+                        var builderOf = (FloatArray.Builder)builder;
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int8:
+                    {
+                        var builderOf = (Int8Array.Builder)builder;
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int16:
+                    {
+                        var builderOf = (Int16Array.Builder)builder;
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int32:
+                    {
+                        var builderOf = (Int32Array.Builder)builder;
+                        builderOf.Clear();
+                        break;
+                    }
+                case ArrowTypeId.Int64:
+                    {
+                        var builderOf = (Int64Array.Builder)builder;
+                        builderOf.Clear();
+                        break;
+                    }
+                default: throw new NotImplementedException();
+            }
+        }
     }
 
     public override RecordBatch GetRecordBatch()
@@ -640,9 +690,10 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         return new _ArrayFilterResult(arrays, notCoveredArrays, nullInterpolate, nullZero, intensityArray);
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
+
         if (isProfile != null && (bool)isProfile)
         {
             CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
@@ -655,13 +706,15 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
 
         var spans = Chunking.ChunkEvery(mainAxis, ChunkSize);
 
-        int k = spans.Count;
         foreach (var val in arrays.Values)
         {
             if (mainAxis.Length != val.Length) throw new InvalidDataException("Arrays do not have equal lengths");
         }
 
-        Index.AppendRange(Enumerable.Repeat(entryIndex, k));
+        var isTracing = Logger?.IsEnabled(LogLevel.Trace) ?? false;
+
+        if (isTracing)
+            Logger?.LogTrace($"{mainAxis.Length} points to be written for {entryIndex}");
 
         HashSet<int> visited = new()
         {
@@ -671,15 +724,23 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
             EndValueBuilderIdx
         };
         var mainAxisBuilder = (ListArray.Builder)Arrays[MainAxisBuilderIdx];
-        var mainAxisValueBuilder = mainAxisBuilder.ValueBuilder;
         var startValBuilder = Arrays[StartValueBuilderIdx];
         var endValBuilder = Arrays[EndValueBuilderIdx];
+        var steps = 0;
+        var beforeWrote = mainAxisBuilder.Length;
         foreach (var (startIdx, endIdx) in spans)
         {
             var chunk = mainAxis.Slice(startIdx, endIdx - startIdx);
+            steps += endIdx - startIdx;
             var startVal = ComputeFn.Min(chunk, NullHandling.Skip);
             var endVal = ComputeFn.Max(chunk, NullHandling.Skip);
-            if (startVal == null) continue;
+            if (isTracing) Logger?.LogTrace($"Range {startIdx}-{endIdx} has startVal {startVal}-{endVal}");
+            if (startVal == null) {
+                if (isTracing)
+                    Logger?.LogTrace($"Skipping Range {startIdx}-{endIdx}");
+                continue;
+            };
+            Index.Append(entryIndex);
 
             switch (DataTypes[StartValueBuilderIdx].TypeId)
             {
@@ -710,6 +771,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                 default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
             }
 
+            if (isTracing) Logger?.LogTrace($"{entryIndex} {startVal}-{endVal} has {chunk.Length} items");
             if (CurrentMainAxisEncodingCURIE == DeltaCodec.CURIE)
             {
                 ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(DeltaCodec.CURIE);
@@ -717,15 +779,14 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                 {
                     case ArrowTypeId.Double:
                         {
-
-                            var builder = (DoubleArray.Builder)mainAxisValueBuilder;
+                            var builder = (DoubleArray.Builder)mainAxisBuilder.ValueBuilder;
                             DeltaCodec.Encode(startVal, ComputeFn.CastDouble(chunk.Slice(1, chunk.Length - 1)), builder);
                             mainAxisBuilder.Append();
                             break;
                         }
                     case ArrowTypeId.Float:
                         {
-                            var builder = (FloatArray.Builder)mainAxisValueBuilder;
+                            var builder = (FloatArray.Builder)mainAxisBuilder.ValueBuilder;
                             DeltaCodec.Encode((float?)startVal, ComputeFn.CastFloat(chunk.Slice(1, chunk.Length - 1)), builder);
                             mainAxisBuilder.Append();
                             break;
@@ -740,14 +801,14 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                 {
                     case ArrowTypeId.Double:
                         {
-                            var builder = (DoubleArray.Builder)mainAxisValueBuilder;
+                            var builder = (DoubleArray.Builder)mainAxisBuilder.ValueBuilder;
                             NoCompressionCodec.Encode((double)startVal, ComputeFn.CastDouble(chunk.Slice(1, chunk.Length - 1)), builder);
                             mainAxisBuilder.Append();
                             break;
                         }
                     case ArrowTypeId.Float:
                         {
-                            var builder = (FloatArray.Builder)mainAxisValueBuilder;
+                            var builder = (FloatArray.Builder)mainAxisBuilder.ValueBuilder;
                             NoCompressionCodec.Encode((float)startVal, ComputeFn.CastFloat(chunk.Slice(1, chunk.Length - 1)), builder);
                             mainAxisBuilder.Append();
                             break;
@@ -772,20 +833,21 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                 }
                 else
                 {
+                    if (isTracing) Logger?.LogTrace($"{entry.Path} not in entry {entryIndex}");
                     var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
                     builder.Append();
                 }
             }
         }
-
+        if (isTracing)
+            Logger?.LogTrace($"Wrote {steps} data points over {mainAxisBuilder.Length - beforeWrote} blocks for {entryIndex}");
         NumberOfPoints += (ulong)mainAxis.Length;
         CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
-        return (deltaModel, auxiliaryArrays);
+        CheckAllColumnsAligned();
+        return (deltaModel, auxiliaryArrays, steps);
     }
 
-
-
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
         var kvs = ArrayIndex.Entries.Where(e => e.BufferFormat switch
         {
@@ -839,6 +901,12 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     public override RecordBatch GetRecordBatch()
     {
         List<Array> cols = [Index.Build()];
+        var n = cols[0].Length;
+        foreach(var c in cols)
+        {
+            if (c.Length != n) throw new InvalidOperationException($"Not all columns have {n} items");
+        }
+
         foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
         {
             switch (entry.BufferFormat)
@@ -857,14 +925,12 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                                 {
                                     var builderOf = (DoubleArray.Builder)builder;
                                     cols.Add(builderOf.Build());
-                                    builderOf.Clear();
                                     break;
                                 }
                             case ArrowTypeId.Float:
                                 {
                                     var builderOf = (FloatArray.Builder)builder;
                                     cols.Add(builderOf.Build());
-                                    builderOf.Clear();
                                     break;
                                 }
                             default: throw new InvalidDataException($"{dtype.Name} is not supported as a chunk boundary");
@@ -884,10 +950,83 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
 
         var schema = ArrowSchema();
         var dtypeOf = schema.GetFieldByIndex(0).DataType;
-        var layer = new StructArray(dtypeOf, Index.Length, cols, cols[0].NullBitmapBuffer, cols[0].NullCount);
-        Index.Clear();
-
+        var layer = new StructArray(dtypeOf, n, cols, cols[0].NullBitmapBuffer, cols[0].NullCount);
+        Clear();
+        CheckAllColumnsAligned();
         return new RecordBatch(schema, [layer], layer.Length);
+    }
+
+    public void Clear()
+    {
+        Index.Clear();
+        foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
+        {
+            switch (entry.BufferFormat)
+            {
+                case BufferFormat.ChunkEncoding:
+                    {
+                        ((StringArray.Builder)builder).Clear();
+                        break;
+                    }
+                case BufferFormat.ChunkStart:
+                case BufferFormat.ChunkEnd:
+                    {
+                        switch (dtype.TypeId)
+                        {
+                            case ArrowTypeId.Double:
+                                {
+                                    var builderOf = (DoubleArray.Builder)builder;
+                                    builderOf.Clear();
+                                    break;
+                                }
+                            case ArrowTypeId.Float:
+                                {
+                                    var builderOf = (FloatArray.Builder)builder;
+                                    builderOf.Clear();
+                                    break;
+                                }
+                            default: throw new InvalidDataException($"{dtype.Name} is not supported as a chunk boundary");
+                        }
+                        break;
+                    }
+                case BufferFormat.ChunkSecondary:
+                case BufferFormat.ChunkValues:
+                case BufferFormat.ChunkTransform:
+                    {
+                        ((ListArray.Builder)builder).Clear();
+                        ((ListArray.Builder)builder).Append();
+                        break;
+                    }
+                default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
+            }
+        }
+    }
+
+    protected void CheckAllColumnsAligned()
+    {
+        var n = Index.Length;
+        foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
+        {
+            var valid = true;
+            switch (entry.BufferFormat) {
+                case BufferFormat.ChunkTransform:
+                case BufferFormat.ChunkSecondary:
+                case BufferFormat.ChunkValues:
+                    {
+                        valid = (builder.Length - 1) == n;
+                        break;
+                    }
+                default:
+                    {
+                        valid = builder.Length == n;
+                        break;
+                    }
+            };
+            if (!valid)
+            {
+                throw new InvalidDataException($"{entry.Path} of type {dtype}/{entry.BufferFormat} had {builder.Length} elements, expected {n} elements");
+            }
+        }
     }
 
     public override string LayoutName()

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 using ParquetSharp;
 using ParquetSharp.Arrow;
+using MathNet.Numerics;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EntityType
@@ -661,7 +662,7 @@ public class DirectoryArchive : IMZPeakArchiveStorage
 
 public interface IMZPeakArchiveWriter : IDisposable
 {
-    public static ILogger? Logger = null;
+    internal static ILogger? Logger = null;
 
     public Stream OpenStream(FileIndexEntry indexEntry);
 
@@ -684,7 +685,7 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 
     public void Dispose()
     {
-        var path = System.IO.Path.Join(Path, Storage.FileIndex.FILE_NAME);
+        var path = System.IO.Path.Join(Path, FileIndex.FILE_NAME);
         using (var stream = File.Create(path))
         {
             var payload = JsonSerializer.Serialize(FileIndex);
@@ -709,12 +710,13 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 
 public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
 {
-    public static ILogger? Logger = null;
+    // public static ILogger? Logger = null;
 
     ZipArchive Archive;
     T OuterStream;
     Stream? CurrentStream;
     ZipArchiveEntry? CurrentEntry;
+    long LastStart;
     public FileIndex FileIndex;
 
     public ZipStreamArchiveWriter(T stream)
@@ -723,6 +725,7 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         Archive = new(OuterStream, ZipArchiveMode.Create, true, System.Text.Encoding.UTF8);
         CurrentStream = null;
         CurrentEntry = null;
+        LastStart = 0;
         FileIndex = new();
     }
 
@@ -730,8 +733,9 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
     {
         if (CurrentStream != null)
         {
-            Logger?.LogDebug($"Closing current stream for {CurrentEntry}");
+            IMZPeakArchiveWriter.Logger?.LogDebug($"Closing current stream for {CurrentEntry}");
             CurrentStream.Close();
+            IMZPeakArchiveWriter.Logger?.LogDebug($"{(OuterStream.Position - LastStart) / 1000000.0} MB written");
             CurrentStream = null;
             CurrentEntry = null;
         }
@@ -743,20 +747,21 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         var entry = Archive.CreateEntry(FileIndex.FILE_NAME, CompressionLevel.NoCompression);
         using (var stream = entry.Open())
         {
-            Logger?.LogDebug("Writing file index");
+            IMZPeakArchiveWriter.Logger?.LogDebug("Writing file index");
             var payload = JsonSerializer.Serialize(FileIndex);
             var bytesOf = new UTF8Encoding().GetBytes(payload);
             stream.Write(bytesOf);
         }
-        Logger?.LogDebug("Closing ZIP archive");
+        IMZPeakArchiveWriter.Logger?.LogDebug("Closing ZIP archive");
         Archive.Dispose();
     }
 
     public Stream OpenStream(FileIndexEntry indexEntry)
     {
         CloseCurrent();
-        Logger?.LogDebug($"Opening {indexEntry}");
+        IMZPeakArchiveWriter.Logger?.LogDebug($"Opening {indexEntry}");
         var entry = Archive.CreateEntry(indexEntry.Name, CompressionLevel.NoCompression);
+        LastStart = OuterStream.Position;
         CurrentStream = entry.Open();
         CurrentEntry = entry;
         FileIndex.Files.Add(indexEntry);

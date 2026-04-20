@@ -1,5 +1,6 @@
 namespace MZPeak.Writer;
 
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Apache.Arrow;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,6 @@ using MZPeak.Storage;
 using MZPeak.Writer.Data;
 using MZPeak.Writer.Visitors;
 using ParquetSharp.Arrow;
-using ParquetSharp.Encryption;
 
 using EncryptionConfigurations = Dictionary<string, ParquetSharp.FileEncryptionProperties>;
 
@@ -66,10 +66,18 @@ public enum WriterState
 ///     The larger this is, the greater the number of repeated elements that can fit in the dictionary
 ///     before overflowing and forcing the writer to fall back to storing everything directly in plain encoding.
 /// </param>
+/// <param name="EntryBufferSize">
+///     The number of spectra to buffer between writes.
+/// </param>
+/// <param name="CompressionLevel">
+///     The Zstandard compression level to use when compressing data.
+/// </param>
 public record ParquetDataWriterConfig(
     long PageSize = 1048576,
     long RowGroupSize = 4194304,
-    long DictionarySize = 1048576
+    long DictionarySize = 1048576,
+    ulong EntryBufferSize = 5000,
+    int CompressionLevel = 3
 );
 
 
@@ -93,7 +101,7 @@ public class MZPeakWriter : IDisposable
     BaseDataLayoutWriter SpectrumData;
     BaseDataLayoutWriter ChromatogramData;
     BaseDataLayoutWriter? SpectrumPeakData = null;
-    BaseDataLayoutWriter? WavelengthSpectrumData;
+    BaseDataLayoutWriter? WavelengthSpectrumData = null;
 
     public ParquetDataWriterConfig DataWriterConfig {get; set;}
 
@@ -104,6 +112,8 @@ public class MZPeakWriter : IDisposable
     public bool ChromatogramHasArrayType(ArrayType arrayType) => ChromatogramData.HasArrayType(arrayType);
 
     public EncryptionConfigurations EncryptionConfigurations { get; set; }
+
+    public int CompressionLevel = 3;
 
     FileIndexEntry? CurrentEntry;
     FileWriter? CurrentWriter;
@@ -183,6 +193,7 @@ public class MZPeakWriter : IDisposable
                     var path = descr.Path.ToDotString();
                     if (arrayType.Path == path || path.StartsWith(arrayType.Path + "."))
                     {
+                        Logger?.LogDebug($"Setting {descr.Path} encoding to ByteStreamSplit");
                         writerProps = writerProps.DisableDictionary(descr.Path).Encoding(descr.Path, ParquetSharp.Encoding.ByteStreamSplit);
                     }
                 }
@@ -201,6 +212,7 @@ public class MZPeakWriter : IDisposable
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
@@ -236,6 +248,7 @@ public class MZPeakWriter : IDisposable
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
@@ -279,6 +292,7 @@ public class MZPeakWriter : IDisposable
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
@@ -332,6 +346,7 @@ public class MZPeakWriter : IDisposable
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
@@ -433,54 +448,80 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
-        return SpectrumData.Add(entryIndex, arrays, isProfile);
+        var r = SpectrumData.Add(entryIndex, arrays, isProfile);
+        if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
+        {
+            FlushSpectrumData();
+        }
+        return r;
     }
 
     /// <summary>Adds spectrum data arrays.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The data arrays to add.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
-        return SpectrumData.Add(entryIndex, arrays, isProfile);
+        var r = SpectrumData.Add(entryIndex, arrays, isProfile);
+        if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
+        {
+            FlushSpectrumData();
+        }
+        return r;
     }
 
     /// <summary>Adds spectrum data from Arrow arrays.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
-        return SpectrumData.Add(entryIndex, arrays, isProfile);
+        var r = SpectrumData.Add(entryIndex, arrays, isProfile);
+        if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
+        {
+            FlushSpectrumData();
+        }
+        return r;
     }
 
     /// <summary>Adds spectrum peak data from a dictionary.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumPeakData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
-        return SpectrumPeakData.Add(entryIndex, arrays, false);
+        var r = SpectrumPeakData.Add(entryIndex, arrays, false);
+        // if (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0)
+        // {
+        //     FlushSpectrumPeakData();
+        // }
+        return r;
     }
 
     /// <summary>Adds spectrum peak data arrays.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The data arrays to add.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumPeakData(ulong entryIndex, IEnumerable<Array> arrays)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, IEnumerable<Array> arrays)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
-        return SpectrumPeakData.Add(entryIndex, arrays, false);
+        var r = SpectrumPeakData.Add(entryIndex, arrays, false);
+        // if (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0)
+        // {
+        //     FlushSpectrumPeakData();
+        // }
+        return r;
     }
 
     /// <summary>Adds spectrum peak data from Arrow arrays.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumPeakData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
-        return SpectrumPeakData.Add(entryIndex, arrays, false);
+        var r = SpectrumPeakData.Add(entryIndex, arrays, false);
+        return r;
     }
 
     /// <summary>Adds chromatogram data from a dictionary.</summary>
@@ -553,7 +594,9 @@ public class MZPeakWriter : IDisposable
         if (State == WriterState.SpectrumData && CurrentWriter != null)
         {
             var batch = SpectrumData.GetRecordBatch();
-            CurrentWriter?.WriteBufferedRecordBatch(batch);
+            Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_data");
+            CurrentWriter.WriteBufferedRecordBatch(batch);
+
         }
         else if (SpectrumData.BufferedRows > 0)
         {
@@ -567,7 +610,8 @@ public class MZPeakWriter : IDisposable
         if (State == WriterState.SpectrumPeakData && SpectrumPeakData != null && CurrentWriter != null)
         {
             var batch = SpectrumPeakData.GetRecordBatch();
-            CurrentWriter?.WriteBufferedRecordBatch(batch);
+            Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_peaks");
+            CurrentWriter.WriteBufferedRecordBatch(batch);
         }
         else if (SpectrumData.BufferedRows > 0)
         {
@@ -800,6 +844,7 @@ public class MZPeakWriter : IDisposable
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .DisableDictionary("spectrum.index")
             .DisableDictionary("scan.source_index")
@@ -844,6 +889,7 @@ public class MZPeakWriter : IDisposable
         if (ChromatogramData.BufferedRows == 0) return;
         StartChromatogramData();
         var batch = ChromatogramData.GetRecordBatch();
+        Logger?.LogDebug($"Flushing {batch.Length} rows to chromatogram_data");
         CurrentWriter?.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }
@@ -854,9 +900,9 @@ public class MZPeakWriter : IDisposable
             return;
         State = WriterState.WavelengthData;
         if (WavelengthSpectrumData.BufferedRows == 0) return;
-        Logger?.LogDebug($"Writing wavelength spectrum data, {WavelengthSpectrumData.BufferedRows} rows to write");
         StartWavelengthSpectrumData();
         var batch = WavelengthSpectrumData.GetRecordBatch();
+        Logger?.LogDebug($"Flushing {batch.Length} rows to wavelength_spectra_data");
         CurrentWriter?.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }
@@ -874,6 +920,7 @@ public class MZPeakWriter : IDisposable
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex();
@@ -916,6 +963,7 @@ public class MZPeakWriter : IDisposable
 
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex();

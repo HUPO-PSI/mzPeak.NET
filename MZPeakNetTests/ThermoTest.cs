@@ -47,18 +47,19 @@ public class ThermoTranslationTest
             var statistics = accessor.GetScanStatsForScanNumber(scanNumber);
             var time = accessor.RetentionTimeFromScanNumber(scanNumber);
 
-            var (spacingModel, auxArrays) = writer.AddSpectrumData(
+            var (spacingModel, auxArrays, nPoints) = writer.AddSpectrumData(
                 writer.CurrentSpectrum,
                 segments,
                 statistics);
 
             if (!statistics.IsCentroidScan)
             {
-                auxArrays.AddRange(
-                    writer.AddSpectrumPeakData(
+                var (auxOf, nPeaks) = writer.AddSpectrumPeakData(
                         writer.CurrentSpectrum,
                         accessor.GetCentroidStream(scanNumber, true)
-                    )
+                    );
+                auxArrays.AddRange(
+                    auxOf
                 );
             }
 
@@ -108,13 +109,10 @@ public class ThermoTranslationTest
         var writer = job.OpenWriterFrom(writerStorage);
         job.TranslateSpectraTo(accessor, writer);
         job.TranslateTracesTo(accessor, writer);
-        Console.WriteLine("Closing Writer");
         writer.Close();
-        Console.WriteLine("Flushing Stream");
         stream.Flush();
         stream.Seek(0, SeekOrigin.Begin);
 
-        Console.WriteLine("Opening Reader");
         var readerStorage = new ZipArchiveStream<MemoryStream>(stream);
         var reader = new MZPeak.Reader.MzPeakReader(readerStorage);
         Assert.Equal(48, reader.SpectrumCount);
@@ -122,7 +120,6 @@ public class ThermoTranslationTest
         Assert.NotNull(reader.SpectrumDataReaderMeta);
         Assert.Equal(BufferFormat.Point, reader.SpectrumDataReaderMeta.Format);
 
-        Console.WriteLine("Checking array index");
         foreach (var entry in reader.SpectrumDataReaderMeta.ArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
         {
             Assert.Null(entry.Transform);
@@ -133,7 +130,6 @@ public class ThermoTranslationTest
             Assert.Null(entry.Transform);
         }
 
-        Console.WriteLine("Checking descriptions");
         var spec = reader.GetSpectrumDescription(0);
         Assert.Equal("controllerType=0 controllerNumber=1 scan=1", spec.Id);
         spec = reader.GetSpectrumDescription(47);

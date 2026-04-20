@@ -10,6 +10,7 @@ using MZPeak.Thermo;
 using MZPeak.Compute;
 using ParquetSharp;
 using ThermoFisher.CommonCore.Data;
+using MZPeak.ControlledVocabulary;
 
 
 namespace MZPeakCliConverter;
@@ -44,6 +45,11 @@ internal class Program
     {
         var loggerFactory = LoggerFactory.Create(builder =>
         {
+#if DEBUG
+            builder
+                .AddFilter("MZPeakNet", LogLevel.Debug)
+                .AddFilter("MZPeak", LogLevel.Debug);
+#endif
             builder.AddSimpleConsole(options =>
             {
                 options.IncludeScopes = true;
@@ -119,6 +125,19 @@ internal class Program
         };
         cmd.Options.Add(useChunked);
 
+        Option<long> pageSize = new Option<long>("--data-page-size")
+        {
+            Description = "The data page size in bytes",
+            DefaultValueFactory = (arg) => { return 1048576; }
+        };
+        cmd.Options.Add(pageSize);
+
+        Option<long> rowGroupSize = new Option<long>("--row-group-size")
+        {
+            Description = "The row group size in bytes",
+            DefaultValueFactory = (arg) => { return 4194304; }
+        };
+        cmd.Options.Add(rowGroupSize);
 
         Argument<FileInfo> outPath = new Argument<FileInfo>("out").AcceptLegalFilePathsOnly();
         cmd.Arguments.Add(outPath);
@@ -129,7 +148,9 @@ internal class Program
             var outp = parseResult.GetRequiredValue(outPath);
             var nullMark = parseResult.GetValue(nullMarking);
             var chunked = parseResult.GetValue(useChunked);
-            ThermoTranslate(fp, outp, nullMark, chunked);
+            var pageSizeVal = parseResult.GetValue(pageSize);
+            var rowGroupSizeVal = parseResult.GetValue(rowGroupSize);
+            ThermoTranslate(fp, outp, nullMark, chunked, pageSizeVal, rowGroupSizeVal);
         });
 
         return cmd;
@@ -165,9 +186,9 @@ internal class Program
         await job.Main();
     }
 
-    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false)
+    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 4194304)
     {
-        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked);
+        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked, pageSize, rowGroupSize);
         job.Main();
     }
 
@@ -195,13 +216,17 @@ public class ThermoTranslateTask : CLITask
     FileInfo DestinationFile;
     bool UseNullMarking = false;
     bool UseChunked = false;
+    long PageSize = 1048576;
+    long RowGroupSize = 4194304;
 
-    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false)
+    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 4194304)
     {
         SourceFile = sourceFile;
         DestinationFile = destinationFile;
         UseNullMarking = useNullMarking;
         UseChunked = useChunked;
+        PageSize = pageSize;
+        RowGroupSize = rowGroupSize;
     }
 
     public void TranslateSpectraTo(ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoMZPeakWriter writer)
@@ -232,10 +257,15 @@ public class ThermoTranslateTask : CLITask
                 );
             }
 
-            var (spacingModel, auxArrays) = writer.AddSpectrumData(
+            var (spacingModel, auxArrays, nPoints) = writer.AddSpectrumData(
                 writer.CurrentSpectrum,
                 segments,
                 statistics);
+
+            List<Param> specParams = [];
+
+            var nPointsTerm = !statistics.IsCentroidScan ? SpectrumProperties.NumberOfDataPoints.Param(nPoints) : SpectrumProperties.NumberOfPeaks.Param(nPoints);
+            specParams.Add(nPointsTerm);
 
             var packets = accessor.GetAdvancedPacketData(scanNumber);
             if (packets.NoiseData != null && packets.NoiseData.Length > 0)
@@ -245,11 +275,13 @@ public class ThermoTranslateTask : CLITask
 
             if (!statistics.IsCentroidScan)
             {
-                auxArrays.AddRange(
-                    writer.AddSpectrumPeakData(
+                var (auxOf, nPeaks) = writer.AddSpectrumPeakData(
                         writer.CurrentSpectrum,
                         accessor.GetCentroidStream(scanNumber, true)
-                    )
+                    );
+                specParams.Add(SpectrumProperties.NumberOfPeaks.Param(nPeaks));
+                auxArrays.AddRange(
+                    auxOf
                 );
             }
 
@@ -259,7 +291,8 @@ public class ThermoTranslateTask : CLITask
                 scanFilter,
                 statistics,
                 spacingModel?.Coefficients,
-                auxiliaryArrays: auxArrays);
+                auxiliaryArrays: auxArrays,
+                @params: specParams);
 
             var (precursorProps, acquisitionProperties) = writer.ExtractPrecursorAndTrailerMetadata(
                 scanNumber,
@@ -376,10 +409,15 @@ public class ThermoTranslateTask : CLITask
     {
         var writer = new ThermoMZPeakWriter(
                 writerStorage,
-                spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, false),
+                spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, true),
                 useChunked: UseChunked,
                 includeNoise: true
             );
+        writer.DataWriterConfig = writer.DataWriterConfig with {
+            PageSize = PageSize,
+            RowGroupSize = RowGroupSize,
+        };
+
         if (UseNullMarking)
         {
             Logger?.LogInformation("Using null marking");
@@ -501,7 +539,11 @@ public class TranscodeFileTask : CLITask
             {
                 Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
                 var index = writer.CurrentSpectrum;
-                var (spacingModel, auxArrays) = writer.AddSpectrumData(index, data.Fields.Skip(1), descr.IsProfile);
+                var (spacingModel, auxArrays, nPoints) = writer.AddSpectrumData(index, data.Fields.Skip(1), descr.IsProfile);
+
+                var nPointsTerm = descr.IsProfile ? SpectrumProperties.NumberOfDataPoints.Param(nPoints) : SpectrumProperties.NumberOfPeaks.Param(nPoints);
+                descr.Parameters.Add(nPointsTerm);
+
                 writer.AddSpectrum(
                     descr.Id,
                     descr.Time,

@@ -1197,6 +1197,8 @@ public class ThermoMZPeakWriter : IDisposable
     public ArrayIndex ChromatogramArrayIndex => Writer.ChromatogramArrayIndex;
     public ArrayIndex? SpectrumPeakArrayIndex => Writer.SpectrumPeakArrayIndex;
 
+    public ParquetDataWriterConfig DataWriterConfig { get => Writer.DataWriterConfig; set => Writer.DataWriterConfig = value; }
+
     public void SpectraUseNullMarking() => Writer.SpectraUseNullMarking();
 
     public ThermoMZPeakWriter(IMZPeakArchiveWriter storage,
@@ -1204,7 +1206,9 @@ public class ThermoMZPeakWriter : IDisposable
                               ArrayIndex? chromatogramArrayIndex = null,
                               ArrayIndex? spectrumPeakArrayIndex = null,
                               bool includeNoise = false,
-                              bool useChunked = false)
+                              bool useChunked = false,
+                              Dictionary<string, ParquetSharp.FileEncryptionProperties>? encryptionConfigurations = null,
+                              ParquetDataWriterConfig? dataWriterConfig = null)
     {
         if (spectrumArrayIndex == null)
         {
@@ -1216,7 +1220,9 @@ public class ThermoMZPeakWriter : IDisposable
             chromatogramArrayIndex,
             includeSpectrumPeakData: spectrumPeakArrayIndex != null,
             spectrumPeakArrayIndex: spectrumPeakArrayIndex,
-            useChunked: useChunked);
+            useChunked: useChunked,
+            encryptionConfigurations,
+            dataWriterConfig);
         ScanNumberToIndex = new();
         ConversionHelper = new();
         IncludeResolution = Writer.SpectrumPeaksHasArrayType(ArrayType.ResolutionArray);
@@ -1247,7 +1253,7 @@ public class ThermoMZPeakWriter : IDisposable
         Run.StartTime = accessor.CreationDate;
     }
 
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>) AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
+    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
     {
         var isProfile = !stats.IsCentroidScan;
         var mzArray = Compute.Compute.CastDouble(segments.Positions);
@@ -1255,9 +1261,9 @@ public class ThermoMZPeakWriter : IDisposable
         return Writer.AddSpectrumData(entryIndex, [mzArray, intensityArray], isProfile: isProfile);
     }
 
-    public List<AuxiliaryArray> AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
+    public (List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
     {
-        if (centroids.Length == 0) return [];
+        if (centroids.Length == 0) return ([], 0);
         var mzArray = Compute.Compute.CastDouble(centroids.Masses);
         var intensityArray = Compute.Compute.CastFloat(centroids.Intensities);
         var baselineArray = Compute.Compute.CastFloat(centroids.Baselines);
@@ -1271,7 +1277,8 @@ public class ThermoMZPeakWriter : IDisposable
         {
             arrays.Add(Compute.Compute.CastFloat(centroids.Resolutions));
         }
-        return Writer.AddSpectrumPeakData(entryIndex, arrays).Item2;
+        var r = Writer.AddSpectrumPeakData(entryIndex, arrays);
+        return (r.Item2, r.Item3);
     }
 
     public void AddNoisePacketData(ulong entryIndex, NoiseAndBaseline[] noiseAndBaselines)
@@ -1589,8 +1596,10 @@ public class ThermoMZPeakWriter : IDisposable
                 $"{NoiseBuilder.LayoutName()}.{NoiseBuilder.BufferContext.IndexName()}",
                 ParquetSharp.Encoding.DeltaBinaryPacked
             ).DataPagesize(
-                (long)Math.Pow(1024, 2)
-            ).MaxRowGroupLength(1024 * 1024 * 4);
+                DataWriterConfig.PageSize
+            ).MaxRowGroupLength(
+                DataWriterConfig.RowGroupSize
+            );
 
         var schema = NoiseBuilder.ArrowSchema();
 

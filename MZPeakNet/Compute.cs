@@ -1,7 +1,6 @@
 namespace MZPeak.Compute;
 
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Apache.Arrow;
 using Apache.Arrow.Memory;
 using Apache.Arrow.Types;
@@ -333,6 +332,8 @@ public static class ZeroRunRemoval
 
 public static class NullInterpolation
 {
+    internal static ILogger? Logger;
+
     public const string NullInterpolateCURIE = "MS:1003901";
     public const string NullZeroCURIE = "MS:1003902";
 
@@ -420,11 +421,11 @@ public static class NullInterpolation
         }
         if (nullHere.Count % 2 != 0)
         {
-            // Compute.PrettyPrint(arrayValues);
             throw new InvalidDataException($"The {nullHere.Count} nulls in this data array are not properly paired. Start with null? {startsWithNull}. Ends with null? {endsWithNull}");
         }
         for (int i = 0; i < nullHere.Count; i += 2)
         {
+            // Logger?.LogDebug($"null span {i}: {nullHere[i]}-{nullHere[i + 1]}");
             bounds.Add((nullHere[i], nullHere[i + 1]));
         }
         return bounds;

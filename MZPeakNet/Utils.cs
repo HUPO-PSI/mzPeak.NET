@@ -16,8 +16,10 @@ public static class LoggingConfig
         Metadata.MetadataReaderBase<ChromatogramDescription>.Logger = loggerFactory.CreateLogger("MZPeak.Reader.Metadata");
 
         Compute.Compute.Logger = loggerFactory.CreateLogger("MZPeak.Compute");
+        Compute.NullInterpolation.Logger = loggerFactory.CreateLogger("MZPeak.Compute.NullInterpolation");
 
         Storage.IMZPeakArchiveStorage.Logger = loggerFactory.CreateLogger("MZPeak.Storage.Reader");
         Storage.IMZPeakArchiveWriter.Logger = loggerFactory.CreateLogger("MZPeak.Storage.Writer");
+        Writer.Data.BaseDataLayoutWriter.Logger = loggerFactory.CreateLogger("MZPeak.Storage.Writer.Data");
     }
 }
