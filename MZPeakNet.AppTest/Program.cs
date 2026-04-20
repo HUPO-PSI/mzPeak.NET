@@ -22,10 +22,6 @@ internal class Program
     static void Main(string[] args)
     {
         var startTime = DateTime.Now;
-        ConfigureLogging();
-#if DEBUG
-        Logger?.LogInformation("Running Debug Mode");
-#endif
         RootCommand rootCommand = new("Demo application for mzPeak .NET")
         {
             CreateReadCommand(),
@@ -34,22 +30,34 @@ internal class Program
             CreateThermoTranslateCommand(),
         };
 
+        var verbosityOpt = new Option<bool>("--verbose")
+        {
+            Description = "Verbose logging",
+        };
+
+        rootCommand.Add(verbosityOpt);
+
         var opts = rootCommand.Parse(args);
+        var isVerbose = opts.GetValue(verbosityOpt);
+
+        ConfigureLogging(isVerbose);
         opts.Invoke();
 
         var elapsed = DateTime.Now - startTime;
         Logger?.LogInformation($"{elapsed:c} elapsed");
     }
 
-    static void ConfigureLogging()
+    static void ConfigureLogging(bool verbose=false)
     {
         var loggerFactory = LoggerFactory.Create(builder =>
         {
-#if DEBUG
-            builder
-                .AddFilter("MZPeakNet", LogLevel.Debug)
-                .AddFilter("MZPeak", LogLevel.Debug);
-#endif
+            if (verbose)
+            {
+                builder
+                    .AddFilter("MZPeakNet", LogLevel.Debug)
+                    .AddFilter("MZPeak", LogLevel.Debug);
+            }
+
             builder.AddSimpleConsole(options =>
             {
                 options.IncludeScopes = true;
