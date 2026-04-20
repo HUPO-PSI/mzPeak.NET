@@ -74,7 +74,7 @@ public enum WriterState
 /// </param>
 public record ParquetDataWriterConfig(
     long PageSize = 1048576,
-    long RowGroupSize = 4194304,
+    long RowGroupSize = 1048576,
     long DictionarySize = 1048576,
     ulong EntryBufferSize = 5000,
     int CompressionLevel = 3
@@ -593,6 +593,10 @@ public class MZPeakWriter : IDisposable
         }
         if (State == WriterState.SpectrumData && CurrentWriter != null)
         {
+            if (SpectrumData.LayoutName() == "chunk")
+            {
+                CurrentWriter.NewBufferedRowGroup();
+            }
             var batch = SpectrumData.GetRecordBatch();
             Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_data");
             CurrentWriter.WriteBufferedRecordBatch(batch);

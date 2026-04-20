@@ -134,8 +134,8 @@ internal class Program
 
         Option<long> rowGroupSize = new Option<long>("--row-group-size")
         {
-            Description = "The row group size in bytes",
-            DefaultValueFactory = (arg) => { return 4194304; }
+            Description = "The row group size in rows",
+            DefaultValueFactory = (arg) => { return 1048576; }
         };
         cmd.Options.Add(rowGroupSize);
 
@@ -186,7 +186,7 @@ internal class Program
         await job.Main();
     }
 
-    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 4194304)
+    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 1048576)
     {
         var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked, pageSize, rowGroupSize);
         job.Main();
