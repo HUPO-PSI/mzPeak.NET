@@ -9,20 +9,21 @@
   <ItemGroup>
     <ProjectReference Include="../MZPeakNet/MZPeakNet.csproj" />
     <Reference Include="ThermoFisher.CommonCore.BackgroundSubtraction">
-      <HintPath>lib/core/ThermoFisher.CommonCore.BackgroundSubtraction.dll</HintPath>
+      <HintPath>lib/update/ThermoFisher.CommonCore.BackgroundSubtraction.dll</HintPath>
     </Reference>
     <Reference Include="ThermoFisher.CommonCore.Data">
-      <HintPath>lib/core/ThermoFisher.CommonCore.Data.dll</HintPath>
+      <HintPath>lib/update/ThermoFisher.CommonCore.Data.dll</HintPath>
     </Reference>
     <Reference Include="ThermoFisher.CommonCore.MassPrecisionEstimator">
-      <HintPath>lib/core/ThermoFisher.CommonCore.MassPrecisionEstimator.dll</HintPath>
+      <HintPath>lib/update/ThermoFisher.CommonCore.MassPrecisionEstimator.dll</HintPath>
     </Reference>
     <Reference Include="ThermoFisher.CommonCore.RawFileReader">
-      <HintPath>lib/core/ThermoFisher.CommonCore.RawFileReader.dll</HintPath>
+      <HintPath>lib/update/ThermoFisher.CommonCore.RawFileReader.dll</HintPath>
     </Reference>
     <Reference Include="ThermoFisher.CommonCore.RandomAccessReaderPlugin">
-      <HintPath>lib/core/ThermoFisher.CommonCore.RandomAccessReaderPlugin.dll</HintPath>
+      <HintPath>lib/update/ThermoFisher.CommonCore.RandomAccessReaderPlugin.dll</HintPath>
     </Reference>
+
     <Reference Include="OpenMcdf">
       <HintPath>lib/core/OpenMcdf.dll</HintPath>
     </Reference>

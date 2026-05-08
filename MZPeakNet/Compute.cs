@@ -1504,8 +1504,16 @@ public static class Compute
         builder.Reserve(array.Length);
         foreach (var val in array)
         {
-            if (val != null) builder.Append(long.CreateChecked((T)val));
-            else builder.AppendNull();
+            try
+            {
+                if (val != null && T.IsFinite(val.Value)) builder.Append(long.CreateChecked((T)val));
+                else builder.AppendNull();
+            }
+            catch(OverflowException)
+            {
+                Logger?.LogWarning($"Overflowed {val} from type {array.Data.DataType.Name} converting to int64");
+                builder.AppendNull();
+            }
         }
         return builder.Build(allocator);
     }
@@ -1516,8 +1524,16 @@ public static class Compute
         builder.Reserve(array.Length);
         foreach (var val in array)
         {
-            if (val != null) builder.Append(int.CreateChecked((T)val));
-            else builder.AppendNull();
+            try
+            {
+                if (val != null && T.IsFinite(val.Value)) builder.Append(int.CreateChecked((T)val));
+                else builder.AppendNull();
+            }
+            catch(OverflowException)
+            {
+                Logger?.LogWarning($"Overflowed {val} from type {array.Data.DataType.Name} converting to int32");
+                builder.AppendNull();
+            }
         }
         return builder.Build(allocator);
     }

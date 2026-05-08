@@ -11,7 +11,6 @@ using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using MZPeak.Writer;
 using MZPeak.Writer.Data;
-using ThermoFisher.CommonCore.Data;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
 using ThermoFisher.CommonCore.Data.Interfaces;
