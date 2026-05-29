@@ -1,6 +1,7 @@
 using Apache.Arrow;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Writer.Data;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -28,10 +29,10 @@ public class ChromatogramMetadataBuilder
         string id,
         string? dataProcessingRef,
         List<Param> paramList,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryDerivedMetadata = null
     )
     {
-        Chromatogram.Append(ChromatogramCounter, id, dataProcessingRef, paramList, auxiliaryArrays);
+        Chromatogram.Append(ChromatogramCounter, id, dataProcessingRef, paramList, entryDerivedMetadata);
         var index = ChromatogramCounter;
         ChromatogramCounter += 1;
         return index;

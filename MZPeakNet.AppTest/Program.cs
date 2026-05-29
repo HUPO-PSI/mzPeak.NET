@@ -12,6 +12,7 @@ using MZPeak.Compute;
 using ParquetSharp;
 using ThermoFisher.CommonCore.Data;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Writer.Data;
 
 
 namespace MZPeakCliConverter;
@@ -251,7 +252,8 @@ public class ThermoTranslateTask : CLITask
 
         var startScan = accessor.RunHeader.FirstSpectrum;
         var lastScan = accessor.RunHeader.LastSpectrum;
-
+        EntryDerivedMetadata entryMeta;
+        EntryDerivedMetadata peakMeta;
         for (var scanNumber = startScan; scanNumber <= lastScan; scanNumber++)
         {
             var scanFilter = accessor.GetFilterForScanNumber(scanNumber);
@@ -266,32 +268,35 @@ public class ThermoTranslateTask : CLITask
                 );
             }
 
-            var (spacingModel, auxArrays, nPoints) = writer.AddSpectrumData(
-                writer.CurrentSpectrum,
-                segments,
-                statistics);
-
-            List<Param> specParams = [];
-
-            var nPointsTerm = !statistics.IsCentroidScan ? SpectrumProperties.NumberOfDataPoints.Param(nPoints) : SpectrumProperties.NumberOfPeaks.Param(nPoints);
-            specParams.Add(nPointsTerm);
-
-            var packets = accessor.GetAdvancedPacketData(scanNumber);
-            if (packets.NoiseData != null && packets.NoiseData.Length > 0)
-            {
-                writer.AddNoisePacketData(writer.CurrentSpectrum, packets.NoiseData);
-            }
-
+            entryMeta = EntryDerivedMetadata.Empty;
+            peakMeta = EntryDerivedMetadata.Empty;
             if (!statistics.IsCentroidScan)
             {
-                var (auxOf, nPeaks) = writer.AddSpectrumPeakData(
+                entryMeta = writer.AddSpectrumData(
+                    writer.CurrentSpectrum,
+                    segments,
+                    statistics);
+            }
+
+            var peaks = accessor.GetCentroidStream(scanNumber, true);
+            if (peaks != null && peaks.Length > 0)
+            {
+                peakMeta = writer.AddSpectrumPeakData(
                         writer.CurrentSpectrum,
-                        accessor.GetCentroidStream(scanNumber, true)
+                        peaks
                     );
-                specParams.Add(SpectrumProperties.NumberOfPeaks.Param(nPeaks));
-                auxArrays.AddRange(
-                    auxOf
-                );
+                entryMeta.AuxiliaryArrays.AddRange(peakMeta.AuxiliaryArrays);
+                entryMeta = entryMeta with { PeakCount = peakMeta.PeakCount };
+            }
+            else
+            {
+                var simpleScan = segments.ToSimpleScan();
+                peakMeta = writer.AddSpectrumPeakData(
+                        writer.CurrentSpectrum,
+                        simpleScan
+                    );
+                entryMeta.AuxiliaryArrays.AddRange(peakMeta.AuxiliaryArrays);
+                entryMeta = entryMeta with { PeakCount = peakMeta.PeakCount };
             }
 
             var key = writer.AddSpectrum(
@@ -299,9 +304,15 @@ public class ThermoTranslateTask : CLITask
                 time,
                 scanFilter,
                 statistics,
-                spacingModel?.Coefficients,
-                auxiliaryArrays: auxArrays,
-                @params: specParams);
+                entryMeta
+            );
+
+
+            var packets = accessor.GetAdvancedPacketData(scanNumber);
+            if (packets.NoiseData != null && packets.NoiseData.Length > 0)
+            {
+                writer.AddNoisePacketData(writer.CurrentSpectrum, packets.NoiseData);
+            }
 
             var (precursorProps, acquisitionProperties) = writer.ExtractPrecursorAndTrailerMetadata(
                 scanNumber,
@@ -333,21 +344,21 @@ public class ThermoTranslateTask : CLITask
         }
 
         var (traceInfo, chromArrays) = writer.ConversionHelper.ReadSummaryTrace(TraceType.TIC, accessor);
-        writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
+        entryMeta = writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
         writer.AddChromatogram(
             traceInfo.Id,
             null,
             traceInfo.Parameters,
-            traceInfo.AuxiliaryArrays
+            new  EntryDerivedMetadata(null, traceInfo.AuxiliaryArrays, entryMeta.DataPointCount)
         );
 
         (traceInfo, chromArrays) = writer.ConversionHelper.ReadSummaryTrace(TraceType.BasePeak, accessor);
-        writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
+        entryMeta = writer.AddChromatogramData(writer.CurrentChromatogram, chromArrays);
         writer.AddChromatogram(
             traceInfo.Id,
             null,
             traceInfo.Parameters,
-            traceInfo.AuxiliaryArrays
+            new EntryDerivedMetadata(null, traceInfo.AuxiliaryArrays, entryMeta.DataPointCount)
         );
     }
 
@@ -358,12 +369,13 @@ public class ThermoTranslateTask : CLITask
         foreach (var log in writer.ConversionHelper.StatusLogs(accessor))
         {
             (var traceInfo, var traceArrays) = log.AsChromatogramInfo();
-            var auxArrays = writer.AddChromatogramData(writer.CurrentChromatogram, traceArrays);
+            var entryMeta = writer.AddChromatogramData(writer.CurrentChromatogram, traceArrays);
+            traceInfo.DataPointCount = entryMeta.DataPointCount;
             writer.AddChromatogram(
                 traceInfo.Id,
                 null,
                 traceInfo.Parameters,
-                auxArrays
+                entryMeta
             );
         }
     }
@@ -548,18 +560,16 @@ public class TranscodeFileTask : CLITask
             {
                 Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
                 var index = writer.CurrentSpectrum;
-                var (spacingModel, auxArrays, nPoints) = writer.AddSpectrumData(index, data.Fields.Skip(1), descr.IsProfile);
-
-                var nPointsTerm = descr.IsProfile ? SpectrumProperties.NumberOfDataPoints.Param(nPoints) : SpectrumProperties.NumberOfPeaks.Param(nPoints);
-                descr.Parameters.Add(nPointsTerm);
+                var entryMeta = writer.AddSpectrumData(index, data.Fields.Skip(1), descr.IsProfile);
+                descr.DataPointCount = entryMeta.DataPointCount;
+                descr.PeakCount = entryMeta.PeakCount;
 
                 writer.AddSpectrum(
                     descr.Id,
                     descr.Time,
                     descr.DataProcessingRef,
-                    spacingModel?.Coefficients ?? new(),
                     descr.Parameters,
-                    auxArrays
+                    entryMeta
                 );
                 foreach (var scan in descr.Scans)
                 {
@@ -598,12 +608,13 @@ public class TranscodeFileTask : CLITask
             {
                 Logger?.LogInformation($"Writing {descr.Index} = {descr.Id} with {data.Length} points");
                 var index = writer.CurrentChromatogram;
-                var auxArrays = writer.AddChromatogramData(index, data.Fields.Skip(1));
+                var entryMeta = writer.AddChromatogramData(index, data.Fields.Skip(1));
+                descr.DataPointCount = entryMeta.DataPointCount;
                 writer.AddChromatogram(
                     descr.Id,
                     descr.DataProcessingRef,
                     descr.Parameters,
-                    auxArrays
+                    entryMeta
                 );
 
             }

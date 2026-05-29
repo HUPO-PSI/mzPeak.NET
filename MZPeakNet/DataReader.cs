@@ -381,16 +381,6 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
         return (StructArray?)ArrowArrayConcatenator.Concatenate(Enumerable.Range(0, result.ArrayCount).Select(i => result.Array(i)).ToList());
     }
 
-    /// <summary>Gets the number of entries.</summary>
-    public long Length
-    {
-        get
-        {
-            if (RowGroupIndex.Length == 0) return 0;
-            return (long)(RowGroupIndex.Last().End - RowGroupIndex.First().Start) + 1;
-        }
-    }
-
     /// <summary>Asynchronously enumerates all entries with their index and data.</summary>
     public DataArraysIter Enumerate()
     {
@@ -869,7 +859,6 @@ public class ChunkLayoutReader : BaseLayoutReader
         var chunkStartDouble = chunkStartType.TypeId == ArrowTypeId.Double;
 
         if (mainAxis == null) throw new InvalidOperationException("mainAxis cannot be null");
-        // var mainAxisKey = TransformKey.FromArrayIndexEntry(mainAxis);
         List<IArrowArray> decodedValues = new();
         Dictionary<ArrayIndexEntry, List<IArrowArray>> secondaryValues = new();
         var nRows = encodingMethod.Length;
@@ -1193,6 +1182,14 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         return true;
     }
 
+    ulong? FirstIndexInBatch()
+    {
+        if (CurrentBatch == null) return null;
+        var idxCol = (UInt64Array)CurrentBatch.Fields[0];
+        if (idxCol.Length == 0) return null;
+        return idxCol.GetValue(0);
+    }
+
     async Task<bool> Initialize()
     {
         if (!await ReadNextBatch()) return false;
@@ -1224,11 +1221,17 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         }
         if (CurrentIndex == null)
             return false;
-        while (CurrentIndex != index)
+        while (CurrentIndex < index)
         {
             await MoveNextAsyncWithProcess(false);
         }
-        return true;
+
+        if (NextItem != null)
+        {
+            NextItem = (NextItem.Value.Item1, LayoutReader.ProcessSegment(NextItem.Value.Item1, NextItem.Value.Item2));
+        }
+
+        return CurrentIndex == index;
     }
 
     async Task<StructArray?> ExtractForCurrentIndex()
@@ -1299,7 +1302,9 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
             );
         }
         NextItem = ((ulong)CurrentIndex, nextBatch);
-        CurrentIndex += 1;
+        var nextIndex = FirstIndexInBatch();
+        if (nextIndex < CurrentIndex) throw new InvalidDataException($"Next index {nextIndex} < current index {CurrentIndex}");
+        CurrentIndex = nextIndex;
         return true;
     }
 

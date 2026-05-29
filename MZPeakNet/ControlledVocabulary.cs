@@ -2572,3 +2572,12 @@ public class ParamJsonConverter : JsonConverter<Param>
         writer.WriteEndObject();
     }
 }
+
+
+public static class ParamListMethods
+{
+    public static Param? FindCURIE(this List<Param> list, string curie)
+    {
+        return list.Find(p => p.AccessionCURIE == curie);
+    }
+}

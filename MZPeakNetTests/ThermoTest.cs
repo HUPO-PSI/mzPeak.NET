@@ -5,7 +5,7 @@ using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Storage;
 using MZPeak.Thermo;
-
+using MZPeak.Writer.Data;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.RandomAccessReaderPlugin;
 using ThermoFisher.CommonCore.RawFileReader;
@@ -47,29 +47,29 @@ public class ThermoTranslationTest
             var statistics = accessor.GetScanStatsForScanNumber(scanNumber);
             var time = accessor.RetentionTimeFromScanNumber(scanNumber);
 
-            var (spacingModel, auxArrays, nPoints) = writer.AddSpectrumData(
-                writer.CurrentSpectrum,
-                segments,
-                statistics);
-
+            var entryMeta = EntryDerivedMetadata.Empty;
             if (!statistics.IsCentroidScan)
             {
-                var (auxOf, nPeaks) = writer.AddSpectrumPeakData(
-                        writer.CurrentSpectrum,
-                        accessor.GetCentroidStream(scanNumber, true)
-                    );
-                auxArrays.AddRange(
-                    auxOf
-                );
+                entryMeta = writer.AddSpectrumData(
+                    writer.CurrentSpectrum,
+                    segments,
+                    statistics);
             }
+
+            var peakMeta = writer.AddSpectrumPeakData(
+                    writer.CurrentSpectrum,
+                    accessor.GetCentroidStream(scanNumber, true)
+                );
+            entryMeta.AuxiliaryArrays.AddRange(peakMeta.AuxiliaryArrays);
+            entryMeta = entryMeta with { PeakCount = peakMeta.PeakCount };
 
             var key = writer.AddSpectrum(
                 scanNumber,
                 time,
                 scanFilter,
                 statistics,
-                spacingModel?.Coefficients,
-                auxiliaryArrays: auxArrays);
+                entryMeta
+            );
 
             var (precursorProps, acquisitionProperties) = writer.ExtractPrecursorAndTrailerMetadata(scanNumber, accessor, scanFilter, statistics);
 

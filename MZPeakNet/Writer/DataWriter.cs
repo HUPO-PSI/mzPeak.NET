@@ -11,7 +11,10 @@ namespace MZPeak.Writer.Data;
 
 using ComputeFn = Compute.Compute;
 
-
+public record EntryDerivedMetadata(SpacingInterpolationModel<double>? SpacingInterpolationModel, List<AuxiliaryArray> AuxiliaryArrays, int? DataPointCount=null, int? PeakCount=null)
+{
+    public static EntryDerivedMetadata Empty => new(null, []);
+};
 
 public abstract class BaseDataLayoutWriter
 {
@@ -297,9 +300,9 @@ public abstract class BaseDataLayoutWriter
         return (arrays, deltaModel, auxiliaryArrays);
     }
 
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
-    public abstract (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
+    public abstract EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
+    public abstract EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
+    public EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
         return Add(entryIndex, arrays.Select(a => (Array)a), isProfile);
     }
@@ -426,7 +429,7 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         return "point";
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
 
@@ -456,10 +459,16 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         }
         NumberOfPoints += (ulong)k;
 
-        return (deltaModel, auxiliaryArrays, k);
+        var ent = new EntryDerivedMetadata(
+            deltaModel,
+            auxiliaryArrays,
+            (isProfile ?? false) ? k : null,
+            (isProfile ?? false) ? null : k
+        );
+        return ent;
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
         var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs, isProfile);
@@ -690,7 +699,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         return new _ArrayFilterResult(arrays, notCoveredArrays, nullInterpolate, nullZero, intensityArray);
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
 
@@ -844,10 +853,16 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         NumberOfPoints += (ulong)mainAxis.Length;
         CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
         CheckAllColumnsAligned();
-        return (deltaModel, auxiliaryArrays, steps);
+        var ent = new EntryDerivedMetadata(
+           deltaModel,
+           auxiliaryArrays,
+           (isProfile ?? false) ? null : steps,
+           !(isProfile ?? false) ? steps : null
+       );
+        return ent;
     }
 
-    public override (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
         var kvs = ArrayIndex.Entries.Where(e => e.BufferFormat switch
         {

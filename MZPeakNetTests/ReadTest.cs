@@ -32,8 +32,8 @@ public class ArchiveTest
     public void RawZipArchive_LoadIndex()
     {
         var index = PointArchive.FileIndex();
-        Assert.Equal(4, index.Files.Count);
-        Assert.Equal(5, PointArchive.FileNames().Count);
+        Assert.Equal(5, index.Files.Count);
+        Assert.Equal(6, PointArchive.FileNames().Count);
     }
 
     [Fact]
@@ -53,7 +53,6 @@ public class ArchiveTest
         };
         Assert.Equal(BufferFormat.Point, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
-        Assert.Equal(48, dataReader.Length);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
         await dataReader.ReadForIndex(0);
         await dataReader.ReadForIndex(1);
@@ -84,7 +83,6 @@ public class ArchiveTest
 
         Assert.Equal(BufferFormat.ChunkValues, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
-        Assert.Equal(48, dataReader.Length);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
         var data = await dataReader.ReadForIndex(10);
         Assert.NotNull(data);
@@ -153,24 +151,43 @@ public class ArchiveTest
     [Fact]
     public async Task RawZipArchive_LoadSpectrumPoint_GetDataIter()
     {
+        ulong i = 0;
         var reader = PointArchive.SpectrumData();
+
         Assert.NotNull(reader);
 
         var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
         var iter = dataReader.Enumerate();
-        ulong i = 0;
+
+        List<ulong> profileSpectrumIdx = [
+            0,
+            1,
+            7,
+            8,
+            14,
+            15,
+            21,
+            22,
+            28,
+            29,
+            34,
+            35,
+            41,
+            42
+        ];
+
         await foreach (var pair in iter)
         {
             if (pair.Item1 > 10) break;
-            Assert.Equal(i++, pair.Item1);
+            Assert.Equal(profileSpectrumIdx[(int)i++], pair.Item1);
         }
-        await iter.Seek(20);
-        i = 20;
+        await iter.Seek(21);
+        i = 6;
         await foreach (var pair in iter)
         {
-            Assert.Equal(i++, pair.Item1);
+            Assert.Equal(profileSpectrumIdx[(int)i++], pair.Item1);
         }
-        Assert.Equal(48ul, i);
+        Assert.Equal(profileSpectrumIdx.Count, (int)i);
     }
 }
 

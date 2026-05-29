@@ -1,5 +1,4 @@
 using System.Numerics;
-using System.Reflection.Metadata;
 using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Types;
@@ -67,6 +66,54 @@ public record SpectrumInfo : IHasParameters
     public double? BasePeakMZ => FindParam(SpectrumProperties.BasePeakMZ.CURIE())?.AsDouble();
     public double? BasePeakIntensity => FindParam(SpectrumProperties.BasePeakIntensity.CURIE())?.AsDouble();
 
+    public long? DataPointCount
+    {
+        get => FindParam(SpectrumProperties.NumberOfDataPoints.CURIE())?.AsLong();
+        set
+        {
+            var param = FindParam(SpectrumProperties.NumberOfDataPoints.CURIE());
+            if (param != null)
+            {
+                if (value != null)
+                {
+                    param.rawValue = value;
+                }
+                else
+                {
+                    Parameters.Remove(param);
+                }
+            }
+            else
+            {
+                if (value != null)
+                    Parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(value));
+            }
+        }
+    }
+    public long? PeakCount
+    {
+        get => FindParam(SpectrumProperties.NumberOfPeaks.CURIE())?.AsLong();
+        set
+        {
+            var param = FindParam(SpectrumProperties.NumberOfPeaks.CURIE());
+            if (param != null)
+            {
+                if (value != null)
+                {
+                    param.rawValue = value;
+                }
+                else
+                {
+                    Parameters.Remove(param);
+                }
+            }
+            else
+            {
+                if (value != null)
+                    Parameters.Add(SpectrumProperties.NumberOfPeaks.Param(value));
+            }
+        }
+    }
     public SpectrumInfo(ulong index, string id, double time, byte msLevel, string? dataProcessingRef = null, int numberOfAuxiliaryArrays = 0, List<double>? mzDeltaModel = null, List<Param>? parameters = null, List<AuxiliaryArray>? auxiliaryArray = null)
     {
         Index = index;
@@ -226,6 +273,56 @@ public record ChromatogramInfo : IHasParameters
     {
         return "ChromatogramInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
     }
+
+    public long? DataPointCount
+    {
+        get => FindParam(SpectrumProperties.NumberOfDataPoints.CURIE())?.AsLong();
+        set
+        {
+            var param = FindParam(SpectrumProperties.NumberOfDataPoints.CURIE());
+            if (param != null)
+            {
+                if (value != null)
+                {
+                    param.rawValue = value;
+                }
+                else
+                {
+                    Parameters.Remove(param);
+                }
+            }
+            else
+            {
+                if (value != null)
+                Parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(value));
+            }
+        }
+    }
+    public long? PeakCount
+    {
+        get => FindParam(SpectrumProperties.NumberOfPeaks.CURIE())?.AsLong();
+        set
+        {
+            var param = FindParam(SpectrumProperties.NumberOfPeaks.CURIE());
+            if (param != null)
+            {
+                if (value != null)
+                {
+                    param.rawValue = value;
+                }
+                else
+                {
+                    Parameters.Remove(param);
+                }
+            }
+            else
+            {
+                if (value != null)
+                    Parameters.Add(SpectrumProperties.NumberOfPeaks.Param(value));
+            }
+        }
+    }
+
 }
 
 public record SpectrumDescription
@@ -246,6 +343,18 @@ public record SpectrumDescription
     public bool IsCentroid => SpectrumInfo.IsCentroid;
     public double? BasePeakMZ => SpectrumInfo.BasePeakMZ;
     public double? BasePeakIntensity => SpectrumInfo.BasePeakIntensity;
+
+    public long? DataPointCount
+    {
+        get => SpectrumInfo.DataPointCount;
+        set => SpectrumInfo.DataPointCount = value;
+    }
+
+    public long? PeakCount
+    {
+        get => SpectrumInfo.PeakCount;
+        set => SpectrumInfo.PeakCount = value;
+    }
 
     public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
     {
@@ -273,6 +382,19 @@ public record ChromatogramDescription
         Precursors = precursors;
         SelectedIons = selectedIons;
     }
+
+    public long? DataPointCount
+    {
+        get => ChromatogramInfo.DataPointCount;
+        set => ChromatogramInfo.DataPointCount = value;
+    }
+
+    public long? PeakCount
+    {
+        get => ChromatogramInfo.PeakCount;
+        set => ChromatogramInfo.PeakCount = value;
+    }
+
 }
 
 public interface IVisitorAssemblyWithOffsets<T>

@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Writer.Data;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -187,7 +188,7 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param
     }
 }
 
-public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<double>?, List<Param>, List<AuxiliaryArray>)>
+public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<Param>, EntryDerivedMetadata)>
 {
     UInt64Array.Builder Index;
     StringArray.Builder Id;
@@ -230,24 +231,48 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         AuxiliaryArrays = new();
     }
 
-    public void Append((ulong, string, double, string?, List<double>?, List<Param>, List<AuxiliaryArray>) value)
+    public void Append((ulong, string, double, string?, List<Param>, EntryDerivedMetadata) value)
     {
-        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6, value.Item7);
+        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6);
     }
 
-    public void Append(ulong index, string id, double time, string? dataProcessingRef, List<double>? mzDeltaModel, List<Param> parameters, List<AuxiliaryArray>? auxiliaryArrays = null)
+    public void Append(ulong index, string id, double time, string? dataProcessingRef, List<Param> parameters, EntryDerivedMetadata entryMeta)
     {
         Index.Append(index);
         Id.Append(id);
         Time.Append(time);
         if (dataProcessingRef != null) DataProcessingRef.Append(dataProcessingRef);
         else DataProcessingRef.AppendNull();
-        NumberOfAuxiliaryArrays.Append(auxiliaryArrays?.Count ?? 0);
-        AuxiliaryArrays.Append(auxiliaryArrays ?? []);
-        if (mzDeltaModel != null)
+        var p = parameters.FindCURIE(SpectrumProperties.NumberOfDataPoints.CURIE());
+        if (entryMeta?.DataPointCount != null)
+        {
+            if (p == null)
+            {
+                parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(entryMeta.DataPointCount));
+            }
+            else
+            {
+                p.rawValue = entryMeta.DataPointCount;
+            }
+        }
+        p = parameters.FindCURIE(SpectrumProperties.NumberOfPeaks.CURIE());
+        if (entryMeta?.PeakCount != null)
+        {
+            if (p == null)
+            {
+                parameters.Add(SpectrumProperties.NumberOfPeaks.Param(entryMeta.PeakCount));
+            }
+            else
+            {
+                p.rawValue = entryMeta.PeakCount;
+            }
+        }
+        NumberOfAuxiliaryArrays.Append(entryMeta?.AuxiliaryArrays.Count ?? 0);
+        AuxiliaryArrays.Append(entryMeta?.AuxiliaryArrays ?? []);
+        if (entryMeta?.SpacingInterpolationModel != null)
         {
             var valueBuilder = (DoubleArray.Builder)MzDeltaModel.ValueBuilder;
-            foreach (var v in mzDeltaModel)
+            foreach (var v in entryMeta.SpacingInterpolationModel.Coefficients)
             {
                 valueBuilder.Append(v);
             }
@@ -659,7 +684,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     }
 }
 
-public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, string?, List<Param>, List<AuxiliaryArray>)>
+public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, string?, List<Param>, EntryDerivedMetadata?)>
 {
     UInt64Array.Builder Index;
     StringArray.Builder Id;
@@ -689,19 +714,31 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         AuxiliaryArrays = new();
     }
 
-    public void Append((ulong, string, string?, List<Param>, List<AuxiliaryArray>) value)
+    public void Append((ulong, string, string?, List<Param>, EntryDerivedMetadata?) value)
     {
         Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5);
     }
 
-    public void Append(ulong index, string id, string? dataProcessingRef, List<Param> parameters, List<AuxiliaryArray>? auxiliaryArrays = null)
+    public void Append(ulong index, string id, string? dataProcessingRef, List<Param> parameters, EntryDerivedMetadata? entryDerivedMetadata = null)
     {
         Index.Append(index);
         Id.Append(id);
         if (dataProcessingRef != null) DataProcessingRef.Append(dataProcessingRef);
         else DataProcessingRef.AppendNull();
-        NumberOfAuxiliaryArrays.Append(auxiliaryArrays?.Count ?? 0);
-        AuxiliaryArrays.Append(auxiliaryArrays ?? []);
+        var p = parameters.FindCURIE(SpectrumProperties.NumberOfDataPoints.CURIE());
+        if (entryDerivedMetadata?.DataPointCount != null)
+        {
+            if (p == null)
+            {
+                parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(entryDerivedMetadata.DataPointCount));
+            }
+            else
+            {
+                p.rawValue = entryDerivedMetadata.DataPointCount;
+            }
+        }
+        NumberOfAuxiliaryArrays.Append(entryDerivedMetadata?.AuxiliaryArrays.Count ?? 0);
+        AuxiliaryArrays.Append(entryDerivedMetadata?.AuxiliaryArrays ?? []);
         VisitParameters(parameters);
     }
 
@@ -773,7 +810,7 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
     }
 }
 
-public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<Param>, List<AuxiliaryArray>)>
+public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<Param>, EntryDerivedMetadata?)>
 {
     UInt64Array.Builder Index;
     StringArray.Builder Id;
@@ -810,20 +847,32 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
         AuxiliaryArrays = new();
     }
 
-    public void Append((ulong, string, double, string?, List<Param>, List<AuxiliaryArray>) value)
+    public void Append((ulong, string, double, string?, List<Param>, EntryDerivedMetadata?) value)
     {
         Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6);
     }
 
-    public void Append(ulong index, string id, double time, string? dataProcessingRef, List<Param> parameters, List<AuxiliaryArray>? auxiliaryArrays = null)
+    public void Append(ulong index, string id, double time, string? dataProcessingRef, List<Param> parameters, EntryDerivedMetadata? entryDerivedMetadata = null)
     {
         Index.Append(index);
         Id.Append(id);
         Time.Append(time);
         if (dataProcessingRef != null) DataProcessingRef.Append(dataProcessingRef);
         else DataProcessingRef.AppendNull();
-        NumberOfAuxiliaryArrays.Append(auxiliaryArrays?.Count ?? 0);
-        AuxiliaryArrays.Append(auxiliaryArrays ?? []);
+        var p = parameters.FindCURIE(SpectrumProperties.NumberOfDataPoints.CURIE());
+        if (entryDerivedMetadata?.DataPointCount != null)
+        {
+            if (p == null)
+            {
+                parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(entryDerivedMetadata.DataPointCount));
+            }
+            else
+            {
+                p.rawValue = entryDerivedMetadata.DataPointCount;
+            }
+        }
+        NumberOfAuxiliaryArrays.Append(entryDerivedMetadata?.AuxiliaryArrays.Count ?? 0);
+        AuxiliaryArrays.Append(entryDerivedMetadata?.AuxiliaryArrays ?? []);
         VisitParameters(parameters);
     }
 

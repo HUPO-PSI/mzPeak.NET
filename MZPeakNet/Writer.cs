@@ -1,5 +1,6 @@
 namespace MZPeak.Writer;
 
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Apache.Arrow;
@@ -202,14 +203,8 @@ public class MZPeakWriter : IDisposable
         return writerProps;
     }
 
-    /// <summary>Starts writing spectrum data arrays.</summary>
-    public virtual void StartSpectrumData()
+    protected virtual ParquetSharp.WriterPropertiesBuilder SpectrumDataWriterPropertiesBuilder()
     {
-        CloseCurrentWriter();
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -230,7 +225,20 @@ public class MZPeakWriter : IDisposable
 
         var schema = SpectrumData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, SpectrumData.ArrayIndex, ArrayType.MZArray, schema);
+        return writerProps;
+    }
 
+    /// <summary>Starts writing spectrum data arrays.</summary>
+    public virtual void StartSpectrumData()
+    {
+        CloseCurrentWriter();
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        var writerProps = SpectrumDataWriterPropertiesBuilder();
+
+        var schema = SpectrumData.ArrowSchema();
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
         var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
@@ -240,12 +248,8 @@ public class MZPeakWriter : IDisposable
         CurrentEntry = entry;
     }
 
-    /// <summary>Starts writing chromatogram data arrays.</summary>
-    public virtual void StartChromatogramData()
+    protected virtual ParquetSharp.WriterPropertiesBuilder ChromatogramDataWriterPropertiesBuilder()
     {
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -274,22 +278,26 @@ public class MZPeakWriter : IDisposable
         */
         var schema = ChromatogramData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, ChromatogramData.ArrayIndex, ArrayType.TimeArray, schema);
+        return writerProps;
+    }
+
+    /// <summary>Starts writing chromatogram data arrays.</summary>
+    public virtual void StartChromatogramData()
+    {
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var schema = ChromatogramData.ArrowSchema();
+        var writerProps = ChromatogramDataWriterPropertiesBuilder();
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
         CurrentEntry = entry;
         CurrentWriter = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
     }
 
-    /// <summary>Starts writing spectrum data arrays.</summary>
-    public virtual void StartWavelengthSpectrumData()
+    protected virtual ParquetSharp.WriterPropertiesBuilder WavelengthSpectrumDataWriterPropertiesBuilder()
     {
-        CloseCurrentWriter();
-        if (WavelengthSpectrumData == null)
-            return;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-
+        if (WavelengthSpectrumData == null) throw new InvalidOperationException("Cannot configure, WavelengthSpectrumData is null");
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -310,6 +318,21 @@ public class MZPeakWriter : IDisposable
 
         var schema = WavelengthSpectrumData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, WavelengthSpectrumData.ArrayIndex, ArrayType.WavelengthArray, schema);
+        return writerProps;
+    }
+
+    /// <summary>Starts writing spectrum data arrays.</summary>
+    public virtual void StartWavelengthSpectrumData()
+    {
+        CloseCurrentWriter();
+        if (WavelengthSpectrumData == null)
+            return;
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.DataArrays);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        var writerProps = WavelengthSpectrumDataWriterPropertiesBuilder();
+        var schema = WavelengthSpectrumData.ArrowSchema();
 
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
@@ -335,15 +358,9 @@ public class MZPeakWriter : IDisposable
     public ArrayIndex ChromatogramArrayIndex => ChromatogramData.ArrayIndex;
     public ArrayIndex? SpectrumPeakArrayIndex => SpectrumPeakData?.ArrayIndex;
 
-    /// <summary>Starts writing spectrum peak data.</summary>
-    public virtual void StartSpectrumPeakData()
+    protected virtual ParquetSharp.WriterPropertiesBuilder SpectrumPeakDataWriterPropertiesBuilder()
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException();
-        CloseCurrentWriter();
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -365,6 +382,21 @@ public class MZPeakWriter : IDisposable
         var schema = SpectrumPeakData.ArrowSchema();
         writerProps = ConfigureByteShuffleColumnsFrom(writerProps, SpectrumPeakData.ArrayIndex, ArrayType.MZArray, schema);
 
+        return writerProps;
+    }
+
+    /// <summary>Starts writing spectrum peak data.</summary>
+    public virtual void StartSpectrumPeakData()
+    {
+        if (SpectrumPeakData == null) throw new InvalidOperationException();
+        CloseCurrentWriter();
+        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
+
+        var schema = SpectrumPeakData.ArrowSchema();
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
         var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
@@ -448,7 +480,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         var r = SpectrumData.Add(entryIndex, arrays, isProfile);
         if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
@@ -462,7 +494,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The data arrays to add.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
         var r = SpectrumData.Add(entryIndex, arrays, isProfile);
         if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
@@ -476,7 +508,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
         var r = SpectrumData.Add(entryIndex, arrays, isProfile);
         if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
@@ -489,7 +521,7 @@ public class MZPeakWriter : IDisposable
     /// <summary>Adds spectrum peak data from a dictionary.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
@@ -503,7 +535,7 @@ public class MZPeakWriter : IDisposable
     /// <summary>Adds spectrum peak data arrays.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The data arrays to add.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, IEnumerable<Array> arrays)
+    public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, IEnumerable<Array> arrays)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
@@ -517,7 +549,7 @@ public class MZPeakWriter : IDisposable
     /// <summary>Adds spectrum peak data from Arrow arrays.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
@@ -527,25 +559,25 @@ public class MZPeakWriter : IDisposable
     /// <summary>Adds chromatogram data from a dictionary.</summary>
     /// <param name="entryIndex">The chromatogram index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public EntryDerivedMetadata AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
-        return ChromatogramData.Add(entryIndex, arrays, isProfile: true).Item2;
+        return ChromatogramData.Add(entryIndex, arrays, isProfile: true);
     }
 
     /// <summary>Adds chromatogram data from Arrow arrays.</summary>
     /// <param name="entryIndex">The chromatogram index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    public EntryDerivedMetadata AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
     {
-        return ChromatogramData.Add(entryIndex, arrays, isProfile: true).Item2;
+        return ChromatogramData.Add(entryIndex, arrays, isProfile: true);
     }
 
     /// <summary>Adds chromatogram data arrays.</summary>
     /// <param name="entryIndex">The chromatogram index.</param>
     /// <param name="arrays">The data arrays to add.</param>
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<Array> arrays)
+    public EntryDerivedMetadata AddChromatogramData(ulong entryIndex, IEnumerable<Array> arrays)
     {
-        return ChromatogramData.Add(entryIndex, arrays, isProfile: true).Item2;
+        return ChromatogramData.Add(entryIndex, arrays, isProfile: true);
     }
 
     [System.Diagnostics.CodeAnalysis.MemberNotNull(nameof(WavelengthSpectrumData))]
@@ -557,31 +589,31 @@ public class MZPeakWriter : IDisposable
     /// <summary>Adds wavelength spectrum data from a dictionary.</summary>
     /// <param name="entryIndex">The wavelength spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
-    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
+    public EntryDerivedMetadata AddWavelengthSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays)
     {
         if (WavelengthSpectrumData == null)
             initializeWavelengthData();
-        return WavelengthSpectrumData.Add(entryIndex, arrays, isProfile: true).Item2;
+        return WavelengthSpectrumData.Add(entryIndex, arrays, isProfile: true);
     }
 
     /// <summary>Adds wavelength spectrum data from Arrow arrays.</summary>
     /// <param name="entryIndex">The wavelength spectrum index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
-    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
+    public EntryDerivedMetadata AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays)
     {
         if (WavelengthSpectrumData == null)
             initializeWavelengthData();
-        return WavelengthSpectrumData.Add(entryIndex, arrays, isProfile: true).Item2;
+        return WavelengthSpectrumData.Add(entryIndex, arrays, isProfile: true);
     }
 
     /// <summary>Adds wavelength spectrum data arrays.</summary>
     /// <param name="entryIndex">The wavelength spectrum index.</param>
     /// <param name="arrays">The data arrays to add.</param>
-    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<Array> arrays)
+    public EntryDerivedMetadata AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<Array> arrays)
     {
         if (WavelengthSpectrumData == null)
             initializeWavelengthData();
-        return WavelengthSpectrumData.Add(entryIndex, arrays, isProfile: true).Item2;
+        return WavelengthSpectrumData.Add(entryIndex, arrays, isProfile: true);
     }
 
     /// <summary>Flushes buffered spectrum data to the output.</summary>
@@ -634,18 +666,16 @@ public class MZPeakWriter : IDisposable
         string id,
         double time,
         string? dataProcessingRef,
-        List<double>? mzDeltaModel = null,
         List<Param>? spectrumParams = null,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryMeta = null
     )
     {
         return SpectrumMetadata.AppendSpectrum(
             id,
             time,
             dataProcessingRef,
-            mzDeltaModel,
             spectrumParams ?? new(),
-            auxiliaryArrays
+            entryMeta ?? EntryDerivedMetadata.Empty
         );
     }
 
@@ -725,15 +755,15 @@ public class MZPeakWriter : IDisposable
     /// <param name="id">The chromatogram native ID.</param>
     /// <param name="dataProcessingRef">Optional data processing reference.</param>
     /// <param name="chromatogramParams">Optional chromatogram parameters.</param>
-    /// <param name="auxiliaryArrays">Optional auxiliary arrays.</param>
+    /// <param name="entryDerivedMetadata">Optional auxiliary arrays.</param>
     public ulong AddChromatogram(
         string id,
         string? dataProcessingRef,
         List<Param>? chromatogramParams = null,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryDerivedMetadata = null
     )
     {
-        return ChromatogramMetadata.AppendChromatogram(id, dataProcessingRef, chromatogramParams ?? new(), auxiliaryArrays);
+        return ChromatogramMetadata.AppendChromatogram(id, dataProcessingRef, chromatogramParams ?? new(), entryDerivedMetadata);
     }
 
     /// <summary>Adds a precursor entry to a chromatogram.</summary>
@@ -793,7 +823,7 @@ public class MZPeakWriter : IDisposable
         double time,
         string? dataProcessingRef,
         List<Param>? spectrumParams = null,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryDerivedMetadata = null
     )
     {
         if (WavelengthSpectrumMetadata == null)
@@ -803,7 +833,7 @@ public class MZPeakWriter : IDisposable
             time,
             dataProcessingRef,
             spectrumParams ?? new(),
-            auxiliaryArrays
+            entryDerivedMetadata
         );
     }
 

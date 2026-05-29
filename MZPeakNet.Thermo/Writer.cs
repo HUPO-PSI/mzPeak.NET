@@ -11,9 +11,11 @@ using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using MZPeak.Writer;
 using MZPeak.Writer.Data;
+using ParquetSharp;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
 using ThermoFisher.CommonCore.Data.Interfaces;
+using ThermoFisher.CommonCore.MassPrecisionEstimator;
 
 namespace MZPeak.Thermo;
 
@@ -144,12 +146,15 @@ public class ConversionContextHelper
     public Dictionary<int, List<int?>> PreviousMSLevels;
     public Dictionary<int, uint> MSLevelCounts;
 
+    public PrecisionEstimate PrecisionEstimate;
+
     public ConversionContextHelper()
     {
         TrailerMap = new();
         Headers = new();
         PreviousMSLevels = new();
         MSLevelCounts = new();
+        PrecisionEstimate = new();
     }
 
     public bool GetShortTrailerExtraFor(IRawDataPlus accessor, int scanNumber, string key, out short value)
@@ -359,6 +364,7 @@ public class ConversionContextHelper
 
     public void Initialize(IRawDataPlus accessor)
     {
+        PrecisionEstimate.Rawfile = accessor;
         var headers = accessor.GetTrailerExtraHeaderInformation();
         for (var i = 0; i < headers.Length; i++)
         {
@@ -1155,6 +1161,33 @@ public record ArrowStatusLog
     }
 }
 
+class CustomizedMZPeakWriter : MZPeakWriter
+{
+    public CustomizedMZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex = null, ArrayIndex? chromatogramArrayIndex = null,
+                                  bool includeSpectrumPeakData = false, ArrayIndex? spectrumPeakArrayIndex = null, bool useChunked = false,
+                                  Dictionary<string, FileEncryptionProperties>? encryptionConfigurations = null, ParquetDataWriterConfig? dataWriterConfig = null) :
+                                  base(storage, spectrumArrayIndex, chromatogramArrayIndex, includeSpectrumPeakData, spectrumPeakArrayIndex, useChunked, encryptionConfigurations, dataWriterConfig)
+    {
+    }
+
+    protected override WriterPropertiesBuilder SpectrumPeakDataWriterPropertiesBuilder()
+    {
+        var builder = base.SpectrumPeakDataWriterPropertiesBuilder();
+        if (SpectrumPeakArrayIndex != null)
+        {
+            foreach(var e in SpectrumPeakArrayIndex.EntriesFor(ArrayType.ChargeArray))
+            {
+                builder = builder.Encoding(e.Path, Encoding.RleDictionary);
+            }
+            foreach (var e in SpectrumPeakArrayIndex.EntriesFor(ArrayType.ResolutionArray))
+            {
+                builder = builder.Encoding(e.Path, Encoding.RleDictionary);
+            }
+        }
+        return builder;
+    }
+}
+
 public class ThermoMZPeakWriter : IDisposable
 {
     MZPeakWriter Writer;
@@ -1190,7 +1223,6 @@ public class ThermoMZPeakWriter : IDisposable
 
         return builder.Build();
     }
-
 
     public ArrayIndex SpectrumArrayIndex => Writer.SpectrumArrayIndex;
     public ArrayIndex ChromatogramArrayIndex => Writer.ChromatogramArrayIndex;
@@ -1252,7 +1284,7 @@ public class ThermoMZPeakWriter : IDisposable
         Run.StartTime = accessor.CreationDate;
     }
 
-    public (SpacingInterpolationModel<double>?, List<AuxiliaryArray>, int) AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, SegmentedScan segments, ScanStatistics stats)
     {
         var isProfile = !stats.IsCentroidScan;
         var mzArray = Compute.Compute.CastDouble(segments.Positions);
@@ -1260,9 +1292,13 @@ public class ThermoMZPeakWriter : IDisposable
         return Writer.AddSpectrumData(entryIndex, [mzArray, intensityArray], isProfile: isProfile);
     }
 
-    public (List<AuxiliaryArray>, int) AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
+    public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
     {
-        if (centroids.Length == 0) return ([], 0);
+        if (centroids.Length == 0) return EntryDerivedMetadata.Empty;
+        ConversionHelper.PrecisionEstimate.ScanNumber = centroids.ScanNumber;
+        // TODO: Collect and store this optionally?
+        // var estimate = ConversionHelper.PrecisionEstimate.GetMassPrecisionEstimate();
+        // estimate[0].MassAccuracyInPpm
         var mzArray = Compute.Compute.CastDouble(centroids.Masses);
         var intensityArray = Compute.Compute.CastFloat(centroids.Intensities);
         var baselineArray = Compute.Compute.CastFloat(centroids.Baselines);
@@ -1277,7 +1313,21 @@ public class ThermoMZPeakWriter : IDisposable
             arrays.Add(Compute.Compute.CastFloat(centroids.Resolutions));
         }
         var r = Writer.AddSpectrumPeakData(entryIndex, arrays);
-        return (r.Item2, r.Item3);
+        return r;
+    }
+
+    public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, ISimpleScanAccess centroids)
+    {
+        if (centroids.Masses.Length == 0) return EntryDerivedMetadata.Empty;
+        var n = centroids.Masses.Length;
+        var mzArray = Compute.Compute.CastDouble(centroids.Masses);
+        var intensityArray = Compute.Compute.CastFloat(centroids.Intensities);
+        var nullArrayMaker = new NullArray.Builder();
+        nullArrayMaker.Resize(n);
+
+        List<IArrowArray> arrays = [mzArray, intensityArray];
+        var r = Writer.AddSpectrumPeakData(entryIndex, arrays);
+        return r;
     }
 
     public void AddNoisePacketData(ulong entryIndex, NoiseAndBaseline[] noiseAndBaselines)
@@ -1329,9 +1379,9 @@ public class ThermoMZPeakWriter : IDisposable
         double time,
         IScanFilter scanFilter,
         ScanStatistics scanStatistics,
-        List<double>? spacingModel = null,
-        List<Param>? @params = null,
-        List<AuxiliaryArray>? auxiliaryArrays = null)
+        EntryDerivedMetadata entryDerivedMetadata,
+        List<Param>? @params = null
+    )
     {
         List<Param> paramList = @params ?? new();
         paramList.Add(GetMSLevel(scanFilter));
@@ -1360,7 +1410,7 @@ public class ThermoMZPeakWriter : IDisposable
             paramList.Add(SpectrumRepresentation.ProfileSpectrum.AsParam());
 
         var id = $"controllerType=0 controllerNumber=1 scan={scanNumber}";
-        var index = Writer.AddSpectrum(id, time, null, spacingModel, paramList, auxiliaryArrays);
+        var index = Writer.AddSpectrum(id, time, null, paramList, entryDerivedMetadata);
         ScanNumberToIndex[scanNumber] = index;
         return index;
     }
@@ -1485,23 +1535,23 @@ public class ThermoMZPeakWriter : IDisposable
         );
     }
 
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
-    public List<AuxiliaryArray> AddChromatogramData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
+    public EntryDerivedMetadata AddChromatogramData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
+    public EntryDerivedMetadata AddChromatogramData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
+    public EntryDerivedMetadata AddChromatogramData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => Writer.AddChromatogramData(entryIndex, arrays);
 
     public ulong AddChromatogram(
         string id,
         string? dataProcessingRef,
         List<Param>? chromatogramParams = null,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryDerivedMetadata = null
     )
     {
-        return Writer.AddChromatogram(id, dataProcessingRef, chromatogramParams, auxiliaryArrays);
+        return Writer.AddChromatogram(id, dataProcessingRef, chromatogramParams, entryDerivedMetadata);
     }
 
-    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
-    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
-    public List<AuxiliaryArray> AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
+    public EntryDerivedMetadata AddWavelengthSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Apache.Arrow.Array> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
+    public EntryDerivedMetadata AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
+    public EntryDerivedMetadata AddWavelengthSpectrumData(ulong entryIndex, IEnumerable<Apache.Arrow.Array> arrays) => Writer.AddWavelengthSpectrumData(entryIndex, arrays);
 
     /// <summary>Adds a wavelength spectrum entry with metadata.</summary>
     /// <param name="id">The spectrum native ID.</param>
@@ -1514,7 +1564,7 @@ public class ThermoMZPeakWriter : IDisposable
         double time,
         string? dataProcessingRef,
         List<Param>? spectrumParams = null,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryDerivedMetadata = null
     )
     {
         return Writer.AddWavelengthSpectrum(
@@ -1522,7 +1572,7 @@ public class ThermoMZPeakWriter : IDisposable
             time,
             dataProcessingRef,
             spectrumParams,
-            auxiliaryArrays
+            entryDerivedMetadata
         );
     }
 

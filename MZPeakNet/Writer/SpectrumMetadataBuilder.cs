@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Writer.Data;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -36,12 +37,11 @@ public class SpectrumMetadataBuilder
         string id,
         double time,
         string? dataProcessingRef,
-        List<double>? mzDeltaModel,
         List<Param> spectrumParams,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata entryMetadata
     )
     {
-        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, mzDeltaModel, spectrumParams, auxiliaryArrays);
+        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, spectrumParams, entryMetadata);
         var index = SpectrumCounter;
         SpectrumCounter += 1;
         return index;
@@ -229,10 +229,10 @@ public class WavelengthSpectrumMetadataBuilder
         double time,
         string? dataProcessingRef,
         List<Param> spectrumParams,
-        List<AuxiliaryArray>? auxiliaryArrays = null
+        EntryDerivedMetadata? entryDerivedMetadata=null
     )
     {
-        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, spectrumParams, auxiliaryArrays);
+        Spectrum.Append(SpectrumCounter, id, time, dataProcessingRef, spectrumParams, entryDerivedMetadata);
         var index = SpectrumCounter;
         SpectrumCounter += 1;
         return index;

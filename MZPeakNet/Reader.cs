@@ -17,15 +17,17 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
 {
     MetadataReaderBase<T> MetadataReader;
     DataArraysReader DataReader;
+    DataArraysReader? PeakReader;
 
 
     /// <summary>Creates a data facet combining metadata and data readers.</summary>
     /// <param name="metadataReader">The metadata reader.</param>
     /// <param name="dataReader">The data arrays reader.</param>
-    public DataFacet(MetadataReaderBase<T> metadataReader, DataArraysReader dataReader)
+    public DataFacet(MetadataReaderBase<T> metadataReader, DataArraysReader dataReader, DataArraysReader? peakReader=null)
     {
         MetadataReader = metadataReader;
         DataReader = dataReader;
+        PeakReader = peakReader;
     }
 
     /// <summary>Gets the number of entries in the facet.</summary>
@@ -37,29 +39,76 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
     {
         var meta = MetadataReader.Get(index);
         if (meta == null) throw new IndexOutOfRangeException();
-        var data = await DataReader.ReadForIndex(index);
-        if (data == null) throw new IndexOutOfRangeException();
-        return (meta, data);
+        var dpCount = MetadataReader.NumberOfDataPointsFor(index);
+        var peakCount = MetadataReader.NumberOfPeaks(index);
+        if (dpCount != null)
+        {
+            var data = await DataReader.ReadForIndex(index);
+            if (data == null) throw new IndexOutOfRangeException();
+            return (meta, data);
+        }
+        else if (peakCount != null && PeakReader != null)
+        {
+            var data = await PeakReader.ReadForIndex(index);
+            if (data == null) throw new IndexOutOfRangeException();
+            return (meta, data);
+        }
+        else
+        {
+            var data = DataReader.EmptyArrays();
+            return (meta, data);
+        }
+
     }
 
     /// <summary>Asynchronously enumerates all entries with their metadata and data.</summary>
     public async IAsyncEnumerable<(T, StructArray)> EnumerateAsync()
     {
         var metaRecs = MetadataReader.BulkLoad();
-        var i = 0ul;
-        await foreach (var (idx, data) in DataReader)
-        {
-            while (i < idx)
-            {
-                var metaSkipped = metaRecs[(int)i];
-                yield return (metaSkipped, DataReader.EmptyArrays());
-                i++;
-            }
-            var meta = metaRecs[(int)idx];
+        var n = (ulong)Length;
+        var dataIter = DataReader.Enumerate();
+        var peakIter = PeakReader?.Enumerate();
 
-            var item = (meta, data);
-            yield return item;
-            i += 1;
+        await dataIter.Seek(0);
+        if (peakIter != null)
+            await peakIter.Seek(0);
+
+        for(var i = 0ul; i < n; i++)
+        {
+            var meta = metaRecs[(int)i];
+            var dpCount = MetadataReader.NumberOfDataPointsFor(i);
+            var peakCount = MetadataReader.NumberOfPeaks(i);
+            if (dpCount != null && dpCount > 0)
+            {
+                if (await dataIter.Seek(i))
+                {
+                    var (dataIdx, data) = dataIter.Current;
+                    if (dataIdx != i) throw new InvalidOperationException($"Data iterator is out of sync: {dataIdx} != {i}");
+                    yield return (meta, data);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Data iterator is out of sync with records: {i} expected {dpCount}, found nothing");
+                }
+            }
+
+            else if (peakCount != null && peakCount > 0 && peakIter != null)
+            {
+                if (await peakIter.Seek(i))
+                {
+                    var (dataIdx, data) = peakIter.Current;
+                    if (dataIdx != i) throw new InvalidOperationException($"Peak iterator is out of sync: {dataIdx} != {i}");
+                    yield return (meta, data);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Peak iterator is out of sync with records: {i} expected {peakCount}, found nothing");
+                }
+            }
+            else
+            {
+                yield return (meta, DataReader.EmptyArrays());
+            }
         }
     }
 
@@ -371,6 +420,8 @@ public class MzPeakReader
     {
         var reader = OpenSpectrumDataReader();
         if (reader == null) return null;
+        var nbPoints = spectrumMetadata?.NumberOfDataPointsFor(index);
+        if (nbPoints == null) return null;
         return await reader.ReadForIndex(index);
     }
 
@@ -390,6 +441,8 @@ public class MzPeakReader
     {
         var reader = OpenSpectrumPeaksDataReader();
         if (reader == null) return null;
+        var nbPoints = spectrumMetadata?.NumberOfPeaks(index);
+        if (nbPoints == null) return null;
         return await reader.ReadForIndex(index);
     }
 

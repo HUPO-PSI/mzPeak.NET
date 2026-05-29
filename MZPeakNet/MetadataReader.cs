@@ -4,6 +4,7 @@ using MZPeak.ControlledVocabulary;
 using MZPeak.Compute;
 using MZPeak.Reader.Visitors;
 using Microsoft.Extensions.Logging;
+using System.Numerics;
 
 
 namespace MZPeak.Metadata;
@@ -22,6 +23,9 @@ public abstract class MetadataReaderBase<T>
 
     protected MzPeakMetadata mzPeakMetadata;
 
+    protected Dictionary<ulong, ulong?> DataPointCounts { get; set; }
+    protected Dictionary<ulong, ulong?> PeakCounts { get; set; }
+
     /// <summary>Gets the file description metadata.</summary>
     public FileDescription FileDescription => mzPeakMetadata.FileDescription;
     /// <summary>Gets the list of instrument configurations.</summary>
@@ -38,6 +42,8 @@ public abstract class MetadataReaderBase<T>
     protected MetadataReaderBase(MzPeakMetadata mzPeakMetadata)
     {
         this.mzPeakMetadata = mzPeakMetadata;
+        DataPointCounts = new();
+        PeakCounts = new();
     }
 
     protected void GetNativeIdsFrom(StructArray? table, ref NativeIdIndex nativeIds)
@@ -78,6 +84,126 @@ public abstract class MetadataReaderBase<T>
     /// <summary>Gets a single metadata entry by index.</summary>
     /// <param name="index">The entry index.</param>
     public abstract T Get(ulong index);
+
+    protected void loadEntryCounts<U>(PrimitiveArray<U> countArray, UInt64Array indexArr, Dictionary<ulong, ulong?> accumulator) where U : struct, INumber<U>
+    {
+        foreach (var (i, c) in indexArr.AsEnumerable().Zip(countArray.AsEnumerable()))
+        {
+            if (i == null) continue;
+            if (c == null)
+            {
+                accumulator[(ulong)i] = null;
+            }
+            else
+            {
+                var count = (U)c;
+                accumulator[(ulong)i] = ulong.CreateSaturating(count);
+            }
+        }
+    }
+
+    protected bool loadCountFrom(ChunkedArray mainTable, SpectrumProperties column, Dictionary<ulong, ulong?> accumulator)
+    {
+        var query = ColumnParam.Inflect(column.CURIE(), column.Name());
+        int? countCol = null;
+        for (var i = 0; i < mainTable.ArrayCount; i++)
+        {
+            var chunk = (StructArray)mainTable.Array(i);
+            var idxField = (UInt64Array)chunk.Fields[0];
+            if (countCol == null)
+            {
+                countCol = ((StructType)chunk.Data.DataType).GetFieldIndex(query);
+                if (countCol < 0)
+                {
+                    countCol = null;
+                }
+            }
+            if (countCol == null) {
+                return false;
+            };
+            var countField = chunk.Fields[(int)countCol];
+            switch (countField.Data.DataType.TypeId)
+            {
+                case ArrowTypeId.UInt32:
+                    {
+                        loadEntryCounts((UInt32Array)countField, idxField, accumulator);
+                        break;
+                    }
+                case ArrowTypeId.UInt64:
+                    {
+                        loadEntryCounts((UInt64Array)countField, idxField, accumulator);
+                        break;
+                    }
+                case ArrowTypeId.Int32:
+                    {
+                        loadEntryCounts((Int32Array)countField, idxField, accumulator);
+                        break;
+                    }
+                case ArrowTypeId.Int64:
+                    {
+                        loadEntryCounts((Int64Array)countField, idxField, accumulator);
+                        break;
+                    }
+                default:
+                    {
+                        throw new InvalidOperationException($"Unsupported {query} type {countField.Data.DataType}");
+                    }
+            }
+        }
+        return true;
+    }
+
+    virtual protected ChunkedArray? MainTable => null;
+
+    /// <summary>
+    /// Get the number of profile data points recorded being stored for the requested index
+    /// </summary>
+    /// <param name="index">The entry index to look up data point counts for</param>
+    /// <returns>The number of profile data points, or <c>null</c> if no points were stored</returns>
+    public ulong? NumberOfDataPointsFor(ulong index)
+    {
+        if (DataPointCounts.Count == 0)
+        {
+            if (MainTable == null) return null;
+            loadCountFrom(MainTable, SpectrumProperties.NumberOfDataPoints, DataPointCounts);
+        }
+        ulong? outVal;
+        DataPointCounts.TryGetValue(index, out outVal);
+        return outVal;
+    }
+
+    /// <summary>
+    /// Get the number of discrete peaks recorded being stored for the requested index
+    /// </summary>
+    /// <param name="index">The entry index to look up peak counts for</param>
+    /// <returns>The number of discrete peaks, or <c>null</c> if no peaks were stored</returns>
+    public ulong? NumberOfPeaks(ulong index)
+    {
+        if (DataPointCounts.Count == 0)
+        {
+            if (MainTable == null) return null;
+            loadCountFrom(MainTable, SpectrumProperties.NumberOfPeaks, PeakCounts);
+        }
+        ulong? outVal;
+        PeakCounts.TryGetValue(index, out outVal);
+        return outVal;
+    }
+
+    /// <summary>Gets native IDs keyed by entry index.</summary>
+    public NativeIdIndex GetNativeIds()
+    {
+        var tab = new NativeIdIndex();
+        if (MainTable == null)
+        {
+            return tab;
+        }
+        for (var i = 0; i < MainTable.ArrayCount; i++)
+        {
+            var chunk = MainTable.Array(i);
+            GetNativeIdsFrom((StructArray)chunk, ref tab);
+        }
+        return tab;
+    }
 }
 
 
@@ -215,21 +341,6 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
         return acc;
     }
-    /// <summary>Gets native IDs keyed by spectrum index.</summary>
-    public NativeIdIndex GetNativeIds()
-    {
-        var tab = new NativeIdIndex();
-        if (SpectrumMetadata == null)
-        {
-            return tab;
-        }
-        for (var i = 0; i < SpectrumMetadata.ArrayCount; i++)
-        {
-            var chunk = SpectrumMetadata.Array(i);
-            GetNativeIdsFrom((StructArray)chunk, ref tab);
-        }
-        return tab;
-    }
 
     /// <summary>Gets or sets the spectrum metadata table.</summary>
     public ChunkedArray? SpectrumMetadata
@@ -337,6 +448,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
         return descrs;
     }
+
+    protected override ChunkedArray? MainTable => SpectrumMetadata;
 
     SpectrumDescription GetSpectrum(ulong index)
     {
@@ -479,6 +592,11 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         {
             SelectedIonMetadata = new ChunkedArray(selectedIons);
         }
+        if (spectrumMetadata != null)
+        {
+            NumberOfDataPointsFor(0);
+            NumberOfPeaks(0);
+        }
     }
 
     /// <summary>Gets the spectrum description for the specified index.</summary>
@@ -516,6 +634,8 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             return ChromatogramMetadata == null ? 0 : ChromatogramMetadata.Length;
         }
     }
+
+    protected override ChunkedArray? MainTable => ChromatogramMetadata;
 
     /// <summary>Creates a chromatogram metadata reader.</summary>
     /// <param name="fileReader">The Parquet file reader.</param>
@@ -572,22 +692,6 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             return selectedIonMetadata;
         }
         set => selectedIonMetadata = value;
-    }
-
-    /// <summary>Gets native IDs keyed by chromatogram index.</summary>
-    public NativeIdIndex GetNativeIds()
-    {
-        var tab = new NativeIdIndex();
-        if (ChromatogramMetadata == null)
-        {
-            return tab;
-        }
-        for (var i = 0; i < ChromatogramMetadata.ArrayCount; i++)
-        {
-            var chunk = ChromatogramMetadata.Array(i);
-            GetNativeIdsFrom((StructArray)chunk, ref tab);
-        }
-        return tab;
     }
 
     /// <summary>Loads all chromatogram descriptions.</summary>
@@ -726,6 +830,12 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         if (selectedIons.Count > 0)
         {
             SelectedIonMetadata = new ChunkedArray(selectedIons);
+        }
+
+        if (chromatogramMetadata != null)
+        {
+            NumberOfDataPointsFor(0);
+            NumberOfPeaks(0);
         }
     }
 

@@ -183,24 +183,55 @@ public class WriteTest
         var stream = new MemoryStream();
         var writer = new MZPeakWriter(new ZipStreamArchiveWriter<MemoryStream>(stream));
 
+        // This ensures that spacing models are learned on profile data
+        writer.SpectraUseNullMarking();
+
         var reader = new MzPeakReader(PointArchive);
         Assert.NotNull(reader);
         var dat0 = await reader.GetSpectrumData(0);
         var meta0 = reader.GetSpectrumDescription(0);
         Assert.NotNull(dat0);
         Assert.NotNull(meta0);
-        var (deltaModel, auxArrays, nPoints) = writer.AddSpectrumData(
+
+        var refParam0 = meta0.Parameters.Find((p) =>
+            {
+                return p.AccessionCURIE == SpectrumProperties.NumberOfDataPoints.CURIE();
+            });
+        Assert.NotNull(refParam0);
+        Assert.True(meta0.IsProfile);
+
+        // Write the data itself
+        var derivedMeta = writer.AddSpectrumData(
+            // Write for the spectrum we are currently writing metadata for
             writer.CurrentSpectrum,
-            dat0.Fields.Skip(1)
+            dat0.Fields.Skip(1), // Skip the entry index array
+            meta0.IsProfile
         );
+
+        var (deltaModel, auxArrays, nPoints, nPeaks) = derivedMeta;
+
+        // No unexpected arrays in the input
+        Assert.Empty(auxArrays);
+
+        // We are using null marking so this will populate as the input is profile mode
+        Assert.NotNull(deltaModel);
+
+        Assert.NotNull(nPoints);
+        Assert.Null(nPeaks);
+
+        Assert.Equal(meta0.DataPointCount, nPoints);
+        Assert.Equal((int)nPoints, refParam0.AsLong());
+
+
+        meta0.DataPointCount = nPoints;
+        meta0.PeakCount = nPeaks;
 
         var index = writer.AddSpectrum(
             meta0.Id,
             meta0.Time,
             null,
-            deltaModel?.Coefficients,
             meta0.Parameters,
-            auxArrays
+            derivedMeta
         );
 
         writer.AddScan(
@@ -238,7 +269,13 @@ public class WriteTest
         stream.Position = 0;
         var dupReader = new MzPeakReader(new ZipArchiveStream<MemoryStream>(stream));
         var rec0 = dupReader.GetSpectrumDescription(0);
+        var param0 = rec0.Parameters.Find((p) =>
+            {
+            return p.AccessionCURIE == SpectrumProperties.NumberOfDataPoints.CURIE();
+            });
         Assert.Equal(0ul, rec0.Index);
+        Assert.NotNull(param0);
+        Assert.Equal(nPoints ?? nPeaks ?? 0, param0.AsLong());
     }
 
     [Fact]
@@ -246,7 +283,7 @@ public class WriteTest
     {
         var stream = new MemoryStream();
         var writer = new MZPeakWriter(new ZipStreamArchiveWriter<MemoryStream>(stream));
-        writer.AddSpectrum("foobar", 299.0, null, null, [new Param("baz", 5)], []);
+        writer.AddSpectrum("foobar", 299.0, null, [new Param("baz", 5)], EntryDerivedMetadata.Empty);
         writer.WriteSpectrumMetadata();
         writer.Dispose();
         stream.Flush();
