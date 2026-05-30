@@ -1177,11 +1177,11 @@ class CustomizedMZPeakWriter : MZPeakWriter
         {
             foreach(var e in SpectrumPeakArrayIndex.EntriesFor(ArrayType.ChargeArray))
             {
-                builder = builder.Encoding(e.Path, Encoding.RleDictionary);
+                builder = builder.EnableDictionary(e.Path);
             }
             foreach (var e in SpectrumPeakArrayIndex.EntriesFor(ArrayType.ResolutionArray))
             {
-                builder = builder.Encoding(e.Path, Encoding.RleDictionary);
+                builder = builder.EnableDictionary(e.Path);
             }
         }
         return builder;
@@ -1217,7 +1217,7 @@ public class ThermoMZPeakWriter : IDisposable
         builder.Add(ArrayType.BaselineArray, BinaryDataType.Float32);
         builder.Add(ArrayType.NoiseArray, BinaryDataType.Float32);
         if (includeResolution)
-            builder.Add(ArrayType.ResolutionArray, BinaryDataType.Float32);
+            builder.Add(ArrayType.ResolutionArray, BinaryDataType.Int32);
         if (includeCharge)
             builder.Add(ArrayType.ChargeArray, BinaryDataType.Int32);
 
@@ -1245,7 +1245,7 @@ public class ThermoMZPeakWriter : IDisposable
         {
             spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
         }
-        Writer = new MZPeakWriter(
+        Writer = new CustomizedMZPeakWriter(
             storage,
             spectrumArrayIndex,
             chromatogramArrayIndex,
@@ -1304,13 +1304,20 @@ public class ThermoMZPeakWriter : IDisposable
         var baselineArray = Compute.Compute.CastFloat(centroids.Baselines);
         var noiseArray = Compute.Compute.CastFloat(centroids.Noises);
         List<Apache.Arrow.Array> arrays = [mzArray, intensityArray, baselineArray, noiseArray];
-        if (IncludeCharge)
-        {
-            arrays.Add(Compute.Compute.CastInt32(centroids.Charges));
-        }
         if (IncludeResolution)
         {
-            arrays.Add(Compute.Compute.CastFloat(centroids.Resolutions));
+            arrays.Add(Compute.Compute.CastInt32(centroids.Resolutions));
+        }
+        if (IncludeCharge)
+        {
+            var builder = new Int32Array.Builder();
+            builder.Reserve(centroids.Charges.Length);
+            foreach (var val in centroids.Charges)
+            {
+                if (val == 0) builder.AppendNull();
+                else builder.Append(int.CreateChecked(val));
+            }
+            arrays.Add(builder.Build());
         }
         var r = Writer.AddSpectrumPeakData(entryIndex, arrays);
         return r;

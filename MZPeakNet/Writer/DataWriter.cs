@@ -856,8 +856,8 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         var ent = new EntryDerivedMetadata(
            deltaModel,
            auxiliaryArrays,
-           (isProfile ?? false) ? null : steps,
-           !(isProfile ?? false) ? steps : null
+           (isProfile ?? false) ? steps : null,
+           !(isProfile ?? false) ? null : steps
        );
         return ent;
     }

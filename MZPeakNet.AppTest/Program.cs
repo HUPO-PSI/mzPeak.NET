@@ -149,6 +149,12 @@ internal class Program
         };
         cmd.Options.Add(rowGroupSize);
 
+        Option<int> zstdLevelOpt = new("--zstd-level", "-z")
+        {
+            Description = "The compression level to be applied to each data page"
+        };
+        cmd.Options.Add(zstdLevelOpt);
+
         Argument<FileInfo> outPath = new Argument<FileInfo>("out").AcceptLegalFilePathsOnly();
         cmd.Arguments.Add(outPath);
 
@@ -160,7 +166,8 @@ internal class Program
             var chunked = parseResult.GetValue(useChunked);
             var pageSizeVal = parseResult.GetValue(pageSize);
             var rowGroupSizeVal = parseResult.GetValue(rowGroupSize);
-            ThermoTranslate(fp, outp, nullMark, chunked, pageSizeVal, rowGroupSizeVal);
+            var zstdLevel = parseResult.GetValue(zstdLevelOpt);
+            ThermoTranslate(fp, outp, nullMark, chunked, pageSizeVal, rowGroupSizeVal, zstdLevel);
         });
 
         return cmd;
@@ -196,9 +203,9 @@ internal class Program
         await job.Main();
     }
 
-    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 1048576)
+    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 1048576, int zstdLevel = 3)
     {
-        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked, pageSize, rowGroupSize);
+        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked, pageSize, rowGroupSize, zstdLevel);
         job.Main();
     }
 
@@ -228,8 +235,9 @@ public class ThermoTranslateTask : CLITask
     bool UseChunked = false;
     long PageSize = 1048576;
     long RowGroupSize = 4194304;
+    int ZstdLevel = 3;
 
-    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 4194304)
+    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 4194304, int zstdLevel=3)
     {
         SourceFile = sourceFile;
         DestinationFile = destinationFile;
@@ -237,6 +245,7 @@ public class ThermoTranslateTask : CLITask
         UseChunked = useChunked;
         PageSize = pageSize;
         RowGroupSize = rowGroupSize;
+        ZstdLevel = zstdLevel;
     }
 
     public void TranslateSpectraTo(ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoMZPeakWriter writer)
@@ -264,7 +273,7 @@ public class ThermoTranslateTask : CLITask
             if (scanNumber % 1000 == 0)
             {
                 Logger?.LogInformation(
-                    $"Writing {scanNumber} with {segments.PositionCount} points"
+                    $"Writing {scanNumber} with {segments.PositionCount} points ({(float)scanNumber / (float)lastScan * 100.0:0.00}%)"
                 );
             }
 
@@ -437,6 +446,7 @@ public class ThermoTranslateTask : CLITask
         writer.DataWriterConfig = writer.DataWriterConfig with {
             PageSize = PageSize,
             RowGroupSize = RowGroupSize,
+            CompressionLevel = ZstdLevel,
         };
 
         if (UseNullMarking)
