@@ -82,7 +82,9 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
             {
                 if (await dataIter.Seek(i))
                 {
-                    var (dataIdx, data) = dataIter.Current;
+                    var nextValue = await dataIter.Peek();
+                    if (nextValue == null) throw new InvalidOperationException($"Data iterator seeked but did not find a value");
+                    var (dataIdx, data) = nextValue.Value;
                     if (dataIdx != i) throw new InvalidOperationException($"Data iterator is out of sync: {dataIdx} != {i}");
                     yield return (meta, data);
                 }
@@ -96,7 +98,9 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
             {
                 if (await peakIter.Seek(i))
                 {
-                    var (dataIdx, data) = peakIter.Current;
+                    var nextValue = await peakIter.Peek();
+                    if (nextValue == null) throw new InvalidOperationException($"Peak iterator seeked but did not find a value");
+                    var (dataIdx, data) = nextValue.Value;
                     if (dataIdx != i) throw new InvalidOperationException($"Peak iterator is out of sync: {dataIdx} != {i}");
                     yield return (meta, data);
                 }

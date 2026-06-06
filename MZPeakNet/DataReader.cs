@@ -382,7 +382,7 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
     }
 
     /// <summary>Asynchronously enumerates all entries with their index and data.</summary>
-    public DataArraysIter Enumerate()
+    public PeekableDataArraysIter Enumerate()
     {
         BaseLayoutReader reader;
         if (Metadata.Format == BufferFormat.Point)
@@ -429,6 +429,13 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
         SpacingModels = spacingModels;
     }
 
+    /// <summary>
+    /// Given a batch of rows, boil it down to the relevant rows for a specific entry
+    /// index.
+    /// </summary>
+    /// <param name="entryIndex">The index to extract</param>
+    /// <param name="rootStruct">The collection of rows that have been pulled from the reader which may not be specific</param>
+    /// <returns>The selected rows for the entry with the given index after being transformed or expanded to flat arrays</returns>
     public virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct)
     {
         var indexArr = (UInt64Array)rootStruct.Fields[0];
@@ -440,12 +447,12 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>
     /// <summary>Asynchronously enumerates all entries.</summary>
     public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        return new DataArraysIter(this, Reader);
+        return new PeekableDataArraysIter(this, Reader);
     }
 
-    public DataArraysIter GetIter()
+    public PeekableDataArraysIter GetIter()
     {
-        return new DataArraysIter(this, Reader);
+        return new PeekableDataArraysIter(this, Reader);
     }
 
     /// <summary>Reads rows for a specific entry within a row range.</summary>
@@ -558,53 +565,7 @@ public class PointLayoutReader : BaseLayoutReader
             }
             else if (entry.Transform == NullInterpolation.NullZeroCURIE)
             {
-                switch (column.Data.DataType.TypeId)
-                {
-                    case ArrowTypeId.Float:
-                        {
-                            converted[index] = Compute.NullToZero((FloatArray)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.Double:
-                        {
-                            converted[index] = Compute.NullToZero((DoubleArray)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.Int32:
-                        {
-                            converted[index] = Compute.NullToZero((Int32Array)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.Int64:
-                        {
-                            converted[index] = Compute.NullToZero((Int64Array)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.UInt32:
-                        {
-                            converted[index] = Compute.NullToZero((UInt32Array)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.UInt64:
-                        {
-                            converted[index] = Compute.NullToZero((UInt64Array)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.UInt8:
-                        {
-                            converted[index] = Compute.NullToZero((UInt8Array)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    case ArrowTypeId.Int8:
-                        {
-                            converted[index] = Compute.NullToZero((Int8Array)column) ?? throw new InvalidDataException();
-                            break;
-                        }
-                    default:
-                        {
-                            throw new InvalidOperationException(string.Format("Data type {0} not supported", column.Data.DataType.Name));
-                        }
-                }
+                converted[index] = Compute.NullToZero(column);
             }
             else
             {
@@ -1131,13 +1092,13 @@ public class ChunkLayoutReader : BaseLayoutReader
 }
 
 
-public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<(ulong, StructArray)>
+class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<(ulong, StructArray)>
 {
-    CancellationToken CancellationToken;
+    public CancellationToken CancellationToken;
     BaseLayoutReader LayoutReader;
     IArrowArrayStream StreamReader;
     ulong? CurrentIndex = null;
-
+    bool init = false;
     StructArray? CurrentBatch = null;
     (ulong, StructArray)? NextItem = null;
 
@@ -1199,39 +1160,14 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         }
         var idxCol = (UInt64Array)CurrentBatch.Fields[0];
         CurrentIndex = Compute.Min(idxCol);
-        return true;
+        init = true;
+        return init;
     }
 
     bool BatchHasCurrentIndex()
     {
         if (CurrentBatch == null || CurrentIndex == null) return false;
         return Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex).Any((v) => v ?? false);
-    }
-
-    public async Task<bool> Seek(ulong index)
-    {
-        if (index < CurrentIndex)
-            throw new InvalidOperationException($"Cannot move an iterator to an earlier position in the stream. Current index is {CurrentIndex}, requested {index}");
-        if (index == CurrentIndex)
-            return true;
-        if (CurrentIndex == null)
-        {
-            if (!await Initialize())
-                return false;
-        }
-        if (CurrentIndex == null)
-            return false;
-        while (CurrentIndex < index)
-        {
-            await MoveNextAsyncWithProcess(false);
-        }
-
-        if (NextItem != null)
-        {
-            NextItem = (NextItem.Value.Item1, LayoutReader.ProcessSegment(NextItem.Value.Item1, NextItem.Value.Item2));
-        }
-
-        return CurrentIndex == index;
     }
 
     async Task<StructArray?> ExtractForCurrentIndex()
@@ -1275,7 +1211,7 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
         return chunk;
     }
 
-    async ValueTask<bool> MoveNextAsyncWithProcess(bool doProcess)
+    public async ValueTask<bool> MoveNextAsyncWithProcess(bool doProcess)
     {
         if (CurrentIndex == null)
         {
@@ -1321,6 +1257,144 @@ public class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnum
     public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         CancellationToken = cancellationToken;
+        return this;
+    }
+}
+
+
+/// <summary>
+/// A seekable, peekable iterator over a batch stream
+/// </summary>
+public class PeekableDataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<(ulong, StructArray)>
+{
+    DataArraysIter Inner;
+    LinkedList<(ulong, StructArray)> Peeked;
+    (ulong, StructArray)? Value;
+
+    public (ulong, StructArray) Current => Value != null ? Value.Value : Peeked.First == null ? throw new InvalidOperationException() : Peeked.First.Value;
+
+    public PeekableDataArraysIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
+    {
+        Inner = new DataArraysIter(layoutReader, stream);
+        Peeked = [];
+        Value = null;
+    }
+
+    /// <summary>
+    /// Peek at the *next* value in the queue, not the *current* value.
+    ///
+    /// This may trigger I/O and/or consume
+    /// </summary>
+    /// <returns>The next value or <c>null</c></returns>
+    public async Task<(ulong, StructArray)?> Peek()
+    {
+        if (Peeked.Count == 0)
+            await NextFromInner();
+        return Peeked.First?.Value;
+    }
+
+    /// <summary>
+    /// Pull the next value from the inner iterator and add it to the internal queue
+    /// </summary>
+    /// <returns></returns>
+    async ValueTask<bool> NextFromInner()
+    {
+        if (await Inner.MoveNextAsync())
+        {
+            Peeked.AddLast(Inner.Current);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Put a value back into the queue. This becomes the *current* value
+    /// </summary>
+    /// <param name="value"></param>
+    public void Prepend((ulong, StructArray) value)
+    {
+        if (Value != null)
+            Peeked.Prepend(Value.Value);
+        Value = value;
+    }
+
+    public async ValueTask<bool> MoveNextAsync()
+    {
+        if (Peeked.First != null)
+        {
+            Value = Peeked.First.Value;
+            Peeked.RemoveFirst();
+            return true;
+        }
+        else
+        {
+            if (await NextFromInner())
+            {
+                if (Peeked.First == null) throw new InvalidOperationException();
+                Value = Peeked.First.Value;
+                Peeked.RemoveFirst();
+                return true;
+            }
+            return false;
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return new ValueTask();
+    }
+
+    /// <summary>
+    /// Peek at the *next* value's index slot if one exists
+    /// </summary>
+    /// <returns></returns>
+    public async Task<ulong?> PeekIndex()
+    {
+        var value = await Peek();
+        return value?.Item1;
+    }
+
+    /// <summary>
+    /// Consume the iterator until the *next* value's index is greater than or equal to the requested index.
+    /// </summary>
+    /// <param name="index"></param>
+    /// <returns>Whether the next index matches <c>index</c></returns>
+    /// <exception cref="InvalidOperationException">
+    /// If the <c>index</c> is < <cref>PeekeIndex</cref>
+    /// </exception>
+    public async Task<bool> Seek(ulong index)
+    {
+        var currentIndex = await PeekIndex();
+        if (index < currentIndex)
+            throw new InvalidOperationException($"Cannot move an iterator to an earlier position in the stream. Current index is {currentIndex}, requested {index}");
+        if (index == currentIndex)
+            return true;
+        if (currentIndex == null)
+            return false;
+        (ulong, StructArray)? currentValue = null;
+        while (await PeekIndex() < index)
+        {
+            if (await MoveNextAsync())
+                currentValue = Value;
+            else
+                break;
+        }
+        if (currentValue.HasValue) Prepend(currentValue.Value);
+        return await PeekIndex() == index;
+    }
+
+    /// <summary>
+    /// Consume the next value from the iterator and return it
+    /// </summary>
+    /// <returns></returns>
+    public async Task<(ulong, StructArray)?> Consume()
+    {
+        return await MoveNextAsync() ? Value : null;
+    }
+
+    public IAsyncEnumerator<(ulong, StructArray)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        Inner.CancellationToken = cancellationToken;
         return this;
     }
 }

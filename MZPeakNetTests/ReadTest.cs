@@ -43,7 +43,7 @@ public class ArchiveTest
         Assert.NotNull(meta);
         var metaReader = new SpectrumMetadataReader(meta);
         var models = metaReader.GetSpacingModelIndex();
-
+        Assert.Equal(14, models.Count);
         var reader = PointArchive.SpectrumData();
         Assert.NotNull(reader);
 
@@ -54,8 +54,8 @@ public class ArchiveTest
         Assert.Equal(BufferFormat.Point, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
-        await dataReader.ReadForIndex(0);
-        await dataReader.ReadForIndex(1);
+        Assert.NotNull(await dataReader.ReadForIndex(0));
+        Assert.NotNull(await dataReader.ReadForIndex(1));
         var it = dataReader.Enumerate();
         await foreach ((ulong i, StructArray chunk) in it)
         {
@@ -74,12 +74,14 @@ public class ArchiveTest
         Assert.NotNull(meta);
         var metaReader = new SpectrumMetadataReader(meta);
         var models = metaReader.GetSpacingModelIndex();
+        Assert.Equal(14, models.Count);
 
         var reader = ChunkArchive.SpectrumData();
         Assert.NotNull(reader);
-
-        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
-        dataReader.SpacingModels = models;
+        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum)
+        {
+            SpacingModels = models
+        };
 
         Assert.Equal(BufferFormat.ChunkValues, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
