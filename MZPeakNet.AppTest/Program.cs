@@ -259,6 +259,8 @@ public class ThermoTranslateTask : CLITask
         writer.Run.StartTime = accessor.FileHeader.CreationDate;
         writer.Run.Id = accessor.FileName;
 
+        writer.StartSpectrumPeakData(useTmp: true);
+
         var startScan = accessor.RunHeader.FirstSpectrum;
         var lastScan = accessor.RunHeader.LastSpectrum;
         EntryDerivedMetadata entryMeta;

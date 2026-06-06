@@ -1216,6 +1216,15 @@ public class ThermoMZPeakWriter : IDisposable
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         builder.Add(ArrayType.BaselineArray, BinaryDataType.Float32);
         builder.Add(ArrayType.NoiseArray, BinaryDataType.Float32);
+        builder.Add(new ArrayIndexEntry()
+        {
+            ArrayName = "peak option flags array",
+            ArrayTypeCURIE = ArrayType.NonStandardDataArray.CURIE(),
+            Context = BufferContext.Spectrum,
+            DataTypeCURIE = BinaryDataType.Int32.CURIE(),
+            Path = "point.peak_option_flags",
+            BufferFormat = BufferFormat.Point,
+        });
         if (includeResolution)
             builder.Add(ArrayType.ResolutionArray, BinaryDataType.Int32);
         if (includeCharge)
@@ -1303,7 +1312,8 @@ public class ThermoMZPeakWriter : IDisposable
         var intensityArray = Compute.Compute.CastFloat(centroids.Intensities);
         var baselineArray = Compute.Compute.CastFloat(centroids.Baselines);
         var noiseArray = Compute.Compute.CastFloat(centroids.Noises);
-        List<Apache.Arrow.Array> arrays = [mzArray, intensityArray, baselineArray, noiseArray];
+        var peakOptions = Compute.Compute.CastInt32(centroids.Flags.Select(f => (byte)f).ToList());
+        List<Apache.Arrow.Array> arrays = [mzArray, intensityArray, baselineArray, noiseArray, peakOptions];
         if (IncludeResolution)
         {
             arrays.Add(Compute.Compute.CastInt32(centroids.Resolutions));
@@ -1614,7 +1624,7 @@ public class ThermoMZPeakWriter : IDisposable
     public void FlushSpectrumPeakData() => Writer.FlushSpectrumPeakData();
 
     /// <summary>Starts writing spectrum peak data.</summary>
-    public void StartSpectrumPeakData() => Writer.StartSpectrumPeakData();
+    public void StartSpectrumPeakData(bool useTmp=false) => Writer.StartSpectrumPeakData(useTmp);
 
     /// <summary>Writes spectrum metadata to the archive.</summary>
     public void WriteSpectrumMetadata() => Writer.WriteSpectrumMetadata();

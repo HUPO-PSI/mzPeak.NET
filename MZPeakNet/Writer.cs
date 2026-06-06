@@ -11,6 +11,7 @@ using MZPeak.Metadata;
 using MZPeak.Storage;
 using MZPeak.Writer.Data;
 using MZPeak.Writer.Visitors;
+using ParquetSharp;
 using ParquetSharp.Arrow;
 
 using EncryptionConfigurations = Dictionary<string, ParquetSharp.FileEncryptionProperties>;
@@ -95,6 +96,10 @@ public class MZPeakWriter : IDisposable
     MzPeakMetadata MzPeakMetadata;
     IMZPeakArchiveWriter Storage;
 
+    protected string? PeakPath = null;
+    protected Stream? PeakStream = null;
+    protected FileWriter? PeakWriter = null;
+
     SpectrumMetadataBuilder SpectrumMetadata;
     ChromatogramMetadataBuilder ChromatogramMetadata;
     WavelengthSpectrumMetadataBuilder? WavelengthSpectrumMetadata;
@@ -156,13 +161,13 @@ public class MZPeakWriter : IDisposable
         return builder.Build();
     }
 
-    protected ParquetSharp.SchemaDescriptor TranslateSchema(Schema schema)
+    protected SchemaDescriptor TranslateSchema(Schema schema)
     {
         var stream = new MemoryStream();
         var tmp = new FileWriter(new ParquetSharp.IO.ManagedOutputStream(stream), schema);
         tmp.Close();
         stream.Seek(0, SeekOrigin.Begin);
-        var reader = new ParquetSharp.ParquetFileReader(stream);
+        var reader = new ParquetFileReader(stream);
         return reader.FileMetaData.Schema;
     }
 
@@ -386,24 +391,50 @@ public class MZPeakWriter : IDisposable
     }
 
     /// <summary>Starts writing spectrum peak data.</summary>
-    public virtual void StartSpectrumPeakData()
+    public virtual void StartSpectrumPeakData(bool useTmp=false)
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException();
+        if (useTmp)
+        {
+            PeakPath = Path.GetTempFileName();
+            PeakStream = File.Open(PeakPath, FileMode.Create, FileAccess.ReadWrite);
+            var managedStream = new ParquetSharp.IO.ManagedOutputStream(PeakStream);
+            var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
+
+            var schema = SpectrumPeakData.ArrowSchema();
+            var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+
+            PeakWriter = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
+        } else
+        {
+            CloseCurrentWriter();
+            var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
+            var stream = Storage.OpenStream(entry);
+            var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+            var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
+
+            var schema = SpectrumPeakData.ArrowSchema();
+            var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+
+            var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
+
+            State = WriterState.SpectrumPeakData;
+            CurrentWriter = writer;
+            CurrentEntry = entry;
+        }
+    }
+
+    protected void StorePeakFileFromTemporaryFile()
+    {
+        if (PeakWriter == null || PeakStream == null) throw new InvalidOperationException("Peaks are not written to a temporary file");
         CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-
-        var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
-
-        var schema = SpectrumPeakData.ArrowSchema();
-        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-
-        var writer = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
-
-        State = WriterState.SpectrumPeakData;
-        CurrentWriter = writer;
-        CurrentEntry = entry;
+        var outStream = Storage.OpenStream(entry);
+        PeakWriter.Close();
+        PeakStream.Seek(0, SeekOrigin.Begin);
+        PeakStream.CopyTo(outStream);
+        PeakStream.Close();
     }
 
     /// <summary>Creates an mzPeak writer.</summary>
@@ -525,10 +556,10 @@ public class MZPeakWriter : IDisposable
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
-        // if (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0)
-        // {
-        //     FlushSpectrumPeakData();
-        // }
+        if (PeakWriter != null && (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0))
+        {
+            FlushSpectrumPeakData();
+        }
         return r;
     }
 
@@ -539,10 +570,10 @@ public class MZPeakWriter : IDisposable
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
-        // if (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0)
-        // {
-        //     FlushSpectrumPeakData();
-        // }
+        if (PeakWriter != null && (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0))
+        {
+            FlushSpectrumPeakData();
+        }
         return r;
     }
 
@@ -648,6 +679,12 @@ public class MZPeakWriter : IDisposable
             var batch = SpectrumPeakData.GetRecordBatch();
             Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_peaks");
             CurrentWriter.WriteBufferedRecordBatch(batch);
+        }
+        else if (PeakWriter != null && SpectrumPeakData != null)
+        {
+            var batch = SpectrumPeakData.GetRecordBatch();
+            Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_peaks");
+            PeakWriter.WriteBufferedRecordBatch(batch);
         }
         else if (SpectrumData.BufferedRows > 0)
         {
@@ -1023,9 +1060,20 @@ public class MZPeakWriter : IDisposable
             CloseCurrentWriter();
         if (SpectrumPeakData != null)
         {
-            StartSpectrumPeakData();
-            FlushSpectrumPeakData();
-            CloseCurrentWriter();
+            if (PeakWriter != null)
+            {
+                StorePeakFileFromTemporaryFile();
+                if (PeakPath != null)
+                {
+                    File.Delete(PeakPath);
+                }
+            }
+            else
+            {
+                StartSpectrumPeakData();
+                FlushSpectrumPeakData();
+                CloseCurrentWriter();
+            }
         }
         WriteSpectrumMetadata();
         WriteChromatogramData();
