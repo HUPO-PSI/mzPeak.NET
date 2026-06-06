@@ -269,6 +269,25 @@ public record DataProcessingMethod
 }
 
 
+public record ScanSettings
+{
+    /// <summary>
+    /// A unique identifier for the scan settings
+    /// </summary>
+    [JsonPropertyName("id")]
+    public required string Id { get; set; }
+
+    [JsonPropertyName("source_file_refs")]
+    public required List<string> SourceFileRefs { get; set; }
+
+    [JsonPropertyName("targets")]
+    public required List<List<Param>> Targets { get; set; }
+
+    [JsonPropertyName("parameters")]
+    public required List<Param> Parameters { get; set; }
+}
+
+
 /// <summary>
 /// Run-level metadata section. Analogous to the mzML run element.
 /// </summary>
@@ -370,6 +389,8 @@ public class MzPeakMetadata
     /// </summary>
     public List<DataProcessingMethod> DataProcessingMethods { get; set; }
 
+    public List<ScanSettings> ScanSettings { get; set; }
+
     /// <summary>
     /// Run-level metadata for the experiment.
     /// </summary>
@@ -386,6 +407,7 @@ public class MzPeakMetadata
         InstrumentConfigurations = new();
         Softwares = new();
         Samples = new();
+        ScanSettings = new();
         DataProcessingMethods = new();
         Run = new();
     }
@@ -402,6 +424,7 @@ public class MzPeakMetadata
                           List<Software> softwares,
                           List<Sample> samples,
                           List<DataProcessingMethod> dataProcessingMethods,
+                          List<ScanSettings> scanSettings,
                           MSRun run)
     {
         FileDescription = description;
@@ -409,6 +432,7 @@ public class MzPeakMetadata
         Softwares = softwares;
         Samples = samples;
         DataProcessingMethods = dataProcessingMethods;
+        ScanSettings = scanSettings;
         Run = run;
     }
 
@@ -446,6 +470,13 @@ public class MzPeakMetadata
             if (samples == null) throw new InvalidDataException("sample_list failed to deserialize");
         }
 
+        List<ScanSettings>? scanSettings = new();
+        if (meta.TryGetValue("scan_settings_list", out buf))
+        {
+            scanSettings = JsonSerializer.Deserialize<List<ScanSettings>>(buf) ?? new();
+            if (scanSettings == null) throw new InvalidDataException("scan_settings_list failed to deserialize");
+        }
+
         List<DataProcessingMethod> dataProcessingMethods = new();
         if (meta.TryGetValue("data_processing_method_list", out buf))
         {
@@ -466,6 +497,7 @@ public class MzPeakMetadata
             softwares,
             samples,
             dataProcessingMethods,
+            scanSettings,
             run
         );
     }
