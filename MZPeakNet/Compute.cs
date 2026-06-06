@@ -1498,6 +1498,49 @@ public static class Compute
         }
     }
 
+    public static Array NullToZero(IArrowArray array, MemoryAllocator? allocator = null)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Float:
+                {
+                    return Compute.NullToZero((FloatArray)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.Double:
+                {
+                    return Compute.NullToZero((DoubleArray)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.Int32:
+                {
+                    return Compute.NullToZero((Int32Array)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.Int64:
+                {
+                    return Compute.NullToZero((Int64Array)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    return Compute.NullToZero((UInt32Array)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    return Compute.NullToZero((UInt64Array)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    return Compute.NullToZero((UInt8Array)array) ?? throw new InvalidDataException();
+                }
+            case ArrowTypeId.Int8:
+                {
+                    return Compute.NullToZero((Int8Array)array) ?? throw new InvalidDataException();
+                }
+            default:
+                {
+                    throw new InvalidOperationException(string.Format("Data type {0} not supported", array.Data.DataType.Name));
+                }
+        }
+    }
+
     public static Int64Array CastInt64<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new Int64Array.Builder();
@@ -1585,7 +1628,21 @@ public static class Compute
         var builder = new Int32Array.Builder();
         builder.Reserve(array.Count);
         foreach (var val in array)
-            builder.Append(int.CreateChecked(val));
+            try
+            {
+                builder.Append(int.CreateChecked(val));
+            }
+            catch(OverflowException)
+            {
+                if (T.IsFinite(val))
+                {
+                    throw;
+                }
+                else
+                {
+                    builder.AppendNull();
+                }
+            }
         return builder.Build(allocator);
     }
 
