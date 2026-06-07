@@ -225,11 +225,12 @@ public interface IMZPeakArchiveStorage
     /// Open the spectrum data arrays volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public FileReader? SpectrumData(long bufferSize = 4096)
+    public FileReader? SpectrumData(long bufferSize = 4096 * 4, bool prebuffer = false)
     {
         var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.DataArrays);
         var arrowProps = ArrowReaderProperties.GetDefault();
         arrowProps.BatchSize = bufferSize;
+        arrowProps.PreBuffer = prebuffer;
         if (entry == null) return null;
         return OpenFromFileIndexEntry(entry, null, arrowProps);
     }
@@ -238,11 +239,12 @@ public interface IMZPeakArchiveStorage
     /// Open the spectrum data arrays volume containing explicitly centroided peaks, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public FileReader? SpectrumPeaks(long bufferSize = 4096)
+    public FileReader? SpectrumPeaks(long bufferSize = 4096 * 4, bool prebuffer = false)
     {
         var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.Peaks);
         var arrowProps = ArrowReaderProperties.GetDefault();
         arrowProps.BatchSize = bufferSize;
+        arrowProps.PreBuffer = prebuffer;
         if (entry == null) return null;
         return OpenFromFileIndexEntry(entry, null, arrowProps);
     }
