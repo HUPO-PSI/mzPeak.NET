@@ -1059,7 +1059,7 @@ public record ArrowStatusLog
             DataTypeCURIE = BinaryDataType.Float64.CURIE(),
             UnitCURIE = Unit.Minute.CURIE(),
             Path = "",
-            SortingRank = 1,
+            SortingRank = 0,
             BufferPriority = BufferPriority.Primary,
             SchemaIndex = 1,
         };
@@ -1650,6 +1650,7 @@ public class ThermoMZPeakWriter : IDisposable
             FlushStandardContent();
             Writer.State = WriterState.OtherData;
         }
+
         var noiseEntry = new FileIndexEntry("spectrum_noise_data.parquet", EntityType.Spectrum, DataKind.Proprietary);
         var managedStream = Writer.StartParquetEntry(noiseEntry);
         var writerProps = new ParquetSharp.WriterPropertiesBuilder()

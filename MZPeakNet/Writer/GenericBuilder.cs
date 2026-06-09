@@ -363,12 +363,14 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     }
 }
 
-public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, List<Param>, List<List<Param>>)>
+public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, ulong?, string?, List<Param>, List<List<Param>>)>
 {
     UInt64Array.Builder SourceIndex;
+    UInt64Array.Builder ScanIndex;
     UInt32Array.Builder InstrumentConfigurationRef;
     DoubleArray.Builder IonMobility;
     StringArray.Builder IonMobilityType;
+    StringArray.Builder SpectrumReference;
     ScanWindowListBuilder ScanWindowListBuilder;
 
     public int Length => SourceIndex.Length;
@@ -381,29 +383,41 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         new CustomBuilderFromParam(ScanAttribute.IonInjectionTime.CURIE(), ScanAttribute.IonInjectionTime.Name(), new DoubleType(), Unit.Millisecond.CURIE()),
     })
     {
+        // TODO: Fill in the scan index and spectrum reference arrays
         SourceIndex = new();
+        ScanIndex = new();
+        SpectrumReference = new();
         InstrumentConfigurationRef = new();
         IonMobility = new();
         IonMobilityType = new();
         ScanWindowListBuilder = new(fixedUnit: Unit.MZ);
     }
 
-    public void Append((ulong, uint?, double?, string?, List<Param>, List<List<Param>>) value)
+    public void Append((ulong, uint?, double?, string?, ulong?, string?, List<Param>, List<List<Param>>) value)
     {
-        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6);
+        Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5, value.Item6, value.Item7, value.Item8);
     }
 
-    public void Append(ulong sourceIndex, uint? instrumentConfigurationRef, double? ionMobility, string? ionMobilityType, List<Param> parameters, List<List<Param>>? scanWindows = null)
+    public void Append(ulong sourceIndex, uint? instrumentConfigurationRef, double? ionMobility, string? ionMobilityType, ulong? scanIndex=null, string? spectrumReference=null, List<Param>? parameters = null, List<List<Param>>? scanWindows = null)
     {
         SourceIndex.Append(sourceIndex);
         if (instrumentConfigurationRef != null) InstrumentConfigurationRef.Append(instrumentConfigurationRef);
         else InstrumentConfigurationRef.AppendNull();
+
         if (ionMobility.HasValue) IonMobility.Append(ionMobility.Value);
         else IonMobility.AppendNull();
+
         if (ionMobilityType != null) IonMobilityType.Append(ionMobilityType);
         else IonMobilityType.AppendNull();
+
+        if (scanIndex != null) ScanIndex.Append(scanIndex);
+        else ScanIndex.AppendNull();
+
+        if (spectrumReference == null) SpectrumReference.AppendNull();
+        else SpectrumReference.Append(spectrumReference);
+
         ScanWindowListBuilder.Append(scanWindows ?? new());
-        VisitParameters(parameters);
+        VisitParameters(parameters ?? []);
     }
 
     public override void AppendNull()
@@ -412,6 +426,8 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         InstrumentConfigurationRef.AppendNull();
         IonMobility.AppendNull();
         IonMobilityType.AppendNull();
+        SpectrumReference.AppendNull();
+        ScanIndex.AppendNull();
         base.AppendNull();
         ScanWindowListBuilder.Append();
     }
@@ -421,6 +437,8 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         var fields = new List<Field>()
         {
             new Field("source_index", new UInt64Type(), true),
+            new Field("scan_index", new UInt64Type(), true),
+            new Field("spectrum_reference", new StringType(), true),
             new Field("instrument_configuration_ref", new UInt32Type(), true),
             new Field("ion_mobility_value", new DoubleType(), true),
             new Field("ion_mobility_type", new StringType(), true)
@@ -441,6 +459,8 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         List<IArrowArray> fields =
         [
             SourceIndex.Build(),
+            ScanIndex.Build(),
+            SpectrumReference.Build(),
             InstrumentConfigurationRef.Build(),
             IonMobility.Build(),
             IonMobilityType.Build(),
@@ -458,6 +478,8 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
     public void Clear()
     {
         SourceIndex.Clear();
+        ScanIndex.Clear();
+        SpectrumReference.Clear();
         InstrumentConfigurationRef.Clear();
         IonMobility.Clear();
         IonMobilityType.Clear();

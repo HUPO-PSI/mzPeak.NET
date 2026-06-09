@@ -13,10 +13,9 @@ using Microsoft.Extensions.Logging;
 using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 using ParquetSharp;
 using ParquetSharp.Arrow;
-using MathNet.Numerics;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum EntityType
+public enum EntityTypeTag
 {
     [JsonStringEnumMemberName("spectrum")]
     Spectrum,
@@ -28,9 +27,56 @@ public enum EntityType
     Other
 }
 
+[JsonConverter(typeof(EntityTypeJsonConverter))]
+public record struct EntityType(EntityTypeTag Tag, string? Value) : IComparable<EntityTypeTag>
+{
+    public int CompareTo(EntityTypeTag other)
+    {
+        return Tag.CompareTo(other);
+    }
+
+    public static EntityType Spectrum => new(EntityTypeTag.Spectrum, null);
+    public static EntityType Chromatogram => new(EntityTypeTag.Chromatogram, null);
+    public static EntityType WavelengthSpectrum => new(EntityTypeTag.WavelengthSpectrum, null);
+}
+
+
+class EntityTypeJsonConverter : JsonConverter<EntityType>
+{
+    public override EntityType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException();
+        }
+
+        var val = reader.GetString()?.ToLower();
+        if (val == null) throw new JsonException("Entity type JSON cannot be null");
+        return val switch
+        {
+            "spectrum" => new EntityType(EntityTypeTag.Spectrum, null),
+            "chromatogram" => new EntityType(EntityTypeTag.Chromatogram, null),
+            "wavelength spectrum" => new EntityType(EntityTypeTag.WavelengthSpectrum, null),
+            _ => new EntityType(EntityTypeTag.Other, val)
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, EntityType value, JsonSerializerOptions options)
+    {
+        if (value.Tag == EntityTypeTag.Other) {
+            writer.WriteStringValue(value.Value);
+        } else
+        {
+            JsonConverter<EntityTypeTag> conv = (JsonConverter<EntityTypeTag>)options.GetConverter(typeof(EntityTypeTag));
+            conv.Write(writer, value.Tag, options);
+        }
+
+    }
+}
+
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum DataKind
+public enum DataKindTag
 {
     [JsonStringEnumMemberName("data arrays")]
     DataArrays,
@@ -42,6 +88,58 @@ public enum DataKind
     Other,
     [JsonStringEnumMemberName("proprietary")]
     Proprietary
+}
+
+
+[JsonConverter(typeof(DataKindTJsonConverter))]
+public record struct DataKind(DataKindTag Tag, string? Value) : IComparable<DataKindTag>
+{
+    public int CompareTo(DataKindTag other)
+    {
+        return Tag.CompareTo(other);
+    }
+
+    public static DataKind DataArrays => new(DataKindTag.DataArrays, null);
+    public static DataKind Metadata => new(DataKindTag.Metadata, null);
+    public static DataKind Peaks => new(DataKindTag.Peaks, null);
+    public static DataKind Proprietary => new(DataKindTag.Proprietary, null);
+}
+
+
+class DataKindTJsonConverter : JsonConverter<DataKind>
+{
+    public override DataKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException();
+        }
+
+        var val = reader.GetString()?.ToLower();
+        if (val == null) throw new JsonException("Data kind JSON cannot be null");
+        return val switch
+        {
+            "data arrays" => new(DataKindTag.DataArrays, null),
+            "metadata" => new(DataKindTag.Metadata, null),
+            "peaks" => new(DataKindTag.Peaks, null),
+            "proprietary" => new(DataKindTag.Proprietary, null),
+            _ => new(DataKindTag.Other, val)
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, DataKind value, JsonSerializerOptions options)
+    {
+        if (value.Tag == DataKindTag.Other)
+        {
+            writer.WriteStringValue(value.Value);
+        }
+        else
+        {
+            JsonConverter<DataKindTag> conv = (JsonConverter<DataKindTag>)options.GetConverter(typeof(DataKindTag));
+            conv.Write(writer, value.Tag, options);
+        }
+
+    }
 }
 
 
@@ -60,51 +158,51 @@ public record FileIndexEntry
     public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind)
     {
         string entityTypeTag = "";
-        switch (entityType)
+        switch (entityType.Tag)
         {
-            case EntityType.Chromatogram:
+            case EntityTypeTag.Chromatogram:
                 {
                     entityTypeTag = "chromatograms";
                     break;
                 }
-            case EntityType.Spectrum:
+            case EntityTypeTag.Spectrum:
                 {
                     entityTypeTag = "spectra";
                     break;
                 }
-            case EntityType.WavelengthSpectrum:
+            case EntityTypeTag.WavelengthSpectrum:
                 {
                     entityTypeTag = "wavelength_spectra";
                     break;
                 }
-            case EntityType.Other:
+            case EntityTypeTag.Other:
                 {
                     throw new NotImplementedException(entityType.ToString());
                 }
         }
         string dataKindTag = "";
-        switch (dataKind)
+        switch (dataKind.Tag)
         {
-            case DataKind.DataArrays:
+            case DataKindTag.DataArrays:
                 {
                     dataKindTag = "data";
                     break;
                 }
-            case DataKind.Metadata:
+            case DataKindTag.Metadata:
                 {
                     dataKindTag = "metadata";
                     break;
                 }
-            case DataKind.Peaks:
+            case DataKindTag.Peaks:
                 {
                     dataKindTag = "peaks";
                     break;
                 }
-            case DataKind.Proprietary:
+            case DataKindTag.Proprietary:
                 {
                     throw new NotImplementedException(dataKind.ToString());
                 }
-            case DataKind.Other:
+            case DataKindTag.Other:
                 {
                     throw new NotImplementedException(dataKind.ToString());
                 }
@@ -690,7 +788,7 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
         var path = System.IO.Path.Join(Path, FileIndex.FILE_NAME);
         using (var stream = File.Create(path))
         {
-            var payload = JsonSerializer.Serialize(FileIndex);
+            var payload = JsonSerializer.Serialize(FileIndex, options: new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2, IndentCharacter = ' ', NewLine = "\n" });
             var bytesOf = new UTF8Encoding().GetBytes(payload);
             stream.Write(bytesOf);
         }
@@ -750,7 +848,7 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         using (var stream = entry.Open())
         {
             IMZPeakArchiveWriter.Logger?.LogDebug("Writing file index");
-            var payload = JsonSerializer.Serialize(FileIndex);
+            var payload = JsonSerializer.Serialize(FileIndex, options: new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2, IndentCharacter = ' ', NewLine = "\n" });
             var bytesOf = new UTF8Encoding().GetBytes(payload);
             stream.Write(bytesOf);
         }

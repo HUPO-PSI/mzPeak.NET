@@ -18,7 +18,7 @@ public class SpectrumMetadataBuilder
     public PrecursorBuilder Precursor { get; }
     public SelectedIonBuilder SelectedIon { get; }
     public ulong SpectrumCounter { get; protected set; }
-
+    public ulong ScanCounter { get; protected set; }
     public int Length { get; private set; }
 
     public SpectrumMetadataBuilder()
@@ -66,12 +66,19 @@ public class SpectrumMetadataBuilder
         uint? instrumentConfigurationRef,
         double? ionMobility,
         string? ionMobilityType,
-        List<Param> scanParams,
+        ulong? scanIndex=null,
+        string? spectrumReference=null,
+        List<Param>? scanParams = null,
         List<List<Param>>? scanWindows = null
     )
     {
         if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException($"Source index {sourceIndex} is greater than {SpectrumCounter - 1}");
-        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanParams, scanWindows);
+        if (scanIndex == null)
+        {
+            scanIndex = ScanCounter;
+            ScanCounter += 1;
+        }
+        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanIndex, spectrumReference, scanParams, scanWindows);
     }
 
     /// <summary>
@@ -255,12 +262,14 @@ public class WavelengthSpectrumMetadataBuilder
         uint? instrumentConfigurationRef,
         double? ionMobility,
         string? ionMobilityType,
-        List<Param> scanParams,
+        ulong? scanIndex = null,
+        string? spectrumReference = null,
+        List<Param>? scanParams=null,
         List<List<Param>>? scanWindows = null
     )
     {
         if (sourceIndex >= SpectrumCounter) throw new InvalidOperationException($"Source index {sourceIndex} is greater than {SpectrumCounter - 1}");
-        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanParams, scanWindows);
+        Scan.Append(sourceIndex, instrumentConfigurationRef, ionMobility, ionMobilityType, scanIndex, spectrumReference, scanParams, scanWindows);
     }
 
 

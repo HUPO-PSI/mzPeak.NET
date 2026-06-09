@@ -8,6 +8,7 @@ using MZPeak.Metadata;
 using MZPeak.Writer.Data;
 using MZPeak.Compute;
 using Apache.Arrow.Types;
+using System.Text.Json;
 
 namespace MzPeakTests;
 
@@ -27,11 +28,11 @@ public class WriteTest
     public void BuildArrayIndexTest()
     {
         var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
-        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 0);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         var index = builder.Build();
         Assert.Equal("point.mz", index.Entries[0].Path);
-        Assert.Equal(1u, index.Entries[0].SortingRank);
+        Assert.Equal(0u, index.Entries[0].SortingRank);
         Assert.Equal("point.intensity", index.Entries[1].Path);
         Assert.Null(index.Entries[1].SortingRank);
     }
@@ -311,5 +312,33 @@ public class WriteTest
         Assert.Equal("baz", paramVal.Name);
         Assert.True(paramVal.IsLong());
         Assert.Equal(5L, paramVal.AsLong());
+    }
+
+    [Fact]
+    public void FileIndexLabelCoercion()
+    {
+        var msg = JsonSerializer.Serialize(EntityType.Spectrum);
+        Assert.Equal("\"spectrum\"", msg);
+
+        msg = JsonSerializer.Serialize(new EntityType(EntityTypeTag.Other, "foobar"));
+        Assert.Equal("\"foobar\"", msg);
+
+        var inst = JsonSerializer.Deserialize<EntityType>("\"Spectrum\"");
+        Assert.Equal(EntityType.Spectrum, inst);
+
+        inst = JsonSerializer.Deserialize<EntityType>("\"Foobar\"");
+        Assert.Equal(new EntityType(EntityTypeTag.Other, "foobar"), inst);
+
+        msg = JsonSerializer.Serialize(DataKind.Metadata);
+        Assert.Equal("\"metadata\"", msg);
+
+        msg = JsonSerializer.Serialize(new DataKind(DataKindTag.Other, "foobar"));
+        Assert.Equal("\"foobar\"", msg);
+
+        var inst2 = JsonSerializer.Deserialize<DataKind>("\"Metadata\"");
+        Assert.Equal(DataKind.Metadata, inst2);
+
+        inst2 = JsonSerializer.Deserialize<DataKind>("\"Foobar\"");
+        Assert.Equal(new DataKind(DataKindTag.Other, "foobar"), inst2);
     }
 }

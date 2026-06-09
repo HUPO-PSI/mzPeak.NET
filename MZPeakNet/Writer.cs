@@ -3,6 +3,7 @@ namespace MZPeak.Writer;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Apache.Arrow;
 using Microsoft.Extensions.Logging;
 using MZPeak.Compute;
@@ -136,11 +137,12 @@ public class MZPeakWriter : IDisposable
     public List<DataProcessingMethod> DataProcessingMethods { get => MzPeakMetadata.DataProcessingMethods; set => MzPeakMetadata.DataProcessingMethods = value; }
     /// <summary>Gets or sets the run-level metadata.</summary>
     public MSRun Run { get => MzPeakMetadata.Run; set => MzPeakMetadata.Run = value; }
+    public List<ScanSettings> ScanSettings { get => MzPeakMetadata.ScanSettings; set => MzPeakMetadata.ScanSettings = value; }
 
     protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)
     {
         var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
-        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 0);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
@@ -148,7 +150,7 @@ public class MZPeakWriter : IDisposable
     protected static ArrayIndex DefaultChromatogramArrayIndex(bool useChunked = false)
     {
         var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Chromatogram) : ArrayIndexBuilder.PointBuilder(BufferContext.Chromatogram);
-        builder.Add(ArrayType.TimeArray, BinaryDataType.Float64, Unit.Minute, 1);
+        builder.Add(ArrayType.TimeArray, BinaryDataType.Float64, Unit.Minute, 0);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
@@ -156,7 +158,7 @@ public class MZPeakWriter : IDisposable
     protected static ArrayIndex DefaultWavelengthSpectrumArrayIndex(bool useChunked = false)
     {
         var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.WavelengthSpectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.WavelengthSpectrum);
-        builder.Add(ArrayType.WavelengthArray, BinaryDataType.Float32, Unit.Nanometer, 1);
+        builder.Add(ArrayType.WavelengthArray, BinaryDataType.Float32, Unit.Nanometer, 0);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
@@ -726,10 +728,12 @@ public class MZPeakWriter : IDisposable
     public void AddScan(
         ulong sourceIndex,
         uint? instrumentConfigurationRef,
-        List<Param> scanParams,
+        List<Param>? scanParams=null,
         double? ionMobility = null,
         string? ionMobilityType = null,
-        List<List<Param>>? scanWindows = null
+        List<List<Param>>? scanWindows = null,
+        ulong? scanIndex = null,
+        string? spectrumReference = null
     )
     {
         SpectrumMetadata.AppendScan(
@@ -737,6 +741,8 @@ public class MZPeakWriter : IDisposable
             instrumentConfigurationRef,
             ionMobility,
             ionMobilityType,
+            scanIndex,
+            spectrumReference,
             scanParams,
             scanWindows
         );
@@ -884,10 +890,12 @@ public class MZPeakWriter : IDisposable
     public void AddWavelengthScan(
         ulong sourceIndex,
         uint? instrumentConfigurationRef,
-        List<Param> scanParams,
+        List<Param>? scanParams = null,
         double? ionMobility = null,
         string? ionMobilityType = null,
-        List<List<Param>>? scanWindows = null
+        List<List<Param>>? scanWindows = null,
+        ulong? scanIndex = null,
+        string? spectrumReference = null
     )
     {
         if (WavelengthSpectrumMetadata == null)
@@ -897,11 +905,12 @@ public class MZPeakWriter : IDisposable
             instrumentConfigurationRef,
             ionMobility,
             ionMobilityType,
+            scanIndex,
+            spectrumReference,
             scanParams,
             scanWindows
         );
     }
-
 
     /// <summary>Writes spectrum metadata to the archive.</summary>
     public void WriteSpectrumMetadata()
@@ -925,6 +934,7 @@ public class MZPeakWriter : IDisposable
             .DisableDictionary("selected_ion.precursor_index")
             .Encoding("spectrum.index", ParquetSharp.Encoding.DeltaBinaryPacked)
             .Encoding("scan.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("scan.scan_index", ParquetSharp.Encoding.DeltaBinaryPacked)
             .Encoding("precursor.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
             .Encoding("precursor.precursor_index", ParquetSharp.Encoding.DeltaBinaryPacked)
             .Encoding("selected_ion.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
@@ -994,7 +1004,10 @@ public class MZPeakWriter : IDisposable
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
-            .EnableWritePageIndex();
+            .EnableWritePageIndex()
+            .Encoding("spectrum.index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("scan.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("scan.scan_index", ParquetSharp.Encoding.DeltaBinaryPacked);
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
         var meta = PrepareRunLevelMetadataDictionary();
@@ -1096,9 +1109,43 @@ public class MZPeakWriter : IDisposable
         return new ParquetSharp.IO.ManagedOutputStream(StartEntry(entry));
     }
 
+    public void WriteFileMetadataToIndex()
+    {
+        Storage.FileIndex().Metadata.Add(
+            "file_description",
+            JsonSerializer.SerializeToNode(FileDescription)
+        );
+        Storage.FileIndex().Metadata.Add(
+            "instrument_configuration_list",
+            JsonSerializer.SerializeToNode(InstrumentConfigurations)
+        );
+        Storage.FileIndex().Metadata.Add(
+            "data_processing_method_list",
+            JsonSerializer.SerializeToNode(DataProcessingMethods)
+        );
+        Storage.FileIndex().Metadata.Add(
+            "software_list",
+            JsonSerializer.SerializeToNode(Softwares)
+        );
+
+        Storage.FileIndex().Metadata.Add(
+            "sample_list",
+            JsonSerializer.SerializeToNode(Samples)
+        );
+        Storage.FileIndex().Metadata.Add(
+            "scan_settings_list",
+            JsonSerializer.SerializeToNode(ScanSettings)
+        );
+        Storage.FileIndex().Metadata.Add(
+            "run",
+            JsonSerializer.SerializeToNode(Run)
+        );
+    }
+
     /// <summary>Closes the writer and finalizes the archive.</summary>
     public void Close()
     {
+        WriteFileMetadataToIndex();
         FlushStandardContent();
         Storage.Dispose();
     }
