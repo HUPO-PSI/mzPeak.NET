@@ -107,7 +107,7 @@ public class ActivationBuilder : ParamVisitorCollection, IArrowBuilder<List<Para
     }
 }
 
-public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param>, List<Param>)>
+public class PrecursorBuilder : IArrowBuilder<(ulong, ulong?, string?, List<Param>, List<Param>)>
 {
     UInt64Array.Builder SourceIndex;
     UInt64Array.Builder PrecursorIndex;
@@ -126,12 +126,12 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong, string?, List<Param
         Activation = new();
     }
 
-    public void Append((ulong, ulong, string?, List<Param>, List<Param>) value)
+    public void Append((ulong, ulong?, string?, List<Param>, List<Param>) value)
     {
         Append(value.Item1, value.Item2, value.Item3, value.Item4, value.Item5);
     }
 
-    public void Append(ulong sourceIndex, ulong precursorIndex, string? precursorId, List<Param> isolationWindowParams, List<Param> activationParams)
+    public void Append(ulong sourceIndex, ulong? precursorIndex, string? precursorId, List<Param> isolationWindowParams, List<Param> activationParams)
     {
         SourceIndex.Append(sourceIndex);
         PrecursorIndex.Append(precursorIndex);
@@ -614,7 +614,7 @@ public class ScanWindowListBuilder : IArrowBuilder<List<List<Param>>>
     }
 }
 
-public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, ulong, List<Param>)>
+public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, ulong?, List<Param>)>
 {
     UInt64Array.Builder SourceIndex;
     UInt64Array.Builder PrecursorIndex;
@@ -636,12 +636,12 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         IonMobilityType = new();
     }
 
-    public void Append((ulong, ulong, List<Param>) value)
+    public void Append((ulong, ulong?, List<Param>) value)
     {
         Append(value.Item1, value.Item2, null, null, value.Item3);
     }
 
-    public void Append(ulong sourceIndex, ulong precursorIndex, double? ionMobility, string? ionMobilityType, List<Param> parameters)
+    public void Append(ulong sourceIndex, ulong? precursorIndex, double? ionMobility, string? ionMobilityType, List<Param> parameters)
     {
         SourceIndex.Append(sourceIndex);
         PrecursorIndex.Append(precursorIndex);

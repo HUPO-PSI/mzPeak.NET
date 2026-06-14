@@ -756,7 +756,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="activationParams">Activation parameters.</param>
     public void AddPrecursor(
         ulong sourceIndex,
-        ulong precursorIndex,
+        ulong? precursorIndex,
         string? precursorId,
         List<Param> isolationWindowParams,
         List<Param> activationParams
@@ -779,7 +779,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="ionMobilityType">Optional ion mobility type CURIE.</param>
     public void AddSelectedIon(
         ulong sourceIndex,
-        ulong precursorIndex,
+        ulong? precursorIndex,
         List<Param> selectedIonParams,
         double? ionMobility = null,
         string? ionMobilityType = null
@@ -817,7 +817,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="activationParams">Activation parameters.</param>
     public void AddChromatogramPrecursor(
         ulong sourceIndex,
-        ulong precursorIndex,
+        ulong? precursorIndex,
         string? precursorId,
         List<Param> isolationWindowParams,
         List<Param> activationParams
@@ -840,7 +840,7 @@ public class MZPeakWriter : IDisposable
     /// <param name="ionMobilityType">Optional ion mobility type CURIE.</param>
     public void AddChromatogramSelectedIon(
         ulong sourceIndex,
-        ulong precursorIndex,
+        ulong? precursorIndex,
         List<Param> selectedIonParams,
         double? ionMobility = null,
         string? ionMobilityType = null
@@ -1112,32 +1112,41 @@ public class MZPeakWriter : IDisposable
     public void WriteFileMetadataToIndex()
     {
         Storage.FileIndex().Metadata.Add(
-            "file_description",
+            MZPeakConstants.VERSION_KEY,
+            MZPeakConstants.MZPEAK_VERSION
+        );
+        List<ControlledVocabularyEntry> cvList = [ControlledVocabularyEntry.PSIMS, ControlledVocabularyEntry.Unit];
+        Storage.FileIndex().Metadata.Add(
+            MZPeakConstants.CV_LIST_KEY,
+            JsonSerializer.SerializeToNode(cvList)
+        );
+        Storage.FileIndex().Metadata.Add(
+            MZPeakConstants.FILE_DESCRIPTION_KEY,
             JsonSerializer.SerializeToNode(FileDescription)
         );
         Storage.FileIndex().Metadata.Add(
-            "instrument_configuration_list",
+            MZPeakConstants.INSTRUMENT_CONFIGURATION_LIST_KEY,
             JsonSerializer.SerializeToNode(InstrumentConfigurations)
         );
         Storage.FileIndex().Metadata.Add(
-            "data_processing_method_list",
+            MZPeakConstants.DATA_PROCESSING_METHOD_LIST_KEY,
             JsonSerializer.SerializeToNode(DataProcessingMethods)
         );
         Storage.FileIndex().Metadata.Add(
-            "software_list",
+            MZPeakConstants.SOFTWARE_LIST_KEY,
             JsonSerializer.SerializeToNode(Softwares)
         );
 
         Storage.FileIndex().Metadata.Add(
-            "sample_list",
+            MZPeakConstants.SAMPLE_LIST_KEY,
             JsonSerializer.SerializeToNode(Samples)
         );
         Storage.FileIndex().Metadata.Add(
-            "scan_settings_list",
+            MZPeakConstants.SCAN_SETTINGS_LIST_KEY,
             JsonSerializer.SerializeToNode(ScanSettings)
         );
         Storage.FileIndex().Metadata.Add(
-            "run",
+            MZPeakConstants.MS_RUN_KEY,
             JsonSerializer.SerializeToNode(Run)
         );
     }

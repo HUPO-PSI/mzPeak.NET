@@ -2581,3 +2581,88 @@ public static class ParamListMethods
         return list.Find(p => p.AccessionCURIE == curie);
     }
 }
+
+
+public class ControlledVocabularyEntry : IEquatable<ControlledVocabularyEntry>
+{
+
+    public static List<ControlledVocabularyEntry> ControlledVocabularyEntries = [
+        PSIMS,
+        Unit,
+    ];
+
+    public static ControlledVocabularyEntry PSIMS => new(
+        "MS",
+        "Proteomics Standards Initiative Mass Spectrometry Ontology",
+        "http://purl.obolibrary.org/obo/ms/4.1.249/psi-ms.obo",
+        "4.1.249"
+    );
+
+    public static ControlledVocabularyEntry Unit => new(
+        "UO",
+        "Units of measurement ontology",
+        "http://purl.obolibrary.org/obo/uo/releases/2026-01-16/uo.obo",
+        "2026-01-16"
+    );
+
+    public static ControlledVocabularyEntry EFO => new(
+        "EFO",
+        "Experimental Factor Ontology",
+        "http://www.ebi.ac.uk/efo/releases/v3.90.0/efo.obo",
+        "v3.90.0"
+    );
+
+    public static ControlledVocabularyEntry BFO => new(
+        "BFO",
+        "Basic Formal Ontology",
+        "http://purl.obolibrary.org/obo/bfo/2019-08-26/bfo.obo",
+        "2019-08-26"
+    );
+
+    public static ControlledVocabularyEntry BTO => new(
+        "BTO",
+        "The BRENDA Tissue Ontology (BTO)",
+        "http://purl.obolibrary.org/obo/bto/releases/2021-10-26/bto.owl",
+        "2021-10-26"
+    );
+
+    public static ControlledVocabularyEntry PRIDE => new(
+        "PRIDE",
+        "Proteomics Identification Database Ontology",
+        "http://purl.obolibrary.org/obo/pride/releases/2026-06-01/pride.obo",
+        "2026-06-01"
+    );
+
+    public static ControlledVocabularyEntry MSImaging => new(
+            "IMS",
+            "Imaging Mass Spectrometry Ontology",
+            "https://raw.githubusercontent.com/imzML/imzML/refs/heads/master/imagingMS.obo",
+            "1.1.0"
+        );
+
+    public ControlledVocabularyEntry(string id, string name, string uri, string? version=null)
+    {
+        Id = id;
+        Name = name;
+        URI = uri;
+        Version = version;
+    }
+
+    [JsonPropertyName("id")]
+    public string Id { get; set; }
+
+    [JsonPropertyName("full_name")]
+    public string Name { get; set; }
+
+    [JsonPropertyName("uri")]
+    public string URI { get; set; }
+
+    [JsonPropertyName("version")]
+    public string? Version { get; set; }
+
+    public bool Equals(ControlledVocabularyEntry? other)
+    {
+        if (other == null) return false;
+        return other.Id == Id && other.Name == Name && other.URI == URI && other.Version == Version;
+    }
+}

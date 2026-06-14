@@ -43,7 +43,7 @@ public class ChromatogramMetadataBuilder
     /// </summary>
     public void AppendPrecursor(
         ulong sourceIndex,
-        ulong precursorIndex,
+        ulong? precursorIndex,
         string? precursorId,
         List<Param> isolationWindowParams,
         List<Param> activationParams
@@ -59,7 +59,7 @@ public class ChromatogramMetadataBuilder
     /// </summary>
     public void AppendSelectedIon(
         ulong sourceIndex,
-        ulong precursorIndex,
+        ulong? precursorIndex,
         double? ionMobility,
         string? ionMobilityType,
         List<Param> selectedIonParams

@@ -93,26 +93,53 @@ public record SourceFile
 /// <summary>
 /// The type of instrument component in the mass spectrometer.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
+[JsonConverter(typeof(ComponentTypeJsonConverter))]
 public enum ComponentType
 {
     /// <summary>
     /// The ion source component.
     /// </summary>
-    [JsonStringEnumMemberName("ionsource")]
     IonSouce,
 
     /// <summary>
     /// The mass analyzer component.
     /// </summary>
-    [JsonStringEnumMemberName("analyzer")]
     Analyzer,
 
     /// <summary>
     /// The detector component.
     /// </summary>
-    [JsonStringEnumMemberName("detector")]
     Detector,
+}
+
+class ComponentTypeJsonConverter : JsonConverter<ComponentType>
+{
+    public override ComponentType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var s = reader.GetString();
+        if (s == null) throw new JsonException("Null string");
+        s = s.ToLower();
+        return s switch
+        {
+            "ionsource" => ComponentType.IonSouce,
+            "analyzer" => ComponentType.Analyzer,
+            "detector" => ComponentType.Detector,
+            _ => throw new NotImplementedException($"{s} not a recognized ComponentType")
+        };
+
+    }
+
+    public override void Write(Utf8JsonWriter writer, ComponentType value, JsonSerializerOptions options)
+    {
+        var text = value switch
+        {
+            ComponentType.IonSouce => "ionsource",
+            ComponentType.Analyzer=> "analyzer",
+            ComponentType.Detector=> "detector",
+            _ => throw new NotImplementedException()
+        };
+        writer.WriteStringValue(text);
+    }
 }
 
 

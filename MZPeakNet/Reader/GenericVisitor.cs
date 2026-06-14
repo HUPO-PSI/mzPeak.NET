@@ -34,7 +34,7 @@ public interface IHasSourceIndex
 
 public interface IHasPrecursorIndex
 {
-    public ulong PrecursorIndex { get; set; }
+    public ulong? PrecursorIndex { get; set; }
 }
 
 public record SpectrumInfo : IHasParameters
@@ -129,7 +129,7 @@ public record SpectrumInfo : IHasParameters
 
     public override string ToString()
     {
-        return "SpectrumInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
+        return "SpectrumInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true });
     }
 }
 
@@ -190,19 +190,19 @@ public record ScanInfo : HasIonMobility, IHasSourceIndex, IHasParameters
 
     public override string ToString()
     {
-        return "ScanInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
+        return "ScanInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true });
     }
 }
 
 public record PrecursorInfo : IHasSourceIndex, IHasPrecursorIndex
 {
     public ulong SourceIndex { get; set; }
-    public ulong PrecursorIndex { get; set; }
+    public ulong? PrecursorIndex { get; set; }
     public string? PrecursorId { get; set; }
     public List<Param> IsolationWindowParameters { get; set; }
     public List<Param> ActivationParameters { get; set; }
 
-    public PrecursorInfo(ulong sourceIndex, ulong precursorIndex, string? precursorId = null, List<Param>? isolationWindowParameters = null, List<Param>? activationParameters = null)
+    public PrecursorInfo(ulong sourceIndex, ulong? precursorIndex, string? precursorId = null, List<Param>? isolationWindowParameters = null, List<Param>? activationParameters = null)
     {
         SourceIndex = sourceIndex;
         PrecursorIndex = precursorIndex;
@@ -213,17 +213,17 @@ public record PrecursorInfo : IHasSourceIndex, IHasPrecursorIndex
 
     public override string ToString()
     {
-        return "PrecursorInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
+        return "PrecursorInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true });
     }
 }
 
 public record SelectedIonInfo : HasIonMobility, IHasSourceIndex, IHasParameters, IHasPrecursorIndex
 {
     public ulong SourceIndex { get; set; }
-    public ulong PrecursorIndex { get; set; }
+    public ulong? PrecursorIndex { get; set; }
     public List<Param> Parameters { get; set; }
 
-    public SelectedIonInfo(ulong sourceIndex, ulong precursorIndex, double? ionMobility = null, string? ionMobilityTypeCURIE = null, List<Param>? parameters = null)
+    public SelectedIonInfo(ulong sourceIndex, ulong? precursorIndex, double? ionMobility = null, string? ionMobilityTypeCURIE = null, List<Param>? parameters = null)
     {
         SourceIndex = sourceIndex;
         PrecursorIndex = precursorIndex;
@@ -234,7 +234,7 @@ public record SelectedIonInfo : HasIonMobility, IHasSourceIndex, IHasParameters,
 
     public override string ToString()
     {
-        return "SelectedIonInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
+        return "SelectedIonInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true });
     }
 }
 
@@ -271,7 +271,7 @@ public record ChromatogramInfo : IHasParameters
 
     public override string ToString()
     {
-        return "ChromatogramInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2 });
+        return "ChromatogramInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true });
     }
 
     public long? DataPointCount

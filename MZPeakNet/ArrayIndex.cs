@@ -1,16 +1,16 @@
 namespace MZPeak.Metadata;
 
-using System.Text.RegularExpressions;
-using System.Text.Json.Serialization;
-
-using Apache.Arrow.Types;
 using Apache.Arrow;
-
+using Apache.Arrow.Types;
+using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Reader.Visitors;
-using System.Text.Json;
-using MZPeak.Compute;
+using MZPeak.Storage;
+using System.Drawing;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 /// <summary>
 /// Specifies the layout format for data buffers in the storage layer.
@@ -18,19 +18,12 @@ using System.Text;
 [JsonConverter(typeof(BufferFormatConverter))]
 public enum BufferFormat
 {
-    [JsonStringEnumMemberName("point")]
     Point,
-    [JsonStringEnumMemberName("chunk_values")]
     ChunkValues,
-    [JsonStringEnumMemberName("chunk_start")]
     ChunkStart,
-    [JsonStringEnumMemberName("chunk_end")]
     ChunkEnd,
-    [JsonStringEnumMemberName("chunk_encoding")]
     ChunkEncoding,
-    [JsonStringEnumMemberName("chunk_secondary")]
     ChunkSecondary,
-    [JsonStringEnumMemberName("chunk_transform")]
     ChunkTransform,
 }
 
@@ -104,28 +97,81 @@ public class BufferFormatConverter : JsonConverter<BufferFormat>
 /// <summary>
 /// Indicates whether a buffer is the primary or secondary representation of an array type.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
+[JsonConverter(typeof(BufferPriorityJsonConverter))]
 public enum BufferPriority
 {
-    [JsonStringEnumMemberName("primary")]
     Primary,
-    [JsonStringEnumMemberName("secondary")]
     Secondary
+}
+
+class BufferPriorityJsonConverter : JsonConverter<BufferPriority>
+{
+    public override BufferPriority Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var s = reader.GetString();
+        if (s == null) throw new JsonException("Null string");
+        s = s.ToLower();
+        return s switch
+        {
+            "primary" => BufferPriority.Primary,
+            "secondary" => BufferPriority.Secondary,
+            _ => throw new NotImplementedException($"{s} not a recognized BufferPriority")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, BufferPriority value, JsonSerializerOptions options)
+    {
+        var text = value switch
+        {
+            BufferPriority.Primary => "primary",
+            BufferPriority.Secondary => "secondary",
+            _ => throw new NotImplementedException()
+        };
+        writer.WriteStringValue(text);
+    }
 }
 
 /// <summary>
 /// The data context that a buffer belongs to (spectrum or chromatogram).
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
+[JsonConverter(typeof(BufferContextJsonConverter))]
 public enum BufferContext
 {
-    [JsonStringEnumMemberName("spectrum")]
     Spectrum,
-    [JsonStringEnumMemberName("chromatogram")]
     Chromatogram,
-    [JsonStringEnumMemberName("wavelength_spectrum")]
     WavelengthSpectrum,
 }
+
+class BufferContextJsonConverter : JsonConverter<BufferContext>
+{
+    public override BufferContext Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var s = reader.GetString();
+        if (s == null) throw new JsonException("Null string");
+        s = s.ToLower();
+        return s switch
+        {
+            "spectrum" => BufferContext.Spectrum,
+            "chromatogram" => BufferContext.Chromatogram,
+            "wavelength_spectrum" => BufferContext.WavelengthSpectrum,
+            _ => throw new NotImplementedException($"{s} not a recognized BufferContext")
+        };
+
+    }
+
+    public override void Write(Utf8JsonWriter writer, BufferContext value, JsonSerializerOptions options)
+    {
+        var text = value switch
+        {
+            BufferContext.Spectrum => "spectrum",
+            BufferContext.Chromatogram => "chromatogram",
+            BufferContext.WavelengthSpectrum => "wavelength_spectrum",
+            _ => throw new NotImplementedException()
+        };
+        writer.WriteStringValue(text);
+    }
+}
+
 
 public static class BufferContexteMethods
 {

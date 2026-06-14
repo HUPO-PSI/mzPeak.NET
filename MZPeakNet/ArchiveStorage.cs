@@ -10,20 +10,17 @@ using ParquetSharp.Encryption;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
-using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 using ParquetSharp;
 using ParquetSharp.Arrow;
+using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 
-[JsonConverter(typeof(JsonStringEnumConverter))]
+
+
 public enum EntityTypeTag
 {
-    [JsonStringEnumMemberName("spectrum")]
     Spectrum,
-    [JsonStringEnumMemberName("chromatogram")]
     Chromatogram,
-    [JsonStringEnumMemberName("wavelength spectrum")]
     WavelengthSpectrum,
-    [JsonStringEnumMemberName("other")]
     Other
 }
 
@@ -67,26 +64,26 @@ class EntityTypeJsonConverter : JsonConverter<EntityType>
             writer.WriteStringValue(value.Value);
         } else
         {
-            JsonConverter<EntityTypeTag> conv = (JsonConverter<EntityTypeTag>)options.GetConverter(typeof(EntityTypeTag));
-            conv.Write(writer, value.Tag, options);
+            var text = value.Tag switch
+            {
+                EntityTypeTag.Spectrum => "spectrum",
+                EntityTypeTag.Chromatogram => "chromatogram",
+                EntityTypeTag.WavelengthSpectrum => "wavelength spectrum",
+                _ => throw new NotImplementedException()
+            };
+            writer.WriteStringValue(text);
         }
 
     }
 }
 
 
-[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum DataKindTag
 {
-    [JsonStringEnumMemberName("data arrays")]
     DataArrays,
-    [JsonStringEnumMemberName("metadata")]
     Metadata,
-    [JsonStringEnumMemberName("peaks")]
     Peaks,
-    [JsonStringEnumMemberName("other")]
     Other,
-    [JsonStringEnumMemberName("proprietary")]
     Proprietary
 }
 
@@ -135,8 +132,15 @@ class DataKindTJsonConverter : JsonConverter<DataKind>
         }
         else
         {
-            JsonConverter<DataKindTag> conv = (JsonConverter<DataKindTag>)options.GetConverter(typeof(DataKindTag));
-            conv.Write(writer, value.Tag, options);
+            var text = value.Tag switch
+            {
+                DataKindTag.DataArrays => "data arrays",
+                DataKindTag.Metadata => "metadata",
+                DataKindTag.Peaks => "peaks",
+                DataKindTag.Proprietary => "proprietary",
+                _ => throw new NotImplementedException()
+            };
+            writer.WriteStringValue(text);
         }
 
     }
@@ -788,7 +792,7 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
         var path = System.IO.Path.Join(Path, FileIndex.FILE_NAME);
         using (var stream = File.Create(path))
         {
-            var payload = JsonSerializer.Serialize(FileIndex, options: new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2, IndentCharacter = ' ', NewLine = "\n" });
+            var payload = JsonSerializer.Serialize(FileIndex, options: new JsonSerializerOptions() { WriteIndented = true });
             var bytesOf = new UTF8Encoding().GetBytes(payload);
             stream.Write(bytesOf);
         }
@@ -848,7 +852,7 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         using (var stream = entry.Open())
         {
             IMZPeakArchiveWriter.Logger?.LogDebug("Writing file index");
-            var payload = JsonSerializer.Serialize(FileIndex, options: new JsonSerializerOptions() { WriteIndented = true, IndentSize = 2, IndentCharacter = ' ', NewLine = "\n" });
+            var payload = JsonSerializer.Serialize(FileIndex, options: new JsonSerializerOptions() { WriteIndented = true });
             var bytesOf = new UTF8Encoding().GetBytes(payload);
             stream.Write(bytesOf);
         }
