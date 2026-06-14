@@ -19,8 +19,8 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../MZPeakNet/MZPeakNet.csproj" />
-    <ProjectReference Include="../MZPeakNet.Thermo/MZPeakNet.Thermo.csproj"/>
-    <ProjectReference Include="../MZPeakNet.AppTest/MZPeakNet.AppTest.csproj"/>
+    <ProjectReference Include="../MZPeakNet.Thermo/MZPeakNet.Thermo.csproj" />
+    <ProjectReference Include="../MZPeakNet.AppTest/MZPeakNet.AppTest.csproj" />
   </ItemGroup>
 
   <ItemGroup>
