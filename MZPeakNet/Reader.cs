@@ -13,7 +13,7 @@ namespace MZPeak.Reader;
 /// Combines metadata and data array readers for unified access.
 /// </summary>
 /// <typeparam name="T">The metadata type (e.g., SpectrumDescription).</typeparam>
-public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
+public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArrayIndex
 {
     MetadataReaderBase<T> MetadataReader;
     DataArraysReader DataReader;
@@ -86,6 +86,7 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
                     if (nextValue == null) throw new InvalidOperationException($"Data iterator seeked but did not find a value");
                     var (dataIdx, data) = nextValue.Value;
                     if (dataIdx != i) throw new InvalidOperationException($"Data iterator is out of sync: {dataIdx} != {i}");
+                    meta.ArrayIndex = DataReader.ArrayIndex;
                     yield return (meta, data);
                 }
                 else
@@ -102,15 +103,17 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)>
                     if (nextValue == null) throw new InvalidOperationException($"Peak iterator seeked but did not find a value");
                     var (dataIdx, data) = nextValue.Value;
                     if (dataIdx != i) throw new InvalidOperationException($"Peak iterator is out of sync: {dataIdx} != {i}");
+                    meta.ArrayIndex = PeakReader?.ArrayIndex;
                     yield return (meta, data);
                 }
                 else
                 {
-                    throw new InvalidOperationException($"Peak iterator is out of sync with records: {i} expected {peakCount}, found nothing");
+                    throw new InvalidOperationException($"Peak iterator is out of sync with records: {i} expected {peakCount}, found nothing {await peakIter.PeekIndex()}");
                 }
             }
             else
             {
+                meta.ArrayIndex = DataReader.ArrayIndex;
                 yield return (meta, DataReader.EmptyArrays());
             }
         }
@@ -307,7 +310,7 @@ public class MzPeakReader
         var dataReader = OpenSpectrumDataReader();
         if (dataReader != null && spectrumMetadata != null)
         {
-            await foreach (var item in new DataFacet<SpectrumDescription>(spectrumMetadata, dataReader).EnumerateAsync())
+            await foreach (var item in new DataFacet<SpectrumDescription>(spectrumMetadata, dataReader, OpenSpectrumPeaksDataReader()).EnumerateAsync())
                 yield return item;
         }
     }

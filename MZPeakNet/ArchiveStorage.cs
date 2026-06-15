@@ -523,10 +523,35 @@ public class StreamSegment : Stream
 
 public abstract class BaseZipArchive : IMZPeakArchiveStorage
 {
+    static int ZIP_LEADER = 0x04034b50;
+
     protected List<string> fileNames;
     protected FileIndex fileIndex;
 
     public DecryptionConfigurations DecryptionConfigurations { get; set; }
+
+    public static bool IsZipArchiveHeader(byte[] data)
+    {
+        if (data == null || data.Length < 4) return false;
+        return BitConverter.ToInt32(data, 0) == ZIP_LEADER;
+    }
+
+    public static bool IsStreamZip(Stream stream)
+    {
+        long? pos = null;
+        if (stream.CanSeek)
+        {
+            pos = stream.Position;
+        }
+
+        byte[] buf = [0, 0, 0, 0];
+        stream.ReadExactly(buf);
+        if (stream.CanSeek && pos != null)
+        {
+            stream.Position = pos.Value;
+        }
+        return IsZipArchiveHeader(buf);
+    }
 
     public BaseZipArchive(DecryptionConfigurations? decryptionConfigurations = null)
     {

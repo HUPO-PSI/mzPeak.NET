@@ -179,7 +179,7 @@ public abstract class MetadataReaderBase<T>
     /// <returns>The number of discrete peaks, or <c>null</c> if no peaks were stored</returns>
     public ulong? NumberOfPeaks(ulong index)
     {
-        if (DataPointCounts.Count == 0)
+        if (PeakCounts.Count == 0)
         {
             if (MainTable == null) return null;
             loadCountFrom(MainTable, SpectrumProperties.NumberOfPeaks, PeakCounts);

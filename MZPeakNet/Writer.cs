@@ -430,6 +430,7 @@ public class MZPeakWriter : IDisposable
     protected void StorePeakFileFromTemporaryFile()
     {
         if (PeakWriter == null || PeakStream == null) throw new InvalidOperationException("Peaks are not written to a temporary file");
+        FlushSpectrumPeakData();
         CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
         var outStream = Storage.OpenStream(entry);

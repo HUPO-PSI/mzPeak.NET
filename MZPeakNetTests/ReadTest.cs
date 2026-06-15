@@ -96,6 +96,7 @@ public class ArchiveTest
             foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
             {
                 Assert.Equal(0, arr.NullCount);
+                Assert.NotEqual(0, arr.Length);
             }
         }
     }
@@ -182,12 +183,14 @@ public class ArchiveTest
         {
             if (pair.Item1 > 10) break;
             Assert.Equal(profileSpectrumIdx[(int)i++], pair.Item1);
+            Assert.NotEqual(0, pair.Item2.Length);
         }
         await iter.Seek(21);
         i = 6;
         await foreach (var pair in iter)
         {
             Assert.Equal(profileSpectrumIdx[(int)i++], pair.Item1);
+            Assert.NotEqual(0, pair.Item2.Length);
         }
         Assert.Equal(profileSpectrumIdx.Count, (int)i);
     }

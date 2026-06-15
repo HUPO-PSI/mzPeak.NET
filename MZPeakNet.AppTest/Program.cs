@@ -13,6 +13,7 @@ using ParquetSharp;
 using ThermoFisher.CommonCore.Data;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Writer.Data;
+using Apache.Arrow.Types;
 
 
 namespace MZPeakCliConverter;
@@ -525,8 +526,9 @@ public class ReadFileTask : CLITask
             if (i % 1000 == 0) Logger?.LogInformation($"{i} spectra read...");
             isProfile += descr.IsProfile ? 1 : 0;
             isCentroid += descr.IsCentroid ? 1 : 0;
+            // var names = ((StructType)spec.Data.DataType).Fields.Select(f => f.Name);
+            // Logger?.LogDebug($"{i}\t{string.Join(',', names)}\t{string.Join(',', names.Select(name => descr.ArrayIndex?.ArrayTypeFromName(name)?.ArrayName))}\t{spec.Length}");
         }
-
         Logger?.LogInformation($"{isProfile} profile spectra, {isCentroid} centroid spectra");
     }
 }

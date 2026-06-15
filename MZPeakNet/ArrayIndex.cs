@@ -401,11 +401,14 @@ public class ArrayIndex
     [JsonPropertyName("entries")]
     public List<ArrayIndexEntry> Entries { get; set; }
 
+    protected Dictionary<string, ArrayIndexEntry> NameCache;
+
     /// <summary>Creates an empty array index.</summary>
     public ArrayIndex()
     {
         Prefix = "?";
         Entries = new();
+        NameCache = new();
     }
 
     /// <summary>Creates an array index with the specified prefix and entries.</summary>
@@ -415,6 +418,7 @@ public class ArrayIndex
     {
         Prefix = prefix;
         Entries = entries;
+        NameCache = new();
     }
 
     public bool HasArrayType(ArrayType arrayType)
@@ -425,6 +429,28 @@ public class ArrayIndex
     public IEnumerable<ArrayIndexEntry> EntriesFor(ArrayType arrayType)
     {
         return Entries.Where(a => a.ArrayTypeCURIE == arrayType.CURIE());
+    }
+
+    public ArrayIndexEntry? ArrayTypeFromName(string name)
+    {
+        if (NameCache.TryGetValue(name, out ArrayIndexEntry? tmpEntry))
+        {
+            return tmpEntry;
+        }
+        foreach (var entry in Entries)
+        {
+            var entryName = entry.Path.Split(".").Last();
+            if (entry.BufferFormat == BufferFormat.ChunkValues)
+            {
+                entryName = entryName.Replace("_chunk_values", "");
+            }
+            if (entryName == name)
+            {
+                NameCache[name] = entry;
+                return entry;
+            }
+        }
+        return null;
     }
 
     public BufferFormat? InferBufferFormat()

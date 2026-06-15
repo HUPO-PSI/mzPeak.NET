@@ -325,12 +325,19 @@ public record ChromatogramInfo : IHasParameters
 
 }
 
-public record SpectrumDescription
+public interface HasArrayIndex
+{
+    public ArrayIndex? ArrayIndex { get; set; }
+}
+
+public record SpectrumDescription : HasArrayIndex
 {
     SpectrumInfo SpectrumInfo;
     public List<ScanInfo> Scans;
     public List<PrecursorInfo> Precursors;
     public List<SelectedIonInfo> SelectedIons;
+
+    public ArrayIndex? ArrayIndex { get; set; }
 
     public string Id => SpectrumInfo.Id;
     public ulong Index => SpectrumInfo.Index;
@@ -356,20 +363,23 @@ public record SpectrumDescription
         set => SpectrumInfo.PeakCount = value;
     }
 
-    public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
+    public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons, ArrayIndex? arrayIndex=null)
     {
         SpectrumInfo = spectrumInfo;
         Scans = scans;
         Precursors = precursors;
         SelectedIons = selectedIons;
+        ArrayIndex = arrayIndex;
     }
 }
 
-public record ChromatogramDescription
+public record ChromatogramDescription : HasArrayIndex
 {
     ChromatogramInfo ChromatogramInfo;
     public List<PrecursorInfo> Precursors;
     public List<SelectedIonInfo> SelectedIons;
+
+    public ArrayIndex? ArrayIndex { get; set; }
 
     public string Id => ChromatogramInfo.Id;
     public ulong Index => ChromatogramInfo.Index;

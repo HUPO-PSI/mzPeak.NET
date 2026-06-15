@@ -97,7 +97,7 @@ public class ThermoTranslationTest
     }
 
     [Fact]
-    public void TranslatePoint()
+    public async Task TranslatePoint()
     {
         var job = new MZPeakCliConverter.ThermoTranslateTask(new FileInfo(TestRAWPath), new FileInfo("NUL"), false, false);
         var handle = job.OpenThermoHandle();
@@ -134,10 +134,19 @@ public class ThermoTranslationTest
         Assert.Equal("controllerType=0 controllerNumber=1 scan=1", spec.Id);
         spec = reader.GetSpectrumDescription(47);
         Assert.Equal("controllerType=0 controllerNumber=1 scan=48", spec.Id);
+
+        await foreach(var (descr, arrays) in reader.EnumerateSpectraAsync())
+        {
+            var peaksMatch = descr.PeakCount == arrays.Length;
+            var dpMatch = descr.DataPointCount == arrays.Length;
+            Assert.True(peaksMatch || dpMatch);
+            Assert.True(arrays.Length > 0);
+        }
+
     }
 
     [Fact]
-    public void TranslateChunked()
+    public async Task TranslateChunked()
     {
         var job = new MZPeakCliConverter.ThermoTranslateTask(new FileInfo(TestRAWPath), new FileInfo("NUL"), true, true);
         var handle = job.OpenThermoHandle();
@@ -174,5 +183,13 @@ public class ThermoTranslationTest
         Assert.Equal("controllerType=0 controllerNumber=1 scan=1", spec.Id);
         spec = reader.GetSpectrumDescription(47);
         Assert.Equal("controllerType=0 controllerNumber=1 scan=48", spec.Id);
+
+        await foreach (var (descr, arrays) in reader.EnumerateSpectraAsync())
+        {
+            var peaksMatch = descr.PeakCount == arrays.Length;
+            var dpMatch = descr.DataPointCount == arrays.Length;
+            Assert.True(peaksMatch || dpMatch);
+            Assert.True(arrays.Length > 0);
+        }
     }
 }
