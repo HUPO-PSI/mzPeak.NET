@@ -1115,7 +1115,7 @@ class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<
         NextItem = null;
     }
 
-    public async Task<bool> ReadNextBatch(bool updateIndex = false)
+    public async ValueTask<bool> ReadNextBatch(bool updateIndex = false)
     {
         CurrentBatch = null;
         var batch = await StreamReader.ReadNextRecordBatchAsync(CancellationToken);
@@ -1170,7 +1170,7 @@ class DataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IAsyncEnumerable<
         return Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex).Any((v) => v ?? false);
     }
 
-    async Task<StructArray?> ExtractForCurrentIndex()
+    async ValueTask<StructArray?> ExtractForCurrentIndex()
     {
         if (CurrentBatch == null || CurrentIndex == null) return null;
         var mask = Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex);
@@ -1286,7 +1286,7 @@ public class PeekableDataArraysIter : IAsyncEnumerator<(ulong, StructArray)>, IA
     /// This may trigger I/O and/or consume
     /// </summary>
     /// <returns>The next value or <c>null</c></returns>
-    public async Task<(ulong, StructArray)?> Peek()
+    public async ValueTask<(ulong, StructArray)?> Peek()
     {
         if (Peeked.Count == 0)
             await NextFromInner();

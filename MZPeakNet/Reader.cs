@@ -9,6 +9,14 @@ using ParquetSharp;
 
 namespace MZPeak.Reader;
 
+
+public enum SpectrumDataModalityPreference
+{
+    PreferPeaks,
+    PreferProfiles,
+}
+
+
 /// <summary>
 /// Combines metadata and data array readers for unified access.
 /// </summary>
@@ -18,6 +26,11 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
     MetadataReaderBase<T> MetadataReader;
     DataArraysReader DataReader;
     DataArraysReader? PeakReader;
+
+    /// <summary>
+    /// Whether to prefer loading profile data or centroid data when both are available for spectra
+    /// </summary>
+    public SpectrumDataModalityPreference ModalityPreference {get; set;} = SpectrumDataModalityPreference.PreferProfiles;
 
 
     /// <summary>Creates a data facet combining metadata and data readers.</summary>
@@ -35,7 +48,7 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
 
     /// <summary>Gets the metadata and data arrays for a specific index.</summary>
     /// <param name="index">The entry index.</param>
-    public async Task<(T, StructArray)> Get(ulong index)
+    public async ValueTask<(T, StructArray)> Get(ulong index)
     {
         var meta = MetadataReader.Get(index);
         if (meta == null) throw new IndexOutOfRangeException();
@@ -78,7 +91,8 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
             var meta = metaRecs[(int)i];
             var dpCount = MetadataReader.NumberOfDataPointsFor(i);
             var peakCount = MetadataReader.NumberOfPeaks(i);
-            if (dpCount != null && dpCount > 0)
+
+            if (dpCount != null && dpCount > 0 && (ModalityPreference == SpectrumDataModalityPreference.PreferProfiles || ((peakCount ?? 0) == 0)))
             {
                 if (await dataIter.Seek(i))
                 {
@@ -95,7 +109,7 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
                 }
             }
 
-            else if (peakCount != null && peakCount > 0 && peakIter != null)
+            else if (peakCount != null && peakCount > 0 && peakIter != null && (ModalityPreference == SpectrumDataModalityPreference.PreferPeaks || (dpCount ?? 0) == 0))
             {
                 if (await peakIter.Seek(i))
                 {
@@ -146,6 +160,11 @@ public class MzPeakReader
     DataArraysReaderMeta? chromatogramArraysMeta = null;
     DataArraysReaderMeta? spectrumPeaksArraysMeta = null;
     DataArraysReaderMeta? wavelengthSpectrumArraysMeta = null;
+
+    /// <summary>
+    /// Whether to prefer loading profile data or centroid data when both are available for spectra
+    /// </summary>
+    public SpectrumDataModalityPreference SpectrumDataModalityPreference { get; set; } = SpectrumDataModalityPreference.PreferProfiles;
 
     /// <summary>Creates a reader for the mzPeak file at the specified path.</summary>
     /// <param name="path">The file path to the mzPeak archive.</param>
@@ -310,7 +329,7 @@ public class MzPeakReader
         var dataReader = OpenSpectrumDataReader();
         if (dataReader != null && spectrumMetadata != null)
         {
-            await foreach (var item in new DataFacet<SpectrumDescription>(spectrumMetadata, dataReader, OpenSpectrumPeaksDataReader()).EnumerateAsync())
+            await foreach (var item in new DataFacet<SpectrumDescription>(spectrumMetadata, dataReader, OpenSpectrumPeaksDataReader()) { ModalityPreference = SpectrumDataModalityPreference }.EnumerateAsync())
                 yield return item;
         }
     }
@@ -423,8 +442,12 @@ public class MzPeakReader
 
     /// <summary>Gets the data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
-    public async Task<StructArray?> GetSpectrumData(ulong index)
+    public async ValueTask<StructArray?> GetSpectrumData(ulong index, SpectrumDataModalityPreference? spectrumDataModalityPreference = SpectrumDataModalityPreference.PreferProfiles)
     {
+        if (spectrumDataModalityPreference == SpectrumDataModalityPreference.PreferPeaks && spectrumMetadata?.NumberOfPeaks(index) > 0)
+        {
+            return await GetSpectrumPeaks(index);
+        }
         var reader = OpenSpectrumDataReader();
         if (reader == null) return null;
         var nbPoints = spectrumMetadata?.NumberOfDataPointsFor(index);
@@ -434,7 +457,7 @@ public class MzPeakReader
 
     /// <summary>Gets the data arrays for a wavelength spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
-    public async Task<StructArray?> GetWavelengthSpectrumData(ulong index)
+    public async ValueTask<StructArray?> GetWavelengthSpectrumData(ulong index)
     {
         var reader = OpenWavelengthSpectrumDataReader();
         if (reader == null) return null;
@@ -444,7 +467,7 @@ public class MzPeakReader
 
     /// <summary>Gets the peak data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
-    public async Task<StructArray?> GetSpectrumPeaks(ulong index)
+    public async ValueTask<StructArray?> GetSpectrumPeaks(ulong index)
     {
         var reader = OpenSpectrumPeaksDataReader();
         if (reader == null) return null;
@@ -455,7 +478,7 @@ public class MzPeakReader
 
     /// <summary>Gets the data arrays for a chromatogram by index.</summary>
     /// <param name="index">The chromatogram index.</param>
-    public async Task<StructArray?> GetChromatogramData(ulong index)
+    public async ValueTask<StructArray?> GetChromatogramData(ulong index)
     {
         var reader = OpenChromatogramDataReader();
         if (reader == null) return null;

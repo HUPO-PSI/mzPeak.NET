@@ -117,6 +117,7 @@ class DataKindTJsonConverter : JsonConverter<DataKind>
         return val switch
         {
             "data arrays" => new(DataKindTag.DataArrays, null),
+            "data_array" => new(DataKindTag.DataArrays, null),
             "metadata" => new(DataKindTag.Metadata, null),
             "peaks" => new(DataKindTag.Peaks, null),
             "proprietary" => new(DataKindTag.Proprietary, null),
