@@ -15,8 +15,6 @@ using ParquetSharp;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
 using ThermoFisher.CommonCore.Data.Interfaces;
-using ThermoFisher.CommonCore.MassPrecisionEstimator;
-
 namespace MZPeak.Thermo;
 
 
@@ -146,15 +144,12 @@ public class ConversionContextHelper
     public Dictionary<int, List<int?>> PreviousMSLevels;
     public Dictionary<int, uint> MSLevelCounts;
 
-    public PrecisionEstimate PrecisionEstimate;
-
     public ConversionContextHelper()
     {
         TrailerMap = new();
         Headers = new();
         PreviousMSLevels = new();
         MSLevelCounts = new();
-        PrecisionEstimate = new();
     }
 
     public bool GetShortTrailerExtraFor(IRawDataPlus accessor, int scanNumber, string key, out short value)
@@ -364,7 +359,6 @@ public class ConversionContextHelper
 
     public void Initialize(IRawDataPlus accessor)
     {
-        PrecisionEstimate.Rawfile = accessor;
         var headers = accessor.GetTrailerExtraHeaderInformation();
         for (var i = 0; i < headers.Length; i++)
         {
@@ -539,10 +533,14 @@ public class ConversionContextHelper
     {
         var descr = new FileDescription();
         uint counter;
+        // Required CV term "data file content" (MS:1000524): the cv_mapping rule has use_term=false +
+        // allow_children, checking contents[]/accession. The child terms MS:1000579 (MS1 spectrum) /
+        // MS:1000580 (MSn spectrum) must therefore carry the CURIE in their *accession* field — the
+        // 3-arg Param ctor (name, accession, value) — not the 2-arg ctor which leaves accession null.
         if (MSLevelCounts.TryGetValue(1, out counter) && counter > 0)
-            descr.Contents.Add(new Param(SpectrumType.Ms1Spectrum.Name(), SpectrumType.Ms1Spectrum.CURIE()));
+            descr.Contents.Add(new Param(SpectrumType.Ms1Spectrum.Name(), SpectrumType.Ms1Spectrum.CURIE(), null));
         if (MSLevelCounts.TryGetValue(2, out counter) && counter > 0)
-            descr.Contents.Add(new Param(SpectrumType.MsnSpectrum.Name(), SpectrumType.MsnSpectrum.CURIE()));
+            descr.Contents.Add(new Param(SpectrumType.MsnSpectrum.Name(), SpectrumType.MsnSpectrum.CURIE(), null));
 
         var path = accessor.Path;
         if (path.Contains("\\"))
@@ -1304,10 +1302,6 @@ public class ThermoMZPeakWriter : IDisposable
     public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
     {
         if (centroids.Length == 0) return EntryDerivedMetadata.Empty;
-        ConversionHelper.PrecisionEstimate.ScanNumber = centroids.ScanNumber;
-        // TODO: Collect and store this optionally?
-        // var estimate = ConversionHelper.PrecisionEstimate.GetMassPrecisionEstimate();
-        // estimate[0].MassAccuracyInPpm
         var mzArray = Compute.Compute.CastDouble(centroids.Masses);
         var intensityArray = Compute.Compute.CastFloat(centroids.Intensities);
         var baselineArray = Compute.Compute.CastFloat(centroids.Baselines);
@@ -1425,6 +1419,12 @@ public class ThermoMZPeakWriter : IDisposable
             paramList.Add(SpectrumRepresentation.CentroidSpectrum.AsParam());
         else
             paramList.Add(SpectrumRepresentation.ProfileSpectrum.AsParam());
+
+        // Required CV term "spectrum type" (MS:1000559): the cv_mapping rule has use_term=false +
+        // allow_children, i.e. the spectrum needs a param whose *accession* is a concrete child of
+        // MS:1000559. All Thermo scans are mass spectra → emit MS:1000294 as the accession (lands in
+        // the generic parameters[] list since no inflected column claims it).
+        paramList.Add(new Param("mass spectrum", "MS:1000294", null));
 
         var id = $"controllerType=0 controllerNumber=1 scan={scanNumber}";
         var index = Writer.AddSpectrum(id, time, null, paramList, entryDerivedMetadata);
@@ -1622,6 +1622,28 @@ public class ThermoMZPeakWriter : IDisposable
     public void CloseCurrentWriter() => Writer.CloseCurrentWriter();
     public void FlushSpectrumData() => Writer.FlushSpectrumData();
     public void FlushSpectrumPeakData() => Writer.FlushSpectrumPeakData();
+
+    /// <summary>Opens a raw stream for a proprietary (non-CV) ZIP entry. Flushes standard content first.</summary>
+    public Stream StartProprietaryEntry(FileIndexEntry entry)
+    {
+        if (Writer.State < WriterState.OtherData)
+        {
+            FlushStandardContent();
+            Writer.State = WriterState.OtherData;
+        }
+        return Writer.StartEntry(entry);
+    }
+
+    /// <summary>Opens a Parquet stream for a proprietary (non-CV) ZIP entry. Flushes standard content first.</summary>
+    public ParquetSharp.IO.ManagedOutputStream StartProprietaryParquetEntry(FileIndexEntry entry)
+    {
+        if (Writer.State < WriterState.OtherData)
+        {
+            FlushStandardContent();
+            Writer.State = WriterState.OtherData;
+        }
+        return Writer.StartParquetEntry(entry);
+    }
 
     /// <summary>Starts writing spectrum peak data.</summary>
     public void StartSpectrumPeakData(bool useTmp=false) => Writer.StartSpectrumPeakData(useTmp);
