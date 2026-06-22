@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using ParquetSharp;
 
 namespace MZPeak.ControlledVocabulary;
 
@@ -2265,18 +2266,18 @@ public record ColumnParam
     public string OriginalName;
     public bool IsUnitOnly = false;
 
-    public static ColumnParam FromFieldIndex(Field field, int index)
+    public static ColumnParam FromFieldNameIndex(string fieldName, int index)
     {
-        var tokens_ = field.Name.Split("_");
+        var tokens_ = fieldName.Split("_");
         if (tokens_.Length < 3)
         {
-            return new ColumnParam(field.Name, null, null, index, field.Name);
+            return new ColumnParam(fieldName, null, null, index, fieldName);
         }
         var tokens = tokens_.ToList();
         var cvPrefix = tokens[0];
         if (cvPrefix != "MS" && cvPrefix != "UO")
         {
-            return new ColumnParam(field.Name, null, null, index, field.Name);
+            return new ColumnParam(fieldName, null, null, index, fieldName);
         }
         var accession = tokens[1];
         var curie = string.Format("{0}:{1}", cvPrefix, accession);
@@ -2284,19 +2285,34 @@ public record ColumnParam
         if (indexOfUnit == -1)
         {
             var name = string.Join('_', tokens.Slice(2, tokens.Count - 2));
-            return new ColumnParam(name.Replace("_", " "), curie, null, index, field.Name, false);
+            return new ColumnParam(name.Replace("_", " "), curie, null, index, fieldName, false);
         }
         else if (indexOfUnit < tokens.Count - 1)
         {
             var name = string.Join('_', tokens.Slice(2, indexOfUnit - 2));
             var unit = string.Join(':', tokens.Slice(indexOfUnit + 1, tokens.Count - indexOfUnit - 1));
-            return new ColumnParam(name.Replace("_", " "), curie, unit, index, field.Name, false);
+            return new ColumnParam(name.Replace("_", " "), curie, unit, index, fieldName, false);
         }
         else
         {
             var name = string.Join('_', tokens.Slice(2, tokens.Count));
-            return new ColumnParam(name.Replace("_", " "), curie, null, index, field.Name, true);
+            return new ColumnParam(name.Replace("_", " "), curie, null, index, fieldName, true);
         }
+    }
+
+    public static ColumnParam FromFieldIndex(ColumnDescriptor field, int index)
+    {
+        return FromFieldNameIndex(field.Name, index);
+    }
+
+    public static ColumnParam FromFieldIndex(Field field, int index)
+    {
+        return FromFieldNameIndex(field.Name, index);
+    }
+
+    public Param Create(object? rawValue=null)
+    {
+        return new Param(Name, CURIE, rawValue, UnitCURIE);
     }
 
     public static string Inflect(string accessionCURIE, string name, string? unit = null)

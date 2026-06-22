@@ -49,6 +49,8 @@ public record SpectrumInfo : IHasParameters
     public List<Param> Parameters { get; set; }
     public List<AuxiliaryArray> AuxiliaryArrays { get; set; }
 
+    public static SpectrumInfo Empty => new(0, "", 0.0, 0, null, 0);
+
     public Param? FindParam(string accession)
     {
         foreach (var p in Parameters)
@@ -332,10 +334,12 @@ public interface HasArrayIndex
 
 public record SpectrumDescription : HasArrayIndex
 {
-    SpectrumInfo SpectrumInfo;
+    internal SpectrumInfo SpectrumInfo;
     public List<ScanInfo> Scans;
     public List<PrecursorInfo> Precursors;
     public List<SelectedIonInfo> SelectedIons;
+
+    public static SpectrumDescription Empty => new(SpectrumInfo.Empty, [], [], []);
 
     public ArrayIndex? ArrayIndex { get; set; }
 

@@ -252,14 +252,6 @@ public class ThermoTranslateTask : CLITask
     public void TranslateSpectraTo(ThermoFisher.CommonCore.Data.Interfaces.IRawDataExtended accessor, ThermoMZPeakWriter writer)
     {
         writer.InitializeHelper(accessor);
-
-        writer.Samples.Add(writer.ConversionHelper.GetSample(accessor));
-        writer.FileDescription = writer.ConversionHelper.GetFileDescription(accessor);
-
-        writer.Run.DefaultSourceFileId = "RAW1";
-        writer.Run.StartTime = accessor.FileHeader.CreationDate;
-        writer.Run.Id = accessor.FileName;
-
         writer.StartSpectrumPeakData(useTmp: true);
 
         var startScan = accessor.RunHeader.FirstSpectrum;
