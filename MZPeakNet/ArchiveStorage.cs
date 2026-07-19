@@ -13,8 +13,7 @@ using Microsoft.Extensions.Logging;
 using ParquetSharp;
 using ParquetSharp.Arrow;
 using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
-
-
+using MZPeak.ControlledVocabulary;
 
 public enum EntityTypeTag
 {
@@ -82,6 +81,10 @@ public enum DataKindTag
 {
     DataArrays,
     Metadata,
+    Scans,
+    Precursors,
+    SelectedIons,
+    Products,
     Peaks,
     Other,
     Proprietary
@@ -100,6 +103,10 @@ public record struct DataKind(DataKindTag Tag, string? Value) : IComparable<Data
     public static DataKind Metadata => new(DataKindTag.Metadata, null);
     public static DataKind Peaks => new(DataKindTag.Peaks, null);
     public static DataKind Proprietary => new(DataKindTag.Proprietary, null);
+    public static DataKind Scans => new(DataKindTag.Scans, null);
+    public static DataKind Precursors => new(DataKindTag.Precursors, null);
+    public static DataKind SelectedIons => new(DataKindTag.SelectedIons, null);
+    public static DataKind Products => new(DataKindTag.Products, null);
 }
 
 
@@ -117,8 +124,12 @@ class DataKindTJsonConverter : JsonConverter<DataKind>
         return val switch
         {
             "data arrays" => new(DataKindTag.DataArrays, null),
-            "data_array" => new(DataKindTag.DataArrays, null),
+            "data_arrays" => new(DataKindTag.DataArrays, null),
             "metadata" => new(DataKindTag.Metadata, null),
+            "scans" => new(DataKindTag.Scans, null),
+            "precursors" => new(DataKindTag.Precursors, null),
+            "selected_ions" => new(DataKindTag.SelectedIons, null),
+            "products" => new(DataKindTag.Products, null),
             "peaks" => new(DataKindTag.Peaks, null),
             "proprietary" => new(DataKindTag.Proprietary, null),
             _ => new(DataKindTag.Other, val)
@@ -135,8 +146,12 @@ class DataKindTJsonConverter : JsonConverter<DataKind>
         {
             var text = value.Tag switch
             {
-                DataKindTag.DataArrays => "data arrays",
+                DataKindTag.DataArrays => "data_arrays",
                 DataKindTag.Metadata => "metadata",
+                DataKindTag.Scans => "scans",
+                DataKindTag.Precursors => "precursors",
+                DataKindTag.SelectedIons => "selected_ions",
+                DataKindTag.Products => "products",
                 DataKindTag.Peaks => "peaks",
                 DataKindTag.Proprietary => "proprietary",
                 _ => throw new NotImplementedException()
@@ -144,6 +159,44 @@ class DataKindTJsonConverter : JsonConverter<DataKind>
             writer.WriteStringValue(text);
         }
 
+    }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public record class ColumnMapping
+{
+    [JsonPropertyName("name")]
+    public string Name {get; set;}
+
+    [JsonPropertyName("path")]
+    public List<string> Path {get; set;}
+
+    [JsonPropertyName("accession")]
+    public string? Accession {get; set;}
+
+    [JsonPropertyName("unit")]
+    public string? Unit {get; set;}
+
+    [JsonIgnore]
+    public string? CURIE => Accession;
+    [JsonIgnore]
+    public string? UnitCURIE => Unit;
+
+    public string Leaf() => Path.Last();
+
+    public Param Create(object? rawValue = null) => new Param(Name, Accession, rawValue, Unit);
+
+    public ColumnMapping(string name, List<string> path, string? accession, string? unit)
+    {
+        Name = name;
+        Path = path;
+        Accession = accession;
+        Unit = unit;
+    }
+
+    public override string ToString()
+    {
+        return $"ColumnMapping {{ Name = {Name}, Path = [{string.Join(',', Path)}], Accession = {Accession}, Unit = {Unit} }}";
     }
 }
 
@@ -160,7 +213,13 @@ public record FileIndexEntry
     [JsonPropertyName("data_kind")]
     public DataKind DataKind { get; set; }
 
-    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind)
+    [JsonPropertyName("parameters")]
+    public List<Param> Params { get; set; }
+
+    [JsonPropertyName("column_mapping")]
+    public List<ColumnMapping> ColumnMappings {get; set;}
+
+    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings = null)
     {
         string entityTypeTag = "";
         switch (entityType.Tag)
@@ -198,6 +257,26 @@ public record FileIndexEntry
                     dataKindTag = "metadata";
                     break;
                 }
+            case DataKindTag.Scans:
+                {
+                    dataKindTag = "metadata_scans";
+                    break;
+                }
+            case DataKindTag.Precursors:
+                {
+                    dataKindTag = "metadata_precursors";
+                    break;
+                }
+            case DataKindTag.SelectedIons:
+                {
+                    dataKindTag = "metadata_selected_ions";
+                    break;
+                }
+            case DataKindTag.Products:
+                {
+                    dataKindTag = "metadata_products";
+                    break;
+                }
             case DataKindTag.Peaks:
                 {
                     dataKindTag = "peaks";
@@ -205,25 +284,36 @@ public record FileIndexEntry
                 }
             case DataKindTag.Proprietary:
                 {
-                    throw new NotImplementedException(dataKind.ToString());
+                    dataKindTag = dataKind.Value ?? dataKind.Tag.ToString();
+                    break;
                 }
             case DataKindTag.Other:
                 {
-                    throw new NotImplementedException(dataKind.ToString());
+                    dataKindTag = dataKind.Value ?? dataKind.Tag.ToString();
+                    break;
                 }
         }
         return new FileIndexEntry(
             string.Format("{0}_{1}.parquet", entityTypeTag, dataKindTag),
             entityType,
-            dataKind
+            dataKind,
+            @params ?? [],
+            columnMappings ?? []
         );
     }
 
-    public FileIndexEntry(string name, EntityType entityType, DataKind dataKind)
+    public FileIndexEntry(string name, EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings=null)
     {
         Name = name;
         EntityType = entityType;
         DataKind = dataKind;
+        Params = @params ?? [];
+        ColumnMappings = columnMappings ?? [];
+    }
+
+    public override string ToString()
+    {
+        return $@"FileIndexEntry({Name}, {EntityType}, {DataKind}, [{string.Join(", ", Params.Select(p => p.ToString()))}], [{string.Join(", ", ColumnMappings.Select(e => e.ToString()))}])";
     }
 }
 
@@ -252,13 +342,28 @@ public class FileIndex
     public static DecryptionConfigurations UniformDecryption(FileDecryptionProperties decryptionProperties)
     {
         DecryptionConfigurations decryptionConfigs = new();
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays).Name] = decryptionProperties;
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks).Name] = decryptionProperties;
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Metadata).Name] = decryptionProperties;
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays).Name] = decryptionProperties;
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.Metadata).Name] = decryptionProperties;
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.DataArrays).Name] = decryptionProperties;
-        decryptionConfigs[FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.Metadata).Name] = decryptionProperties;
+        List<DataKind> dataKinds = [
+            DataKind.DataArrays,
+            DataKind.Peaks,
+            DataKind.Metadata,
+            DataKind.Scans,
+            DataKind.Precursors,
+            DataKind.SelectedIons,
+            DataKind.Products,
+            DataKind.Proprietary,
+        ];
+        List<EntityType> entityTypes = [
+            EntityType.Spectrum,
+            EntityType.Chromatogram,
+            EntityType.WavelengthSpectrum,
+        ];
+        foreach(var e in entityTypes)
+        {
+            foreach(var d in dataKinds)
+            {
+                decryptionConfigs[FileIndexEntry.FromEntityAndData(e, d).Name] = decryptionProperties;
+            }
+        }
         return decryptionConfigs;
     }
 
@@ -267,6 +372,45 @@ public class FileIndex
         Files = new List<FileIndexEntry>();
         Metadata = new JsonObject();
     }
+}
+
+
+public class MzPeakFacetNamespace
+{
+    public EntityType EntityType { get; set; }
+    public IMZPeakArchiveStorage Storage {get; set;}
+
+    public override string ToString()
+    {
+        return $"MzPeakFacetNamespace({EntityType} with {FileIndex.Files.Count(e => e.EntityType == EntityType)} files from {Storage})";
+    }
+
+    public FileIndex FileIndex => Storage.FileIndex();
+
+    public MzPeakFacetNamespace(EntityType entityType, IMZPeakArchiveStorage storage)
+    {
+        EntityType = entityType;
+        Storage = storage;
+    }
+
+    public FileReader? OpenDataKind(DataKind dataKind, ReaderProperties? props=null, ArrowReaderProperties? arrowProps=null)
+    {
+        var entry = FileIndex.FindEntry(EntityType, dataKind);
+        if (entry == null) return null;
+        return Storage.OpenFromFileIndexEntry(entry, props, arrowProps);
+    }
+
+    public bool Has(DataKind dataKind) => FileIndex.FindEntry(EntityType, dataKind) != null;
+
+    public FileIndexEntry? FindEntry(DataKind dataKind) => FileIndex.FindEntry(EntityType, dataKind);
+
+    public List<ColumnMapping>? ColumnMappings(DataKind dataKind) => FileIndex.FindEntry(EntityType, dataKind)?.ColumnMappings;
+
+    public FileReader? OpenMetadata(ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null) => OpenDataKind(DataKind.Metadata, props, arrowProps);
+    public FileReader? OpenScans(ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null) => OpenDataKind(DataKind.Scans, props, arrowProps);
+    public FileReader? OpenPrecursors(ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null) => OpenDataKind(DataKind.Precursors, props, arrowProps);
+    public FileReader? OpenSelectedIons(ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null) => OpenDataKind(DataKind.SelectedIons, props, arrowProps);
+    public FileReader? OpenProducts(ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null) => OpenDataKind(DataKind.Products, props, arrowProps);
 }
 
 
@@ -301,6 +445,12 @@ public interface IMZPeakArchiveStorage
         {
             return OpenStream(entry.Name);
         }
+    }
+
+    public MzPeakFacetNamespace? OpenNamespace(EntityType entityType)
+    {
+        var ns = new MzPeakFacetNamespace(entityType, this);
+        return ns.Has(DataKind.Metadata) ? ns : null;
     }
 
     public FileReader? OpenFromFileIndexEntry(FileIndexEntry entry, ReaderProperties? props=null, ArrowReaderProperties? arrowProps=null)
@@ -376,6 +526,27 @@ public interface IMZPeakArchiveStorage
         return OpenFromFileIndexEntry(entry, null, null);
     }
 
+    public FileReader? SpectrumMetadataScans()
+    {
+        var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.Scans);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
+    }
+
+    public FileReader? SpectrumMetadataPrecursors()
+    {
+        var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.Precursors);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
+    }
+
+    public FileReader? SpectrumMetadataSelectedIons()
+    {
+        var entry = FileIndex().FindEntry(EntityType.Spectrum, DataKind.SelectedIons);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
+    }
+
     /// <summary>
     /// Open the chromatogram metadata volume, if it exists, null otherwise.
     /// </summary>
@@ -385,6 +556,27 @@ public interface IMZPeakArchiveStorage
         var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.Metadata);
         if (entry == null) return null;
         return OpenFromFileIndexEntry(entry);
+    }
+
+    public FileReader? ChromatogramMetadataPrecursors()
+    {
+        var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.Precursors);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
+    }
+
+    public FileReader? ChromatogramMetadataSelectedIons()
+    {
+        var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.SelectedIons);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
+    }
+
+    public FileReader? ChromatogramMetadataProducts()
+    {
+        var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.Products);
+        if (entry == null) return null;
+        return OpenFromFileIndexEntry(entry, null, null);
     }
 
     /// <summary>
@@ -591,11 +783,7 @@ public abstract class BaseZipArchive : IMZPeakArchiveStorage
                 {
                     var indexJson = stream.ReadToEnd();
                     fileIndex = JsonSerializer.Deserialize<FileIndex>(indexJson);
-
-                    if (fileIndex == null)
-                    {
-                        throw new InvalidDataException("Index JSON file did not deserialize successfully");
-                    }
+                    if (fileIndex == null) throw new InvalidDataException($"Index JSON file did not deserialize successfully from {indexJson}");
                 }
             }
         }

@@ -32,14 +32,14 @@ public class ArchiveTest
     public void RawZipArchive_LoadIndex()
     {
         var index = PointArchive.FileIndex();
-        Assert.Equal(5, index.Files.Count);
-        Assert.Equal(6, PointArchive.FileNames().Count);
+        Assert.Equal(10, index.Files.Count);
+        Assert.Equal(11, PointArchive.FileNames().Count);
     }
 
     [Fact]
     public async Task RawZipArchive_LoadSpectrumPoint()
     {
-        var meta = PointArchive.SpectrumMetadata();
+        var meta = PointArchive.OpenNamespace(EntityType.Spectrum);
         Assert.NotNull(meta);
         var metaReader = new SpectrumMetadataReader(meta);
         var models = metaReader.GetSpacingModelIndex();
@@ -70,7 +70,7 @@ public class ArchiveTest
     [Fact]
     public async Task RawZipArchive_LoadSpectrumChunk()
     {
-        var meta = ChunkArchive.SpectrumMetadata();
+        var meta = ChunkArchive.OpenNamespace(EntityType.Spectrum);
         Assert.NotNull(meta);
         var metaReader = new SpectrumMetadataReader(meta);
         var models = metaReader.GetSpacingModelIndex();
@@ -120,7 +120,7 @@ public class ArchiveTest
     [Fact]
     public void RawZipArchive_SpectrumMetadata()
     {
-        var stream = PointArchive.SpectrumMetadata();
+        var stream = PointArchive.OpenNamespace(EntityType.Spectrum);
         Assert.NotNull(stream);
         var meta = new SpectrumMetadataReader(stream);
         Assert.NotNull(meta);

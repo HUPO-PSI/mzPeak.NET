@@ -82,9 +82,9 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
         var dataIter = DataReader.Enumerate();
         var peakIter = PeakReader?.Enumerate();
 
-        await dataIter.Seek(0);
+        await dataIter.Peek();
         if (peakIter != null)
-            await peakIter.Seek(0);
+            await peakIter.Peek();
 
         for(var i = 0ul; i < n; i++)
         {
@@ -183,11 +183,11 @@ public class MzPeakReader
             }
         }
         this.storage = storage;
-        var stream = storage.SpectrumMetadata();
+        var stream = storage.OpenNamespace(EntityType.Spectrum);
         spectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
-        stream = storage.ChromatogramMetadata();
+        stream = storage.OpenNamespace(EntityType.Chromatogram);
         chromatogramMetadata = stream == null ? null : new ChromatogramMetadataReader(stream);
-        stream = storage.WavelengthSpectrumMetadata();
+        stream = storage.OpenNamespace(EntityType.WavelengthSpectrum);
         wavelengthSpectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
     }
 

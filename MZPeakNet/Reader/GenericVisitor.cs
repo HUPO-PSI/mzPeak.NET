@@ -4,6 +4,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Storage;
 
 namespace MZPeak.Reader.Visitors;
 
@@ -593,6 +594,11 @@ public interface IPrimitiveTypeVisitor
 
 public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffsets<T> where T : IHasParameters
 {
+
+    public List<string> Prefix {get;}
+
+    public List<ColumnMapping> ColumnMappings {get; set;}
+
     public IEnumerable<(int, long?)> VisitInteger<U>(PrimitiveArray<U> array) where U : struct, INumber<U>
     {
         for (int j = 0; j < Offsets.Count; j++)
@@ -724,72 +730,81 @@ public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffse
         else throw new NotImplementedException();
     }
 
+    ColumnMapping? MapColumn(string name)
+    {
+        List<string> pathTo = [.. Prefix, name];
+        var mapping = ColumnMappings.Find(e => e.Path.Zip(pathTo).All((ab) => ab.First == ab.Second));
+        return mapping;
+    }
+
     void VisitAsParameter(Field field, IArrowArray array)
     {
-        var param = ColumnParam.FromFieldIndex(field, 0);
-        if (param.IsUnitOnly) throw new NotImplementedException();
+        var columnMapping = MapColumn(field.Name);
+        var CURIE = columnMapping?.Accession;
+        var UnitCURIE = columnMapping?.Unit;
+        var name = columnMapping?.Name ?? field.Name;
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Int8:
                 {
                     foreach ((var i, var val) in VisitInteger((Int8Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.Int16:
                 {
                     foreach ((var i, var val) in VisitInteger((Int16Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.Int32:
                 {
                     foreach ((var i, var val) in VisitInteger((Int32Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.Int64:
                 {
                     foreach ((var i, var val) in VisitInteger((Int64Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.UInt8:
                 {
                     foreach ((var i, var val) in VisitInteger((UInt8Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.UInt16:
                 {
                     foreach ((var i, var val) in VisitInteger((UInt16Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.UInt32:
                 {
                     foreach ((var i, var val) in VisitInteger((UInt32Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.UInt64:
                 {
                     foreach ((var i, var val) in VisitInteger((UInt64Array)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.Float:
                 {
                     foreach ((var i, var val) in VisitFloat((FloatArray)array))
                     {
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     }
                     break;
                 }
             case ArrowTypeId.Double:
                 {
                     foreach ((var i, var val) in VisitFloat((DoubleArray)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.Boolean:
@@ -799,20 +814,20 @@ public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffse
                     {
                         var i = Offsets[j];
                         var value = arr.GetValue(i);
-                        Values[j].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: value, param.UnitCURIE));
+                        Values[j].Parameters.Add(new Param(name, accession: CURIE, rawValue: value, UnitCURIE));
                     }
                     break;
                 }
             case ArrowTypeId.String:
                 {
                     foreach ((var i, var val) in VisitString((StringArray)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             case ArrowTypeId.LargeString:
                 {
                     foreach ((var i, var val) in VisitString((LargeStringArray)array))
-                        Values[i].Parameters.Add(new Param(param.Name, accession: param.CURIE, rawValue: val, param.UnitCURIE));
+                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
                     break;
                 }
             default: throw new NotImplementedException($"{array.Data.DataType.Name} from {field.Name}");
@@ -856,11 +871,15 @@ class GenericParamStructVisitor : IVisitorAssemblyWithOffsets<ParamListRecord>, 
 {
     public List<ParamListRecord> Values { get; set; }
     public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings {get; set;}
+    public List<string> Prefix {get; set;}
 
-    public GenericParamStructVisitor(List<int> offsets)
+    public GenericParamStructVisitor(List<int> offsets, List<ColumnMapping>? columnMappings=null, List<string>? prefix=null)
     {
         Values = new();
         Offsets = offsets;
+        ColumnMappings = columnMappings ?? [];
+        Prefix = prefix ?? [];
     }
 
     void Initialize(IArrowArray array)
@@ -938,11 +957,14 @@ public class ScanVisitor : IVisitorAssemblyWithOffsets<ScanInfo>, IHasIonMobilit
 {
     public List<ScanInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings { get; set; }
+    public List<string> Prefix { get => []; }
 
-    public ScanVisitor()
+    public ScanVisitor(List<ColumnMapping>? columnMappings = null)
     {
         Values = new();
         Offsets = new();
+        ColumnMappings = columnMappings ?? [];
     }
 
     void VisitInstrumentConfigurationRef(IArrowArray array)
@@ -1021,12 +1043,12 @@ public class ScanVisitor : IVisitorAssemblyWithOffsets<ScanInfo>, IHasIonMobilit
 
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
-            if (f.Name == "instrument_configuration_ref") VisitInstrumentConfigurationRef(arr);
+            if (f.Name == "instrument_configuration_ref" || f.Name == "instrument_configuration_id") VisitInstrumentConfigurationRef(arr);
             else if (f.Name == "ion_mobility_value") ((IHasIonMobilityVisitor<ScanInfo>)this).VisitIonMobilityValue(arr);
             else if (f.Name == "ion_mobility_type") ((IHasIonMobilityVisitor<ScanInfo>)this).VisitIonMobilityType(arr);
             else if (f.Name == "parameters") ((IHasParametersVisitorWithOffsets<ScanInfo>)this).VisitParameters(arr);
             else if (f.Name == "scan_windows") VisitScanWindowsList(arr);
-            else if (f.Name == "source_index") { }
+            else if (f.Name == "source_index" || f.Name == "scan_index") { }
             else
                 ((IHasParametersVisitorWithOffsets<ScanInfo>)this).VisitAsParameter(f, arr);
         }
@@ -1053,11 +1075,13 @@ public class ScanVisitor : IVisitorAssemblyWithOffsets<ScanInfo>, IHasIonMobilit
 
 public class ScanWindowVisitor : IArrowArrayVisitor<StructArray>, IPrimitiveTypeVisitor
 {
+    public List<ColumnMapping> ColumnMappings { get; set; }
     public List<ScanWindow> Values { get; set; }
 
-    public ScanWindowVisitor()
+    public ScanWindowVisitor(List<ColumnMapping>? columnMappings = null)
     {
         Values = new();
+        ColumnMappings = columnMappings ?? [];
     }
 
     public void Visit(StructArray array)
@@ -1073,10 +1097,13 @@ public class ScanWindowVisitor : IArrowArrayVisitor<StructArray>, IPrimitiveType
             if (f.Name == "parameters") { }
             else
             {
-                var col = ColumnParam.FromFieldIndex(f, i);
+                List<string> fieldPath = ["scan_window", f.Name];
+                var cm = ColumnMappings.Find(col => col.Path == fieldPath);
+                var CURIE = cm?.Accession;
+                var UnitCURIE = cm?.Unit;
                 i++;
 
-                switch (col.CURIE)
+                switch (CURIE)
                 {
                     case "MS:1000501":
                         {
@@ -1086,8 +1113,8 @@ public class ScanWindowVisitor : IArrowArrayVisitor<StructArray>, IPrimitiveType
                                 if (v != null)
                                 {
                                     Values[j].LowerBound = (double)v;
-                                    if (col.UnitCURIE != null)
-                                        Values[j].Unit = UnitMethods.FromCURIE[col.UnitCURIE];
+                                    if (UnitCURIE != null)
+                                        Values[j].Unit = UnitMethods.FromCURIE[UnitCURIE];
                                 }
                                 j++;
                             }
@@ -1101,8 +1128,8 @@ public class ScanWindowVisitor : IArrowArrayVisitor<StructArray>, IPrimitiveType
                                 if (v != null)
                                 {
                                     Values[j].UpperBound = (double)v;
-                                    if (col.UnitCURIE != null)
-                                        Values[j].Unit = UnitMethods.FromCURIE[col.UnitCURIE];
+                                    if (UnitCURIE != null)
+                                        Values[j].Unit = UnitMethods.FromCURIE[UnitCURIE];
                                 }
                                 j++;
                             }
@@ -1137,12 +1164,15 @@ public class SelectedIonVisitor : IVisitorAssemblyWithOffsets<SelectedIonInfo>, 
 
     public List<SelectedIonInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings { get; set; }
+    public List<string> Prefix { get => []; }
 
 
-    public SelectedIonVisitor()
+    public SelectedIonVisitor(List<ColumnMapping>? columnMappings = null)
     {
         Values = new();
         Offsets = new();
+        ColumnMappings = columnMappings ?? [];
     }
 
     public SelectedIonInfo CreateFromIndex(ulong index)
@@ -1196,11 +1226,13 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
 {
     public List<PrecursorInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings { get; set; }
 
-    public PrecursorVisitor()
+    public PrecursorVisitor(List<ColumnMapping>? columnMappings=null)
     {
         Values = new();
         Offsets = new();
+        ColumnMappings = columnMappings ?? [];
     }
 
     public void VisitPrecursorId(IArrowArray array)
@@ -1264,7 +1296,7 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
 
     void VisitActivationParameters(IArrowArray array)
     {
-        var visitor = new GenericParamStructVisitor(Offsets);
+        var visitor = new GenericParamStructVisitor(Offsets, ColumnMappings.Where(e => e.Path.First() == "activation").ToList(), prefix: ["activation"]);
         visitor.Visit(array);
         for (var i = 0; i < Values.Count; i++)
         {
@@ -1274,7 +1306,7 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
 
     void VisitIsolationWindowParameters(IArrowArray array)
     {
-        var visitor = new GenericParamStructVisitor(Offsets);
+        var visitor = new GenericParamStructVisitor(Offsets, ColumnMappings.Where(e => e.Path.First() == "isolation_window").ToList(), prefix: ["isolation_window"]);
         visitor.Visit(array);
         for (var i = 0; i < Values.Count; i++)
         {
@@ -1298,11 +1330,14 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
 {
     public List<SpectrumInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings { get; set; }
+    public List<string> Prefix { get => []; }
 
-    public SpectrumVisitor()
+    public SpectrumVisitor(List<ColumnMapping>? columnMappings=null)
     {
         Values = new();
         Offsets = new();
+        ColumnMappings = columnMappings ?? [];
     }
 
     void VisitId(IArrowArray array)
@@ -1474,12 +1509,13 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
 
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
+            var col = self.MapColumn(f.Name);
             if (f.Name == "id") VisitId(arr);
             else if (f.Name == "index") { }
             else if (f.Name == "time") VisitTime(arr);
-            else if (f.Name == "MS_1000511_ms_level") VisitMSLevel(arr);
-            else if (f.Name == "MS_1000525_spectrum_representation") VisitSpectrumRepresentation(arr);
-            else if (f.Name == "data_processing_ref") VisitDataProcessingRef(arr);
+            else if (col?.Accession == "MS:1000511") VisitMSLevel(arr);
+            else if (col?.Accession == "MS:1000525") VisitSpectrumRepresentation(arr);
+            else if (f.Name == "data_processing_ref" || f.Name == "data_processing_id") VisitDataProcessingRef(arr);
             else if (f.Name == "mz_delta_model") VisitMzDeltaModel(arr);
             else if (f.Name == "number_of_auxiliary_arrays") VisitNumberOfAuxiliaryArrays(arr);
             else if (f.Name == "auxiliary_arrays") VisitAuxiliarArrays(arr);
@@ -1541,11 +1577,14 @@ public class ChromatogramVisitor : IVisitorAssemblyWithOffsets<ChromatogramInfo>
 {
     public List<ChromatogramInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings { get; set; }
+    public List<string> Prefix { get => []; }
 
-    public ChromatogramVisitor()
+    public ChromatogramVisitor(List<ColumnMapping>? columnMappings = null)
     {
         Values = new();
         Offsets = new();
+        ColumnMappings = columnMappings ?? [];
     }
 
     void VisitId(IArrowArray array)
@@ -1611,7 +1650,7 @@ public class ChromatogramVisitor : IVisitorAssemblyWithOffsets<ChromatogramInfo>
         {
             if (f.Name == "id") VisitId(arr);
             else if (f.Name == "index") { }
-            else if (f.Name == "data_processing_ref") VisitDataProcessingRef(arr);
+            else if (f.Name == "data_processing_ref" || f.Name == "data_processing_id") VisitDataProcessingRef(arr);
             else if (f.Name == "number_of_auxiliary_arrays") VisitNumberOfAuxiliaryArrays(arr);
             else if (f.Name == "auxiliary_arrays") VisitAuxiliarArrays(arr);
             else if (f.Name == "parameters") self.VisitParameters(arr);

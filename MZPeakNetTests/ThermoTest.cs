@@ -141,6 +141,21 @@ public class ThermoTranslationTest
             var dpMatch = descr.DataPointCount == arrays.Length;
             Assert.True(peaksMatch || dpMatch);
             Assert.True(arrays.Length > 0);
+            if (descr.MSLevel > 1)
+            {
+                Assert.NotEmpty(descr.Precursors);
+                foreach(var v in descr.Precursors)
+                {
+                    var p = v.IsolationWindowParameters.Find(e => e.AccessionCURIE == "MS:1000827");
+                    Assert.NotNull(p);
+                    if (v.PrecursorIndex != null)
+                    {
+                        var pdesc = reader.GetSpectrumDescription((ulong)v.PrecursorIndex);
+                        Assert.NotNull(pdesc);
+                        Assert.Equal(pdesc.Id, v.PrecursorId);
+                    }
+                }
+            }
         }
 
     }

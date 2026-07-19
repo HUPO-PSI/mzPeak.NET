@@ -6,7 +6,6 @@ using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
-using System.Drawing;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;

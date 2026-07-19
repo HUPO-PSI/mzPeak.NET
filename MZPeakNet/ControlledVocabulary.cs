@@ -2266,50 +2266,6 @@ public record ColumnParam
     public string OriginalName;
     public bool IsUnitOnly = false;
 
-    public static ColumnParam FromFieldNameIndex(string fieldName, int index)
-    {
-        var tokens_ = fieldName.Split("_");
-        if (tokens_.Length < 3)
-        {
-            return new ColumnParam(fieldName, null, null, index, fieldName);
-        }
-        var tokens = tokens_.ToList();
-        var cvPrefix = tokens[0];
-        if (cvPrefix != "MS" && cvPrefix != "UO")
-        {
-            return new ColumnParam(fieldName, null, null, index, fieldName);
-        }
-        var accession = tokens[1];
-        var curie = string.Format("{0}:{1}", cvPrefix, accession);
-        var indexOfUnit = tokens.FindIndex((v) => v == "unit");
-        if (indexOfUnit == -1)
-        {
-            var name = string.Join('_', tokens.Slice(2, tokens.Count - 2));
-            return new ColumnParam(name.Replace("_", " "), curie, null, index, fieldName, false);
-        }
-        else if (indexOfUnit < tokens.Count - 1)
-        {
-            var name = string.Join('_', tokens.Slice(2, indexOfUnit - 2));
-            var unit = string.Join(':', tokens.Slice(indexOfUnit + 1, tokens.Count - indexOfUnit - 1));
-            return new ColumnParam(name.Replace("_", " "), curie, unit, index, fieldName, false);
-        }
-        else
-        {
-            var name = string.Join('_', tokens.Slice(2, tokens.Count));
-            return new ColumnParam(name.Replace("_", " "), curie, null, index, fieldName, true);
-        }
-    }
-
-    public static ColumnParam FromFieldIndex(ColumnDescriptor field, int index)
-    {
-        return FromFieldNameIndex(field.Name, index);
-    }
-
-    public static ColumnParam FromFieldIndex(Field field, int index)
-    {
-        return FromFieldNameIndex(field.Name, index);
-    }
-
     public Param Create(object? rawValue=null)
     {
         return new Param(Name, CURIE, rawValue, UnitCURIE);
@@ -2325,20 +2281,6 @@ public record ColumnParam
             tokens.AddRange(unit.Split(":"));
         }
         return string.Join("_", tokens);
-    }
-
-    public static List<ColumnParam> FromFields(IEnumerable<Field> fields)
-    {
-        List<ColumnParam> cols = new();
-
-        int i = 0;
-        foreach (var f in fields)
-        {
-            cols.Add(FromFieldIndex(f, i));
-            i += 1;
-        }
-
-        return cols;
     }
 
     public ColumnParam(string name, string? curie, string? unit, int index, string originalName, bool isUnitOnly = false)

@@ -1,8 +1,10 @@
 namespace MZPeak.Metadata;
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Storage;
 using ParquetSharp;
 
 /// <summary>
@@ -461,6 +463,69 @@ public class MzPeakMetadata
         DataProcessingMethods = dataProcessingMethods;
         ScanSettings = scanSettings;
         Run = run;
+    }
+
+    public static MzPeakMetadata FromFileIndex(FileIndex fileIndex)
+    {
+        var meta = fileIndex.Metadata;
+        FileDescription? fileDescription = new FileDescription();
+        JsonNode? buf;
+        if (meta.TryGetPropertyValue("file_description", out buf))
+        {
+            fileDescription = JsonSerializer.Deserialize<FileDescription>(buf);
+            if (fileDescription == null) throw new InvalidDataException("file_description failed to deserialize");
+        }
+        List<InstrumentConfiguration>? instrumentConfigurations = new();
+        if (meta.TryGetPropertyValue("instrument_configuration_list", out buf))
+        {
+            instrumentConfigurations = JsonSerializer.Deserialize<List<InstrumentConfiguration>>(buf);
+            if (instrumentConfigurations == null) throw new InvalidDataException("instrument_configuration_list failed to deserialize");
+        }
+
+        List<Software>? softwares = new();
+        if (meta.TryGetPropertyValue("software_list", out buf))
+        {
+            softwares = JsonSerializer.Deserialize<List<Software>>(buf);
+            if (softwares == null) throw new InvalidDataException("software_list failed to deserialize");
+        }
+
+        List<Sample>? samples = new();
+        if (meta.TryGetPropertyValue("sample_list", out buf))
+        {
+            samples = JsonSerializer.Deserialize<List<Sample>>(buf) ?? new();
+            if (samples == null) throw new InvalidDataException("sample_list failed to deserialize");
+        }
+
+        List<ScanSettings>? scanSettings = new();
+        if (meta.TryGetPropertyValue("scan_settings_list", out buf))
+        {
+            scanSettings = JsonSerializer.Deserialize<List<ScanSettings>>(buf) ?? new();
+            if (scanSettings == null) throw new InvalidDataException("scan_settings_list failed to deserialize");
+        }
+
+        List<DataProcessingMethod> dataProcessingMethods = new();
+        if (meta.TryGetPropertyValue("data_processing_method_list", out buf))
+        {
+            dataProcessingMethods = JsonSerializer.Deserialize<List<DataProcessingMethod>>(buf) ?? new();
+            if (dataProcessingMethods == null) throw new InvalidDataException("data_processing_method_list failed to deserialize");
+        }
+
+        MSRun run = new();
+        if (meta.TryGetPropertyValue("run", out buf))
+        {
+            run = JsonSerializer.Deserialize<MSRun>(buf) ?? new();
+            if (run == null) throw new InvalidDataException("run failed to deserialize");
+        }
+
+        return new MzPeakMetadata(
+            fileDescription,
+            instrumentConfigurations,
+            softwares,
+            samples,
+            dataProcessingMethods,
+            scanSettings,
+            run
+        );
     }
 
     /// <summary>Reads metadata from a Parquet file's key-value metadata.</summary>

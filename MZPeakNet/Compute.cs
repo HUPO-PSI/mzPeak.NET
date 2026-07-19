@@ -334,8 +334,8 @@ public static class NullInterpolation
 {
     internal static ILogger? Logger;
 
-    public const string NullInterpolateCURIE = "MS:1003901";
-    public const string NullZeroCURIE = "MS:1003902";
+    public const string NullInterpolateCURIE = "MS:1003902";
+    public const string NullZeroCURIE = "MS:1003901";
 
     public static List<T> CollectDeltas<T>(IEnumerable<T?> values, bool sort = true) where T : struct, INumber<T>
     {
@@ -2429,5 +2429,15 @@ public static class StructArrayExtensions
         var dtype = (StructType)array.Data.DataType;
         var schema = new Schema(dtype.Fields, null);
         return new RecordBatch(schema, array.Fields, array.Length);
+    }
+}
+
+public static class RecordBatchExtensions
+{
+    public static StructArray AsStructArry(this RecordBatch batch)
+    {
+        var fields = batch.Schema.FieldsList.ToList();
+        var dtype = new StructType(fields);
+        return new StructArray(dtype, batch.Length, batch.Arrays, ArrowBuffer.Empty);
     }
 }

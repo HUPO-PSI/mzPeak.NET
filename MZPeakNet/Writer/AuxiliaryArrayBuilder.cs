@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Storage;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -92,6 +93,11 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
         DataProcessingRef.Clear();
         Data.Append();
     }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        return [];
+    }
 }
 
 public class AuxiliaryArrayListBuilder : IArrowBuilder<List<AuxiliaryArray>>
@@ -165,5 +171,10 @@ public class AuxiliaryArrayListBuilder : IArrowBuilder<List<AuxiliaryArray>>
         ValueBuilder.Clear();
         ValidityBufferBuilder.Clear();
         ValueOffsetsBufferBuilder.Clear();
+    }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        return [];
     }
 }

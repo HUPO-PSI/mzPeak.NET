@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Memory;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Storage;
 
 namespace MZPeak.Writer.Visitors;
 
@@ -69,6 +70,8 @@ public class ParamValueBuilder : IArrowBuilder<string>, IArrowBuilder<long>, IAr
         else if (parameter.IsString()) Append(parameter.AsString());
         else AppendNull();
     }
+
+    public List<ColumnMapping> ColumnMappings() => [];
 
     public List<Field> ArrowType()
     {
@@ -170,6 +173,11 @@ public class ParamBuilder : IArrowBuilder<Param>
     {
         throw new NotImplementedException();
     }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        return [];
+    }
 }
 
 public class ParamListBuilder : IArrowBuilder<List<Param>>
@@ -181,6 +189,8 @@ public class ParamListBuilder : IArrowBuilder<List<Param>>
     public int NullCount { get; protected set; }
 
     public int Length => ValueOffsetsBufferBuilder.Length;
+
+    public List<ColumnMapping> ColumnMappings() => [];
 
     public ParamListBuilder()
     {
@@ -475,7 +485,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
     public List<Field> ArrowType()
     {
         var fields = new List<Field>();
-        var baseName = ColumnParam.Inflect(AccessionCURIE, Name, FixedUnit);
+        var baseName = ColumnName();
         switch (ValueType.TypeId)
         {
             case ArrowTypeId.Int64:
@@ -542,6 +552,12 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         }
         return fields;
     }
+
+    /// <summary>
+    /// Render the Param name as a column name
+    /// </summary>
+    /// <returns></returns>
+    protected string ColumnName() => ColumnParam.Inflect(AccessionCURIE, Name, FixedUnit);
 
     public List<IArrowArray> Build()
     {
@@ -677,6 +693,8 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         }
         UnitValue?.Clear();
     }
+
+    public List<ColumnMapping> ColumnMappings() => [new ColumnMapping(Name, [ColumnName()], AccessionCURIE, FixedUnit)];
 }
 
 public class ChildTermParamBuilder : CustomBuilderFromParam
@@ -757,6 +775,16 @@ public class ParamVisitorCollection
         }
         ParamList.Append(@params.Where((v) => v.AccessionCURIE == null || !Visited.Contains(v.AccessionCURIE)).ToList());
         Visited.Clear();
+    }
+
+    public List<ColumnMapping> ColumnMappingsFromVisitors()
+    {
+        List<ColumnMapping> cols = [];
+        foreach(var visitor in ParamVisitors)
+        {
+            cols.AddRange(visitor.ColumnMappings());
+        }
+        return cols;
     }
 
     public virtual void AppendNull()

@@ -919,44 +919,155 @@ public class MZPeakWriter : IDisposable
         if (State >= WriterState.SpectrumMetadata)
             return;
         CloseCurrentWriter();
-        State = WriterState.SpectrumMetadata;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Metadata);
-        var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
-            .Compression(ParquetSharp.Compression.Zstd)
-            .CompressionLevel(DataWriterConfig.CompressionLevel)
-            .EnableDictionary()
-            .DisableDictionary("spectrum.index")
-            .DisableDictionary("scan.source_index")
-            .DisableDictionary("precursor.source_index")
-            .DisableDictionary("precursor.precursor_index")
-            .DisableDictionary("selected_ion.source_index")
-            .DisableDictionary("selected_ion.precursor_index")
-            .Encoding("spectrum.index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("scan.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("scan.scan_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("precursor.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("precursor.precursor_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("selected_ion.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("selected_ion.precursor_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .EnableStatistics()
-            .EnableWritePageIndex();
-        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
-        CurrentEntry = entry;
 
         var meta = PrepareRunLevelMetadataDictionary();
         meta["spectrum_count"] = SpectrumMetadata.Length.ToString();
         meta["spectrum_data_point_count"] = SpectrumData.NumberOfPoints.ToString();
 
+        // Spectrum Metadata
+
+        State = WriterState.SpectrumMetadata;
+        var entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Spectrum,
+            DataKind.Metadata,
+            [],
+            SpectrumMetadata.Spectrum.ColumnMappings()
+        );
+        var stream = Storage.OpenStream(entry);
+        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var writerProps = new WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .DisableDictionary("index")
+            .Encoding("index", Encoding.DeltaBinaryPacked)
+            .EnableStatistics()
+            .EnableWritePageIndex();
+        var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        CurrentEntry = entry;
+
+        var writerPropsBuilt = writerProps.Build();
+        var arrowPropsBuilt = arrowProps.Build();
+        var batch = SpectrumMetadata.Spectrum.BuildRecordBatch(meta);
+
         CurrentWriter = new FileWriter(
             managedStream,
-            SpectrumMetadata.ArrowSchema(meta),
-            writerProps.Build(),
-            arrowProps.Build()
+            batch.Schema,
+            writerPropsBuilt,
+            arrowPropsBuilt
         );
         CurrentWriter.NewBufferedRowGroup();
-        var batch = SpectrumMetadata.Build();
+        CurrentWriter.WriteBufferedRecordBatch(batch);
+        CloseCurrentWriter();
+
+        // Scans
+
+        entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Spectrum,
+            DataKind.Scans,
+            [],
+            SpectrumMetadata.Scan.ColumnMappings()
+        );
+        stream = Storage.OpenStream(entry);
+        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        writerProps = new WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .DisableDictionary("source_index")
+            .Encoding("source_index", Encoding.DeltaBinaryPacked)
+            .DisableDictionary("scan_index")
+            .Encoding("scan_index", Encoding.DeltaBinaryPacked)
+            .EnableStatistics()
+            .EnableWritePageIndex();
+        arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        CurrentEntry = entry;
+
+        writerPropsBuilt = writerProps.Build();
+        arrowPropsBuilt = arrowProps.Build();
+        batch = SpectrumMetadata.Scan.BuildRecordBatch(meta);
+
+        CurrentWriter = new FileWriter(
+            managedStream,
+            batch.Schema,
+            writerPropsBuilt,
+            arrowPropsBuilt
+        );
+        CurrentWriter.NewBufferedRowGroup();
+        CurrentWriter.WriteBufferedRecordBatch(batch);
+        CloseCurrentWriter();
+
+        // Precursor
+
+        entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Spectrum,
+            DataKind.Precursors,
+            [],
+            SpectrumMetadata.Precursor.ColumnMappings()
+        );
+        stream = Storage.OpenStream(entry);
+        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        writerProps = new WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .DisableDictionary("source_index")
+            .Encoding("source_index", Encoding.DeltaBinaryPacked)
+            .DisableDictionary("precursor_index")
+            .Encoding("precursor_index", Encoding.DeltaBinaryPacked)
+            .EnableStatistics()
+            .EnableWritePageIndex();
+        arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        CurrentEntry = entry;
+
+        writerPropsBuilt = writerProps.Build();
+        arrowPropsBuilt = arrowProps.Build();
+        batch = SpectrumMetadata.Precursor.BuildRecordBatch(meta);
+
+        CurrentWriter = new FileWriter(
+            managedStream,
+            batch.Schema,
+            writerPropsBuilt,
+            arrowPropsBuilt
+        );
+        CurrentWriter.NewBufferedRowGroup();
+        CurrentWriter.WriteBufferedRecordBatch(batch);
+        CloseCurrentWriter();
+
+        // Selected Ions
+
+        entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Spectrum,
+            DataKind.SelectedIons,
+            [],
+            SpectrumMetadata.SelectedIon.ColumnMappings()
+        );
+        stream = Storage.OpenStream(entry);
+        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        writerProps = new WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .DisableDictionary("source_index")
+            .Encoding("source_index", Encoding.DeltaBinaryPacked)
+            .DisableDictionary("precursor_index")
+            .Encoding("precursor_index", Encoding.DeltaBinaryPacked)
+            .EnableStatistics()
+            .EnableWritePageIndex();
+        arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+        CurrentEntry = entry;
+
+        writerPropsBuilt = writerProps.Build();
+        arrowPropsBuilt = arrowProps.Build();
+        batch = SpectrumMetadata.SelectedIon.BuildRecordBatch(meta);
+
+        CurrentWriter = new FileWriter(
+            managedStream,
+            batch.Schema,
+            writerPropsBuilt,
+            arrowPropsBuilt
+        );
+        CurrentWriter.NewBufferedRowGroup();
         CurrentWriter.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }
@@ -994,7 +1105,17 @@ public class MZPeakWriter : IDisposable
         if (State >= WriterState.WavelengthMetadata || WavelengthSpectrumMetadata == null)
             return;
         State = WriterState.WavelengthMetadata;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.Metadata);
+
+        var meta = PrepareRunLevelMetadataDictionary();
+        meta["wavelength_spectrum_count"] = WavelengthSpectrumMetadata.Length.ToString();
+        meta["wavelength_spectrum_data_point_count"] = (WavelengthSpectrumData?.NumberOfPoints ?? 0).ToString();
+
+        var entry = FileIndexEntry.FromEntityAndData(
+            EntityType.WavelengthSpectrum,
+            DataKind.Metadata,
+            [],
+            WavelengthSpectrumMetadata.Spectrum.ColumnMappings()
+        );
 
         Logger?.LogInformation($"Writing wavelength spectrum metadata, {WavelengthSpectrumMetadata.Length} rows to write");
         var stream = Storage.OpenStream(entry);
@@ -1006,19 +1127,42 @@ public class MZPeakWriter : IDisposable
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
-            .Encoding("spectrum.index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("scan.source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("scan.scan_index", ParquetSharp.Encoding.DeltaBinaryPacked);
+            .Encoding("index", ParquetSharp.Encoding.DeltaBinaryPacked);
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
-        var meta = PrepareRunLevelMetadataDictionary();
-        meta["wavelength_spectrum_count"] = WavelengthSpectrumMetadata.Length.ToString();
-        meta["wavelength_spectrum_data_point_count"] = (WavelengthSpectrumData?.NumberOfPoints ?? 0).ToString();
+        var batch = WavelengthSpectrumMetadata.Spectrum.BuildRecordBatch(meta);
 
         CurrentEntry = entry;
-        CurrentWriter = new FileWriter(managedStream, WavelengthSpectrumMetadata.ArrowSchema(meta), writerProps.Build(), arrowProps.Build());
+        CurrentWriter = new FileWriter(managedStream, batch.Schema, writerProps.Build(), arrowProps.Build());
         CurrentWriter.NewBufferedRowGroup();
-        var batch = WavelengthSpectrumMetadata.Build();
+        CurrentWriter.WriteBufferedRecordBatch(batch);
+        CloseCurrentWriter();
+
+        entry = FileIndexEntry.FromEntityAndData(
+            EntityType.WavelengthSpectrum,
+            DataKind.Scans,
+            [],
+            WavelengthSpectrumMetadata.Scan.ColumnMappings()
+        );
+
+        stream = Storage.OpenStream(entry);
+        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .EnableStatistics()
+            .EnableWritePageIndex()
+            .Encoding("source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
+            .Encoding("scan_index", ParquetSharp.Encoding.DeltaBinaryPacked);
+        arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+
+        batch = WavelengthSpectrumMetadata.Scan.BuildRecordBatch(meta);
+
+        CurrentEntry = entry;
+        CurrentWriter = new FileWriter(managedStream, batch.Schema, writerProps.Build(), arrowProps.Build());
+        CurrentWriter.NewBufferedRowGroup();
         CurrentWriter.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }
@@ -1041,7 +1185,19 @@ public class MZPeakWriter : IDisposable
         if (State >= WriterState.ChromatogramMetadata)
             return;
         State = WriterState.ChromatogramMetadata;
-        var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.Metadata);
+
+        var meta = PrepareRunLevelMetadataDictionary();
+        meta["chromatogram_count"] = ChromatogramMetadata.Length.ToString();
+        meta["chromatogram_data_point_count"] = ChromatogramData.NumberOfPoints.ToString();
+
+        // Chromatogram
+
+        var entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Chromatogram,
+            DataKind.Metadata,
+            [],
+            ChromatogramMetadata.Chromatogram.ColumnMappings()
+        );
         var stream = Storage.OpenStream(entry);
 
         var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
@@ -1054,14 +1210,66 @@ public class MZPeakWriter : IDisposable
             .EnableWritePageIndex();
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
-        var meta = PrepareRunLevelMetadataDictionary();
-        meta["chromatogram_count"] = ChromatogramMetadata.Length.ToString();
-        meta["chromatogram_data_point_count"] = ChromatogramData.NumberOfPoints.ToString();
+        var batch = ChromatogramMetadata.Chromatogram.BuildRecordBatch(meta);
 
         CurrentEntry = entry;
-        CurrentWriter = new FileWriter(managedStream, ChromatogramMetadata.ArrowSchema(meta), writerProps.Build(), arrowProps.Build());
+        CurrentWriter = new FileWriter(managedStream, batch.Schema, writerProps.Build(), arrowProps.Build());
         CurrentWriter.NewBufferedRowGroup();
-        var batch = ChromatogramMetadata.Build();
+        CurrentWriter.WriteBufferedRecordBatch(batch);
+        CloseCurrentWriter();
+
+        // Precursors
+
+        entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Chromatogram,
+            DataKind.Precursors,
+            [],
+            ChromatogramMetadata.Precursor.ColumnMappings()
+        );
+        stream = Storage.OpenStream(entry);
+
+        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .EnableStatistics()
+            .EnableWritePageIndex();
+        arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+
+        batch = ChromatogramMetadata.Precursor.BuildRecordBatch(meta);
+
+        CurrentEntry = entry;
+        CurrentWriter = new FileWriter(managedStream, batch.Schema, writerProps.Build(), arrowProps.Build());
+        CurrentWriter.NewBufferedRowGroup();
+        CurrentWriter.WriteBufferedRecordBatch(batch);
+        CloseCurrentWriter();
+
+        // Selected Ions
+        entry = FileIndexEntry.FromEntityAndData(
+            EntityType.Chromatogram,
+            DataKind.SelectedIons,
+            [],
+            ChromatogramMetadata.SelectedIon.ColumnMappings()
+        );
+        stream = Storage.OpenStream(entry);
+
+        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+
+        writerProps = new ParquetSharp.WriterPropertiesBuilder()
+            .Compression(ParquetSharp.Compression.Zstd)
+            .CompressionLevel(DataWriterConfig.CompressionLevel)
+            .EnableDictionary()
+            .EnableStatistics()
+            .EnableWritePageIndex();
+        arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
+
+        batch = ChromatogramMetadata.SelectedIon.BuildRecordBatch(meta);
+
+        CurrentEntry = entry;
+        CurrentWriter = new FileWriter(managedStream, batch.Schema, writerProps.Build(), arrowProps.Build());
+        CurrentWriter.NewBufferedRowGroup();
         CurrentWriter.WriteBufferedRecordBatch(batch);
         CloseCurrentWriter();
     }

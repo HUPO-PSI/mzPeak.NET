@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Storage;
 using MZPeak.Writer.Data;
 
 namespace MZPeak.Writer.Visitors;
@@ -54,6 +55,16 @@ public class IsolationWindowBuilder : ParamVisitorCollection, IArrowBuilder<List
         }
         ParamList.Clear();
     }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        var cols = ColumnMappingsFromVisitors();
+        foreach (var c in cols)
+        {
+            c.Path = ["isolation_window", .. c.Path];
+        }
+        return cols;
+    }
 }
 
 public class ActivationBuilder : ParamVisitorCollection, IArrowBuilder<List<Param>>
@@ -105,6 +116,16 @@ public class ActivationBuilder : ParamVisitorCollection, IArrowBuilder<List<Para
         }
         ParamList.Clear();
     }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        var cols = ColumnMappingsFromVisitors();
+        foreach(var c in cols)
+        {
+            c.Path = ["activation", ..c.Path];
+        }
+        return cols;
+    }
 }
 
 public class PrecursorBuilder : IArrowBuilder<(ulong, ulong?, string?, List<Param>, List<Param>)>
@@ -114,6 +135,29 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong?, string?, List<Para
     StringArray.Builder PrecursorId;
     IsolationWindowBuilder IsolationWindow;
     ActivationBuilder Activation;
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        var cols = IsolationWindow.ColumnMappingsFromVisitors();
+        foreach(var col in cols)
+        {
+            col.Path = ["isolation_window", ..col.Path];
+        }
+        cols.AddRange(Activation.ColumnMappingsFromVisitors().Select(e =>
+        {
+            e.Path = ["activation", ..e.Path];
+            return e;
+        }));
+        return cols;
+    }
+
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
+    }
 
     public int Length => SourceIndex.Length;
 
@@ -160,7 +204,7 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong?, string?, List<Para
         };
         fields.AddRange(IsolationWindow.ArrowType());
         fields.AddRange(Activation.ArrowType());
-        return new() { new Field("precursor", new StructType(fields), true) };
+        return fields;
     }
 
     public List<IArrowArray> Build()
@@ -173,9 +217,8 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong?, string?, List<Para
             .. IsolationWindow.Build(),
             .. Activation.Build(),
         ];
-        var size = SourceIndex.Length;
         Clear();
-        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
+        return fields;
     }
 
     public void Clear()
@@ -199,6 +242,8 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     AuxiliaryArrayListBuilder AuxiliaryArrays;
 
     public int Length => Index.Length;
+
+    public List<ColumnMapping> ColumnMappings() => ColumnMappingsFromVisitors();
 
     public SpectrumBuilder() : base(new()
     {
@@ -313,13 +358,13 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         }
         fields.AddRange(ParamList.ArrowType());
         fields.AddRange([
-            new Field("data_processing_ref", new StringType(), true),
+            new Field("data_processing_id", new StringType(), true),
             new Field("mz_delta_model", new ListType(new DoubleType()), true),
             new Field("number_of_auxiliary_arrays", new Int32Type(), true),
             new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         ]);
         FreezeSchema();
-        return new() { new Field("spectrum", new StructType(fields), true) };
+        return fields;
     }
 
     public List<IArrowArray> Build()
@@ -341,9 +386,16 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             NumberOfAuxiliaryArrays.Build(),
             AuxiliaryArrays.Build()[0]
         ]);
-        var size = Index.Length;
 
-        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
+        return fields;
+    }
+
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
     }
 
     public void Clear()
@@ -374,6 +426,21 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
     ScanWindowListBuilder ScanWindowListBuilder;
 
     public int Length => SourceIndex.Length;
+
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
+    }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        var entries = ColumnMappingsFromVisitors();
+        entries.AddRange(ScanWindowListBuilder.ColumnMappings());
+        return entries;
+    }
 
     public ScanBuilder() : base(new()
     {
@@ -451,7 +518,7 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
         fields.AddRange(ParamList.ArrowType());
         fields.AddRange(ScanWindowListBuilder.ArrowType());
         FreezeSchema();
-        return new() { new Field("scan", new StructType(fields), true) };
+        return fields;
     }
 
     public List<IArrowArray> Build()
@@ -471,8 +538,7 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
 
         fields.AddRange(ParamList.Build());
         fields.AddRange(ScanWindowListBuilder.Build());
-        var size = SourceIndex.Length;
-        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
+        return fields;
     }
 
     public void Clear()
@@ -538,6 +604,16 @@ public class ScanWindowBuilder : ParamVisitorCollection, IArrowBuilder<List<Para
             vis.Clear();
         ParamList.Clear();
     }
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        var visitors = ColumnMappingsFromVisitors();
+        foreach(var v in visitors)
+        {
+            v.Path = ["scan_window", ..v.Path];
+        }
+        return visitors;
+    }
 }
 
 public class ScanWindowListBuilder : IArrowBuilder<List<List<Param>>>
@@ -549,6 +625,8 @@ public class ScanWindowListBuilder : IArrowBuilder<List<List<Param>>>
     public int NullCount { get; protected set; }
 
     public int Length => ValueOffsetsBufferBuilder.Length;
+
+    public List<ColumnMapping> ColumnMappings() => ValueBuilder.ColumnMappings();
 
     public ScanWindowListBuilder(List<CustomBuilderFromParam>? paramVisitors = null, Unit? fixedUnit = null)
     {
@@ -623,6 +701,14 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
 
     public int Length => SourceIndex.Length;
 
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
+    }
+
     public SelectedIonBuilder() : base(new()
         {
             new CustomBuilderFromParam("MS:1000744", "selected ion m/z", new DoubleType(), "MS:1000040"),
@@ -676,7 +762,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         }
         fields.AddRange(ParamList.ArrowType());
         FreezeSchema();
-        return new() { new Field("selected_ion", new StructType(fields), true) };
+        return fields;
     }
 
     public List<IArrowArray> Build()
@@ -688,8 +774,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
             fields.AddRange(vis.Build());
         }
         fields.AddRange(ParamList.Build());
-        var size = SourceIndex.Length;
-        return new() { new StructArray(tp.DataType, size, fields, default) };
+        return fields;
     }
 
     public void Clear()
@@ -704,6 +789,8 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         }
         ParamList.Clear();
     }
+
+    public List<ColumnMapping> ColumnMappings() => ColumnMappingsFromVisitors();
 }
 
 public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, string?, List<Param>, EntryDerivedMetadata?)>
@@ -715,6 +802,14 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
     AuxiliaryArrayListBuilder AuxiliaryArrays;
 
     public int Length => Index.Length;
+
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
+    }
 
     public ChromatogramBuilder() : base(new()
     {
@@ -735,6 +830,8 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         NumberOfAuxiliaryArrays = new();
         AuxiliaryArrays = new();
     }
+
+    public List<ColumnMapping> ColumnMappings() => ColumnMappingsFromVisitors();
 
     public void Append((ulong, string, string?, List<Param>, EntryDerivedMetadata?) value)
     {
@@ -787,12 +884,12 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
         }
         fields.AddRange(ParamList.ArrowType());
         fields.AddRange([
-            new Field("data_processing_ref", new StringType(), true),
+            new Field("data_processing_id", new StringType(), true),
             new Field("number_of_auxiliary_arrays", new Int32Type(), true),
             new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         ]);
         FreezeSchema();
-        return new() { new Field("chromatogram", new StructType(fields), true) };
+        return fields;
     }
 
     public List<IArrowArray> Build()
@@ -812,9 +909,7 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
             NumberOfAuxiliaryArrays.Build(),
             AuxiliaryArrays.Build()[0]
         ]);
-        var size = Index.Length;
-
-        return new() { new StructArray(ArrowType()[0].DataType, size, fields, default) };
+        return fields;
     }
 
     public void Clear()
@@ -843,6 +938,14 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
 
     public int Length => Index.Length;
 
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
+    }
+
     public WavelengthSpectrumBuilder() : base(new()
     {
         // Required CV terms
@@ -868,6 +971,8 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
         NumberOfAuxiliaryArrays = new();
         AuxiliaryArrays = new();
     }
+
+    public List<ColumnMapping> ColumnMappings() => ColumnMappingsFromVisitors();
 
     public void Append((ulong, string, double, string?, List<Param>, EntryDerivedMetadata?) value)
     {
@@ -923,7 +1028,7 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
         }
         fields.AddRange(ParamList.ArrowType());
         fields.AddRange([
-            new Field("data_processing_ref", new StringType(), true),
+            new Field("data_processing_id", new StringType(), true),
             new Field("number_of_auxiliary_arrays", new Int32Type(), true),
             new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         ]);
