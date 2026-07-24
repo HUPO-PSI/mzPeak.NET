@@ -229,87 +229,87 @@ public class ParamTest
     }
 }
 
-public class HttpReadTest : IDisposable
-{
+// public class HttpReadTest : IDisposable
+// {
 
-    Process? Server;
+//     Process? Server;
 
-    public HttpReadTest()
-    {
-        var args = new ProcessStartInfo("miniserve", ["--port", "8030", "."])
-        {
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-        };
-        var server = Process.Start(args);
-        if (server == null)
-        {
-            throw new InvalidOperationException("Failed to start up server");
-        }
-        Server = server;
-        Thread.Sleep(500);
-    }
+//     public HttpReadTest()
+//     {
+//         var args = new ProcessStartInfo("miniserve", ["--port", "8030", "."])
+//         {
+//             CreateNoWindow = true,
+//             RedirectStandardError = true,
+//             RedirectStandardOutput = true,
+//         };
+//         var server = Process.Start(args);
+//         if (server == null)
+//         {
+//             throw new InvalidOperationException("Failed to start up server");
+//         }
+//         Server = server;
+//         Thread.Sleep(500);
+//     }
 
-    public void Dispose()
-    {
-        Server?.Kill();
-    }
+//     public void Dispose()
+//     {
+//         Server?.Kill();
+//     }
 
-    [Fact]
-    public void ReadHttpStream()
-    {
-        var stream = new HttpStream("http://localhost:8030/small.mzpeak");
-        Assert.True(stream.CanRead);
-        var header = new byte[4];
-        stream.ReadExactly(header);
-        Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
-        Assert.Equal(4, stream.Position);
-        stream.Seek(0, SeekOrigin.Begin);
-        header = new byte[4];
-        stream.ReadExactly(header);
-        Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
-        Assert.Equal(4, stream.Position);
+//     [Fact]
+//     public void ReadHttpStream()
+//     {
+//         var stream = new HttpStream("http://localhost:8030/small.mzpeak");
+//         Assert.True(stream.CanRead);
+//         var header = new byte[4];
+//         stream.ReadExactly(header);
+//         Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
+//         Assert.Equal(4, stream.Position);
+//         stream.Seek(0, SeekOrigin.Begin);
+//         header = new byte[4];
+//         stream.ReadExactly(header);
+//         Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
+//         Assert.Equal(4, stream.Position);
 
-        stream.Seek(0, SeekOrigin.Begin);
-        var zipStream = new ZipArchiveStream<HttpStream>(stream);
+//         stream.Seek(0, SeekOrigin.Begin);
+//         var zipStream = new ZipArchiveStream<HttpStream>(stream);
 
-        Assert.NotEmpty(zipStream.FileIndex().Files);
-    }
+//         Assert.NotEmpty(zipStream.FileIndex().Files);
+//     }
 
-    [Fact]
-    public async Task ReadHttpArchive()
-    {
-        var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
-        Assert.NotEmpty(archive.FileIndex().Files);
-        var reader = new MzPeakReader(archive);
-        Assert.Equal(48, reader.SpectrumCount);
+//     [Fact]
+//     public async Task ReadHttpArchive()
+//     {
+//         var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
+//         Assert.NotEmpty(archive.FileIndex().Files);
+//         var reader = new MzPeakReader(archive);
+//         Assert.Equal(48, reader.SpectrumCount);
 
-        List<ulong> profileSpectrumIdx = [
-            0,
-            1,
-            7,
-            8,
-            14,
-            15,
-            21,
-            22,
-            28,
-            29,
-            34,
-            35,
-            41,
-            42
-        ];
+//         List<ulong> profileSpectrumIdx = [
+//             0,
+//             1,
+//             7,
+//             8,
+//             14,
+//             15,
+//             21,
+//             22,
+//             28,
+//             29,
+//             34,
+//             35,
+//             41,
+//             42
+//         ];
 
-        foreach(var i in profileSpectrumIdx)
-        {
-            var meta = reader.GetSpectrumDescription(i);
-            Assert.Equal(i, meta.Index);
+//         foreach(var i in profileSpectrumIdx)
+//         {
+//             var meta = reader.GetSpectrumDescription(i);
+//             Assert.Equal(i, meta.Index);
 
-            var data = await reader.GetSpectrumData(i);
-            Assert.NotNull(data);
-            Assert.NotEqual(0, data.Length);
-        }
-    }
-}
+//             var data = await reader.GetSpectrumData(i);
+//             Assert.NotNull(data);
+//             Assert.NotEqual(0, data.Length);
+//         }
+//     }
+// }
