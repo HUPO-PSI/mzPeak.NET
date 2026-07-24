@@ -334,6 +334,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                     Value = new DoubleArray.Builder();
                     break;
                 }
+            case ArrowTypeId.Float:
+                {
+                    Value = new FloatArray.Builder();
+                    break;
+                }
             case ArrowTypeId.String:
                 {
                     Value = new StringArray.Builder();
@@ -396,6 +401,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Double:
                 {
                     ((DoubleArray.Builder)Value).AppendNull();
+                    break;
+                }
+            case ArrowTypeId.Float:
+                {
+                    ((FloatArray.Builder)Value).AppendNull();
                     break;
                 }
             case ArrowTypeId.String:
@@ -467,6 +477,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                     ((DoubleArray.Builder)Value).Append(param.AsDouble());
                     break;
                 }
+            case ArrowTypeId.Float:
+                {
+                    ((FloatArray.Builder)Value).Append((float)param.AsDouble());
+                    break;
+                }
             case ArrowTypeId.String:
                 {
                     ((StringArray.Builder)Value).Append(param.AsString());
@@ -531,6 +546,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Double:
                 {
                     fields.Add(new Field(baseName, new DoubleType(), true));
+                    break;
+                }
+            case ArrowTypeId.Float:
+                {
+                    fields.Add(new Field(baseName, new FloatType(), true));
                     break;
                 }
             case ArrowTypeId.String:
@@ -607,6 +627,11 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             case ArrowTypeId.Double:
                 {
                     cols.Add(((DoubleArray.Builder)Value).Build());
+                    break;
+                }
+            case ArrowTypeId.Float:
+                {
+                    cols.Add(((FloatArray.Builder)Value).Build());
                     break;
                 }
             case ArrowTypeId.String:

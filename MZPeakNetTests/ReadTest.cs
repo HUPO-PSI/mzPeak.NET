@@ -1,5 +1,6 @@
 ﻿namespace MzPeakTests;
 
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Apache.Arrow;
@@ -225,5 +226,89 @@ public class ParamTest
         var msg = JsonSerializer.Serialize(param);
         var expected = "{\"name\":\"foobar\",\"accession\":\"UNK:000\",\"value\":true,\"unit\":\"UO:0\"}";
         Assert.Equal(expected, msg);
+    }
+}
+
+public class HttpReadTest : IDisposable
+{
+
+    Process? Server;
+
+    public HttpReadTest()
+    {
+        var args = new ProcessStartInfo("miniserve", ["--port", "8030", "."])
+        {
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+        var server = Process.Start(args);
+        if (server == null)
+        {
+            throw new InvalidOperationException("Failed to start up server");
+        }
+        Server = server;
+    }
+
+    public void Dispose()
+    {
+        Server?.Kill();
+    }
+
+    [Fact]
+    public void ReadHttpStream()
+    {
+        var stream = new HttpStream("http://localhost:8030/small.mzpeak");
+        Assert.True(stream.CanRead);
+        var header = new byte[4];
+        stream.ReadExactly(header);
+        Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
+        Assert.Equal(4, stream.Position);
+        stream.Seek(0, SeekOrigin.Begin);
+        header = new byte[4];
+        stream.ReadExactly(header);
+        Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
+        Assert.Equal(4, stream.Position);
+
+        stream.Seek(0, SeekOrigin.Begin);
+        var zipStream = new ZipArchiveStream<HttpStream>(stream);
+
+        Assert.NotEmpty(zipStream.FileIndex().Files);
+    }
+
+    [Fact]
+    public async Task ReadHttpArchive()
+    {
+        var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
+        Assert.NotEmpty(archive.FileIndex().Files);
+        var reader = new MzPeakReader(archive);
+        Assert.Equal(48, reader.SpectrumCount);
+
+        List<ulong> profileSpectrumIdx = [
+            0,
+            1,
+            7,
+            8,
+            14,
+            15,
+            21,
+            22,
+            28,
+            29,
+            34,
+            35,
+            41,
+            42
+        ];
+
+        foreach(var i in profileSpectrumIdx)
+        {
+            var meta = reader.GetSpectrumDescription(i);
+            Assert.Equal(i, meta.Index);
+
+            var data = await reader.GetSpectrumData(i);
+            Assert.NotNull(data);
+            Assert.NotEqual(0, data.Length);
+        }
     }
 }

@@ -712,8 +712,8 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     public SelectedIonBuilder() : base(new()
         {
             new CustomBuilderFromParam("MS:1000744", "selected_ion_mz", new DoubleType(), "MS:1000040"),
-            new CustomBuilderFromParam("MS:1000042", "intensity", new DoubleType(), "MS:1000131"),
-            new CustomBuilderFromParam("MS:1000041", "charge_state", new Int64Type())
+            new CustomBuilderFromParam("MS:1000042", "peak_intensity", new FloatType(), "MS:1000131"),
+            new CustomBuilderFromParam("MS:1000041", "charge_state", new Int32Type())
         })
     {
         SourceIndex = new();
@@ -957,7 +957,7 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
 
         // Optional spectrum properties (commonly present)
         new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), SpectrumProperties.NumberOfDataPoints.Name(), new Int64Type()),
-        new CustomBuilderFromParam("MS:1000504", "base_peak_mz", new DoubleType(), Unit.Nanometer.CURIE()),
+        new CustomBuilderFromParam("MS:1003812", "lambda_max", new DoubleType(), Unit.Nanometer.CURIE()),
         new CustomBuilderFromParam("MS:1000505", "base_peak_intensity", new DoubleType(), "MS:1000131"),
         new CustomBuilderFromParam("MS:1000285", "total_ion_current", new DoubleType(), "MS:1000131"),
         new CustomBuilderFromParam("MS:1000619", "lowest_observed_wavelength", new DoubleType(), Unit.Nanometer.CURIE()),

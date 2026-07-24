@@ -14,6 +14,8 @@ using ParquetSharp;
 using ParquetSharp.Arrow;
 using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 using MZPeak.ControlledVocabulary;
+using System.Net.Http.Headers;
+using System.Threading;
 
 public enum EntityTypeTag
 {
@@ -1089,5 +1091,213 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
     FileIndex IMZPeakArchiveWriter.FileIndex()
     {
         return FileIndex;
+    }
+}
+
+
+/// <summary>
+/// TODO
+/// </summary>
+public class HttpStream : Stream
+{
+    private static readonly HttpClient httpClient;
+
+    static HttpStream() {
+        httpClient = new HttpClient();
+    }
+
+    public Uri Url;
+    protected long _position;
+    protected long _length;
+
+    public override bool CanRead => true;
+
+    public override bool CanSeek => true;
+
+    public override bool CanWrite => false;
+
+    public override long Length => _length;
+
+    public override long Position { get => _position; set => Seek(value, SeekOrigin.Begin); }
+
+    public HttpStream(Uri uri)
+    {
+        Url = uri;
+        _position = 0;
+        _length = 0;
+        FetchSize();
+    }
+
+    public HttpStream(string url): this(new Uri(url))
+    {}
+
+    protected void FetchSize()
+    {
+        var msg = new HttpRequestMessage()
+        {
+            Method = HttpMethod.Head,
+            RequestUri = Url
+        };
+        var resp = httpClient.Send(msg).EnsureSuccessStatusCode();
+
+        var sizeHeader = resp.Content.Headers.GetValues("Content-Length").First();
+        _length = Convert.ToInt64(sizeHeader);
+    }
+
+    public override void Flush()
+    {
+        throw new NotImplementedException();
+    }
+
+    protected byte[] FetchRange(long start, long end)
+    {
+        var msg = new HttpRequestMessage
+        {
+            Method = HttpMethod.Get,
+            RequestUri = Url,
+        };
+        msg.Headers.Range = new RangeHeaderValue(start, end);
+        var resp = httpClient.Send(msg).EnsureSuccessStatusCode();
+        var stream = resp.Content.ReadAsStream();
+        var buf = new byte[end - start];
+        stream.Read(buf);
+        return buf;
+    }
+
+    protected async Task<byte[]> FetchRangeAsync(long start, long end, CancellationToken cancellationToken)
+    {
+        var msg = new HttpRequestMessage
+        {
+            Method = HttpMethod.Get,
+            RequestUri = Url,
+        };
+        msg.Headers.Range = new RangeHeaderValue(start, end);
+        var resp = (await httpClient.SendAsync(msg, cancellationToken)).EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        long bytesToRead = count - offset;
+        if (Position + bytesToRead > _length)
+        {
+            bytesToRead = _length - Position;
+        }
+
+        var result = FetchRange(Position, Position + bytesToRead);
+        var view = new Span<byte>(buffer);
+        result.CopyTo(view.Slice(offset));
+        _position += bytesToRead;
+        return (int)bytesToRead;
+    }
+
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        long bytesToRead = count - offset;
+        if (Position + bytesToRead > _length)
+        {
+            bytesToRead = _length - Position;
+        }
+
+        var result = await FetchRangeAsync(Position, Position + bytesToRead, cancellationToken);
+
+        result.CopyTo(buffer, offset);
+        _position += result.Length;
+        return result.Length;
+    }
+
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        var before = _position;
+        switch (origin) {
+            case SeekOrigin.Begin:
+                {
+                    _position = offset;
+                    break;
+                }
+            case SeekOrigin.Current:
+                {
+                    _position += offset;
+                    break;
+                }
+            case SeekOrigin.End:
+                {
+                    _position = _length + offset;
+                    break;
+                }
+        }
+        if (_position < 0 || _position > _length)
+        {
+            var after = _position;
+            _position = before;
+            throw new InvalidOperationException($"Cannot seek to before the beginning or past the end of the stream! Went from {before} to {after}");
+        }
+        return _position;
+    }
+
+    public override void SetLength(long value)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+
+public class HttpZipArchive : BaseZipArchive
+{
+    public Uri Url;
+
+    public HttpZipArchive(string url) : this(new Uri(url)) {}
+
+    public HttpZipArchive(Uri url)
+    {
+        Url = url;
+        extractInitialMetadata();
+    }
+
+    public override ZipArchive OpenArchive()
+    {
+        return new ZipArchive(OpenArchiveStream());
+    }
+
+    public override Stream OpenArchiveStream()
+    {
+        return new HttpStream(Url);
+    }
+
+    public override Stream OpenStream(string name)
+    {
+        {
+            var stream = OpenArchiveStream();
+            var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            var entry = archive.GetEntry(name);
+            if (entry == null)
+            {
+                throw new FileNotFoundException(name);
+            }
+
+            // Hacky means of checking that the file isn't compressed
+            if (entry.Length != entry.CompressedLength)
+            {
+                throw new IOException("File in MZPeak ZIP Archive cannot be stored with compression");
+            }
+
+            var length = entry.Length;
+
+            // Hacky means of getting the offset of the file contents
+            var substreamNotSeekable = entry.Open();
+            var offset = stream.Position;
+            substreamNotSeekable.Close();
+
+            stream.Close();
+            stream = OpenArchiveStream();
+            var segStream = new StreamSegment(stream, offset, length);
+            segStream.Configure();
+            return segStream;
+        }
     }
 }
