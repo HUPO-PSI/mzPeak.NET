@@ -557,7 +557,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
     /// Render the Param name as a column name
     /// </summary>
     /// <returns></returns>
-    protected string ColumnName() => ColumnParam.Inflect(AccessionCURIE, Name, FixedUnit);
+    protected string ColumnName() => Name;
 
     public List<IArrowArray> Build()
     {

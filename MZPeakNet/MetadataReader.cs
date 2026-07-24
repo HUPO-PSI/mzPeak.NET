@@ -241,13 +241,9 @@ public abstract class MetadataReaderBase<T>
 public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
 {
     ChunkedArray? spectrumMetadata = null;
-    List<ColumnParam> spectrumMetadataColumns;
     ChunkedArray? scanMetadata = null;
-    List<ColumnParam> scanMetadataColumns;
     ChunkedArray? precursorMetadata = null;
-    List<ColumnParam> precursorMetadataColumns;
     ChunkedArray? selectedIonMetadata = null;
-    List<ColumnParam> selectedIonMetadataColumns;
 
     /// <summary>Gets the number of spectra.</summary>
     public override long Length
@@ -267,12 +263,6 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
     /// <param name="initializeFacets">Whether to initialize tables immediately.</param>
     public SpectrumMetadataReader(MzPeakFacetNamespace parquetNamespace, bool initializeFacets = true) : base(MzPeakMetadata.FromFileIndex(parquetNamespace.FileIndex), parquetNamespace)
     {
-
-        spectrumMetadataColumns = new();
-        scanMetadataColumns = new();
-        precursorMetadataColumns = new();
-        selectedIonMetadataColumns = new();
-
         if (initializeFacets)
         {
             InitializeTables().Wait();
@@ -602,11 +592,8 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
 public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescription>
 {
     ChunkedArray? chromatogramMetadata = null;
-    List<ColumnParam> chromatogramMetadataColumns;
     ChunkedArray? precursorMetadata = null;
-    List<ColumnParam> precursorMetadataColumns;
     ChunkedArray? selectedIonMetadata = null;
-    List<ColumnParam> selectedIonMetadataColumns;
 
     /// <summary>Gets the number of chromatograms.</summary>
     public override long Length
@@ -628,9 +615,6 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     /// <param name="initializeFacets">Whether to initialize tables immediately.</param>
     public ChromatogramMetadataReader(MzPeakFacetNamespace parquetNamespace, bool initializeFacets = true) : base(MzPeakMetadata.FromFileIndex(parquetNamespace.FileIndex), parquetNamespace)
     {
-        chromatogramMetadataColumns = new();
-        precursorMetadataColumns = new();
-        selectedIonMetadataColumns = new();
         if (initializeFacets)
         {
             InitializeTables().Wait();

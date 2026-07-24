@@ -2257,44 +2257,6 @@ public static class NativeIdentifierFormatsMethods
 }
 
 
-public record ColumnParam
-{
-    public string Name;
-    public string? CURIE;
-    public string? UnitCURIE;
-    public int Index;
-    public string OriginalName;
-    public bool IsUnitOnly = false;
-
-    public Param Create(object? rawValue=null)
-    {
-        return new Param(Name, CURIE, rawValue, UnitCURIE);
-    }
-
-    public static string Inflect(string accessionCURIE, string name, string? unit = null)
-    {
-        var tokens = accessionCURIE.Split(":").ToList();
-        tokens.AddRange(name.Split(" ").Select((v) => v.Replace("m/z", "mz")));
-        if (unit != null)
-        {
-            tokens.Add("unit");
-            tokens.AddRange(unit.Split(":"));
-        }
-        return string.Join("_", tokens);
-    }
-
-    public ColumnParam(string name, string? curie, string? unit, int index, string originalName, bool isUnitOnly = false)
-    {
-        Name = name;
-        CURIE = curie;
-        UnitCURIE = unit;
-        Index = index;
-        OriginalName = originalName;
-        IsUnitOnly = isUnitOnly;
-    }
-}
-
-
 [JsonConverter(typeof(ParamJsonConverter))]
 public class Param
 {
