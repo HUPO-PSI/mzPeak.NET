@@ -248,6 +248,7 @@ public class HttpReadTest : IDisposable
             throw new InvalidOperationException("Failed to start up server");
         }
         Server = server;
+        Thread.Sleep(500);
     }
 
     public void Dispose()
