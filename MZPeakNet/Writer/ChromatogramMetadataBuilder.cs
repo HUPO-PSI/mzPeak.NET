@@ -82,74 +82,10 @@ public class ChromatogramMetadataBuilder
         return new Schema(fields, metadata);
     }
 
-    /// <summary>
-    /// Verify that all sub-builders have the same number of rows.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when facet lengths don't match.</exception>
-    public bool ValidateLengths()
-    {
-        var chromatogramLength = Chromatogram.Length;
-        var precursorLength = Precursor.Length;
-        var selectedIonLength = SelectedIon.Length;
-
-        if (chromatogramLength != precursorLength)
-            return false;
-        if (chromatogramLength != selectedIonLength)
-            return false;
-        return true;
-    }
-
-    public void EqualizeLengths()
-    {
-        var chromatogramLength = Chromatogram.Length;
-        var precursorLength = Precursor.Length;
-        var selectedIonLength = SelectedIon.Length;
-        var nMax = Math.Max(
-            chromatogramLength,
-            Math.Max(precursorLength, selectedIonLength)
-        );
-        while (chromatogramLength < nMax)
-        {
-            Chromatogram.AppendNull();
-            chromatogramLength += 1;
-        }
-        while (precursorLength < nMax)
-        {
-            Precursor.AppendNull();
-            precursorLength += 1;
-        }
-        while (selectedIonLength < nMax)
-        {
-            SelectedIon.AppendNull();
-            selectedIonLength += 1;
-        }
-    }
-
     public void Clear()
     {
         Chromatogram.Clear();
         Precursor.Clear();
         SelectedIon.Clear();
-    }
-
-    /// <summary>
-    /// Build the packed parallel metadata table as a RecordBatch.
-    /// </summary>
-    public RecordBatch Build()
-    {
-        EqualizeLengths();
-
-        var schema = ArrowSchema();
-        var arrays = new List<IArrowArray>();
-
-        var chromatogramArrays = Chromatogram.Build();
-        var precursorArrays = Precursor.Build();
-        var selectedIonArrays = SelectedIon.Build();
-        int chromatogramLength = chromatogramArrays[0].Length;
-
-        arrays.AddRange(chromatogramArrays);
-        arrays.AddRange(precursorArrays);
-        arrays.AddRange(selectedIonArrays);
-        return new RecordBatch(schema, arrays, chromatogramLength);
     }
 }

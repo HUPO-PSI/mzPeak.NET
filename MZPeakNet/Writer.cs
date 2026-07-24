@@ -921,7 +921,7 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
 
         var meta = PrepareRunLevelMetadataDictionary();
-        meta["spectrum_count"] = SpectrumMetadata.Length.ToString();
+        meta["spectrum_count"] = SpectrumMetadata.SpectrumCounter.ToString();
         meta["spectrum_data_point_count"] = SpectrumData.NumberOfPoints.ToString();
 
         // Spectrum Metadata
@@ -1107,7 +1107,7 @@ public class MZPeakWriter : IDisposable
         State = WriterState.WavelengthMetadata;
 
         var meta = PrepareRunLevelMetadataDictionary();
-        meta["wavelength_spectrum_count"] = WavelengthSpectrumMetadata.Length.ToString();
+        meta["wavelength_spectrum_count"] = WavelengthSpectrumMetadata.SpectrumCounter.ToString();
         meta["wavelength_spectrum_data_point_count"] = (WavelengthSpectrumData?.NumberOfPoints ?? 0).ToString();
 
         var entry = FileIndexEntry.FromEntityAndData(
@@ -1187,7 +1187,7 @@ public class MZPeakWriter : IDisposable
         State = WriterState.ChromatogramMetadata;
 
         var meta = PrepareRunLevelMetadataDictionary();
-        meta["chromatogram_count"] = ChromatogramMetadata.Length.ToString();
+        meta["chromatogram_count"] = ChromatogramMetadata.ChromatogramCounter.ToString();
         meta["chromatogram_data_point_count"] = ChromatogramData.NumberOfPoints.ToString();
 
         // Chromatogram

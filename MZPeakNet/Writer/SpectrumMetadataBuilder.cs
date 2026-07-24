@@ -126,58 +126,6 @@ public class SpectrumMetadataBuilder
         return new Schema(fields, metadata);
     }
 
-    /// <summary>
-    /// Verify that all sub-builders have the same number of rows.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when facet lengths don't match.</exception>
-    public bool ValidateLengths()
-    {
-        var spectrumLength = Spectrum.Length;
-        var scanLength = Scan.Length;
-        var precursorLength = Precursor.Length;
-        var selectedIonLength = SelectedIon.Length;
-
-        if (spectrumLength != scanLength)
-            return false;
-        if (spectrumLength != precursorLength)
-            return false;
-        if (spectrumLength != selectedIonLength)
-            return false;
-        return true;
-    }
-
-    public void EqualizeLengths()
-    {
-        var spectrumLength = Spectrum.Length;
-        var scanLength = Scan.Length;
-        var precursorLength = Precursor.Length;
-        var selectedIonLength = SelectedIon.Length;
-        var nMax = Math.Max(
-            Math.Max(spectrumLength, scanLength),
-            Math.Max(precursorLength, selectedIonLength)
-        );
-        while (spectrumLength < nMax)
-        {
-            Spectrum.AppendNull();
-            spectrumLength += 1;
-        }
-        while (scanLength < nMax)
-        {
-            Scan.AppendNull();
-            scanLength += 1;
-        }
-        while (precursorLength < nMax)
-        {
-            Precursor.AppendNull();
-            precursorLength += 1;
-        }
-        while (selectedIonLength < nMax)
-        {
-            SelectedIon.AppendNull();
-            selectedIonLength += 1;
-        }
-    }
-
     public void Clear()
     {
         Spectrum.Clear();
@@ -185,31 +133,6 @@ public class SpectrumMetadataBuilder
         Precursor.Clear();
         SelectedIon.Clear();
     }
-
-    /// <summary>
-    /// Build the packed parallel metadata table as a RecordBatch.
-    /// </summary>
-    public RecordBatch Build()
-    {
-        EqualizeLengths();
-
-        var schema = ArrowSchema();
-        var arrays = new List<IArrowArray>();
-
-        var spectrumArrays = Spectrum.Build();
-        var scanArrays = Scan.Build();
-        var precursorArrays = Precursor.Build();
-        var selectedIonArrays = SelectedIon.Build();
-        int spectrumLength = spectrumArrays[0].Length;
-
-        arrays.AddRange(spectrumArrays);
-        arrays.AddRange(scanArrays);
-        arrays.AddRange(precursorArrays);
-        arrays.AddRange(selectedIonArrays);
-        Clear();
-        return new RecordBatch(schema, arrays, spectrumLength);
-    }
-
 }
 
 
@@ -284,61 +207,10 @@ public class WavelengthSpectrumMetadataBuilder
         return new Schema(fields, metadata);
     }
 
-    /// <summary>
-    /// Verify that all sub-builders have the same number of rows.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when facet lengths don't match.</exception>
-    public bool ValidateLengths()
-    {
-        var spectrumLength = Spectrum.Length;
-        var scanLength = Scan.Length;
-
-        if (spectrumLength != scanLength)
-            return false;
-        return true;
-    }
-
-    public void EqualizeLengths()
-    {
-        var spectrumLength = Spectrum.Length;
-        var scanLength = Scan.Length;
-        var nMax = Math.Max(spectrumLength, scanLength);
-        while (spectrumLength < nMax)
-        {
-            Spectrum.AppendNull();
-            spectrumLength += 1;
-        }
-        while (scanLength < nMax)
-        {
-            Scan.AppendNull();
-            scanLength += 1;
-        }
-    }
-
     public void Clear()
     {
         Spectrum.Clear();
         Scan.Clear();
-    }
-
-    /// <summary>
-    /// Build the packed parallel metadata table as a RecordBatch.
-    /// </summary>
-    public RecordBatch Build()
-    {
-        EqualizeLengths();
-
-        var schema = ArrowSchema();
-        var arrays = new List<IArrowArray>();
-
-        var spectrumArrays = Spectrum.Build();
-        var scanArrays = Scan.Build();
-        int spectrumLength = spectrumArrays[0].Length;
-
-        arrays.AddRange(spectrumArrays);
-        arrays.AddRange(scanArrays);
-        Clear();
-        return new RecordBatch(schema, arrays, spectrumLength);
     }
 
 }

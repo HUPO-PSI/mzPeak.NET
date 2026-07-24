@@ -512,7 +512,9 @@ public class ReadFileTask : CLITask
         var isProfile = 0;
         var isCentroid = 0;
         var i = 0;
-        var pointCount = 0;
+        var pointCount = 0L;
+        var dataCount = 0L;
+        var peakCount = 0L;
         await foreach (var (descr, spec) in reader.EnumerateSpectraAsync())
         {
             i++;
@@ -520,8 +522,12 @@ public class ReadFileTask : CLITask
             isProfile += descr.IsProfile ? 1 : 0;
             isCentroid += descr.IsCentroid ? 1 : 0;
             pointCount += spec.Length;
+
+            dataCount += descr.DataPointCount != null ? (long)descr.DataPointCount : 0;
+            peakCount += descr.PeakCount != null ? (long)descr.PeakCount : 0;
         }
-        Logger?.LogInformation($"{isProfile} profile spectra, {isCentroid} centroid spectra, {pointCount} data points read");
+
+        Logger?.LogInformation($"{isProfile} profile spectra, {isCentroid} centroid spectra, {pointCount} data points read ({dataCount} profile, {peakCount} peaks)");
     }
 }
 
