@@ -1100,15 +1100,21 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
 /// </summary>
 public class HttpStream : Stream
 {
-    private static readonly HttpClient httpClient;
+    private static readonly HttpClient defaultHttpClient;
 
     static HttpStream() {
-        httpClient = new HttpClient();
+        defaultHttpClient = new HttpClient();
     }
 
+    protected HttpClient? localClient = null;
     public Uri Url;
     protected long _position;
     protected long _length;
+
+    public HttpClient Client {
+        get => localClient == null ? defaultHttpClient : localClient;
+        set => localClient = value;
+    }
 
     public override bool CanRead => true;
 
@@ -1120,15 +1126,16 @@ public class HttpStream : Stream
 
     public override long Position { get => _position; set => Seek(value, SeekOrigin.Begin); }
 
-    public HttpStream(Uri uri)
+    public HttpStream(Uri uri, HttpClient? client = null)
     {
         Url = uri;
+        if (client != null) Client = client;
         _position = 0;
         _length = 0;
         FetchSize();
     }
 
-    public HttpStream(string url): this(new Uri(url))
+    public HttpStream(string url, HttpClient? client = null): this(new Uri(url), client)
     {}
 
     protected void FetchSize()
@@ -1138,7 +1145,7 @@ public class HttpStream : Stream
             Method = HttpMethod.Head,
             RequestUri = Url
         };
-        var resp = httpClient.Send(msg).EnsureSuccessStatusCode();
+        var resp = Client.Send(msg).EnsureSuccessStatusCode();
 
         var sizeHeader = resp.Content.Headers.GetValues("Content-Length").First();
         _length = Convert.ToInt64(sizeHeader);
@@ -1157,7 +1164,7 @@ public class HttpStream : Stream
             RequestUri = Url,
         };
         msg.Headers.Range = new RangeHeaderValue(start, end);
-        var resp = httpClient.Send(msg).EnsureSuccessStatusCode();
+        var resp = Client.Send(msg).EnsureSuccessStatusCode();
         var stream = resp.Content.ReadAsStream();
         var buf = new byte[end - start];
         stream.Read(buf);
@@ -1172,7 +1179,7 @@ public class HttpStream : Stream
             RequestUri = Url,
         };
         msg.Headers.Range = new RangeHeaderValue(start, end);
-        var resp = (await httpClient.SendAsync(msg, cancellationToken)).EnsureSuccessStatusCode();
+        var resp = (await Client.SendAsync(msg, cancellationToken)).EnsureSuccessStatusCode();
         return await resp.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
@@ -1250,12 +1257,14 @@ public class HttpStream : Stream
 public class HttpZipArchive : BaseZipArchive
 {
     public Uri Url;
+    HttpClient? localClient = null;
 
-    public HttpZipArchive(string url) : this(new Uri(url)) {}
+    public HttpZipArchive(string url, HttpClient? httpClient = null) : this(new Uri(url), httpClient) {}
 
-    public HttpZipArchive(Uri url)
+    public HttpZipArchive(Uri url, HttpClient? httpClient = null)
     {
         Url = url;
+        localClient = httpClient;
         extractInitialMetadata();
     }
 
@@ -1266,7 +1275,7 @@ public class HttpZipArchive : BaseZipArchive
 
     public override Stream OpenArchiveStream()
     {
-        return new HttpStream(Url);
+        return new HttpStream(Url, localClient);
     }
 
     public override Stream OpenStream(string name)

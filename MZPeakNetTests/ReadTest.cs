@@ -1,7 +1,7 @@
 ﻿namespace MzPeakTests;
 
-using System.Diagnostics;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Apache.Arrow;
 using Apache.Arrow.Types;
@@ -229,37 +229,66 @@ public class ParamTest
     }
 }
 
-// public class HttpReadTest : IDisposable
+
+class MockHttpClientHandler : HttpClientHandler
+{
+    HttpResponseMessage? MockedResponse(HttpRequestMessage request)
+    {
+        var info = new FileInfo("small.mzpeak");
+        var resp = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+        if (request.Method == HttpMethod.Head)
+        {
+            resp.Content.Headers.Add("Content-Length", [info.Length.ToString()]);
+            return resp;
+        }
+        else if (request.Method == HttpMethod.Get)
+        {
+            var range = request.Headers.Range?.Ranges.AsEnumerable().First();
+            var start = range?.From ?? 0;
+            var end = range?.To ?? info.Length;
+            var stream = info.OpenRead();
+            stream.Seek(start, SeekOrigin.Begin);
+            var buf = new byte[end - start];
+            stream.ReadExactly(buf);
+            resp.Content = new ByteArrayContent(buf);
+            return resp;
+        }
+        return null;
+    }
+
+    public new HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Assert.NotNull(request.RequestUri);
+        if (request.RequestUri.AbsolutePath.StartsWith("small.mzpeak"))
+        {
+            var resp = MockedResponse(request);
+            if (resp != null) return resp;
+        }
+        throw new Exception();
+    }
+
+    public new Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Assert.NotNull(request.RequestUri);
+        if (request.RequestUri.AbsolutePath.StartsWith("small.mzpeak"))
+        {
+            var resp = MockedResponse(request);
+            if (resp != null) return Task.FromResult(resp);
+        }
+        throw new Exception();
+    }
+}
+
+
+// public class HttpReadTest
 // {
-
-//     Process? Server;
-
-//     public HttpReadTest()
-//     {
-//         var args = new ProcessStartInfo("miniserve", ["--port", "8030", "."])
-//         {
-//             CreateNoWindow = true,
-//             RedirectStandardError = true,
-//             RedirectStandardOutput = true,
-//         };
-//         var server = Process.Start(args);
-//         if (server == null)
-//         {
-//             throw new InvalidOperationException("Failed to start up server");
-//         }
-//         Server = server;
-//         Thread.Sleep(500);
-//     }
-
-//     public void Dispose()
-//     {
-//         Server?.Kill();
-//     }
 
 //     [Fact]
 //     public void ReadHttpStream()
 //     {
-//         var stream = new HttpStream("http://localhost:8030/small.mzpeak");
+//         var client = new HttpClient(new MockHttpClientHandler());
+//         var stream = new HttpStream("http://localhost:8030/small.mzpeak", client);
+
 //         Assert.True(stream.CanRead);
 //         var header = new byte[4];
 //         stream.ReadExactly(header);
@@ -280,7 +309,8 @@ public class ParamTest
 //     [Fact]
 //     public async Task ReadHttpArchive()
 //     {
-//         var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
+//         var client = new HttpClient(new MockHttpClientHandler());
+//         var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak", client);
 //         Assert.NotEmpty(archive.FileIndex().Files);
 //         var reader = new MzPeakReader(archive);
 //         Assert.Equal(48, reader.SpectrumCount);
