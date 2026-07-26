@@ -125,6 +125,11 @@ public class ArchiveTest
             k += pars.Count;
         }
         Assert.True(k > 0);
+
+        var vals = meta.MZRange();
+        Assert.NotNull(vals);
+        Assert.NotEqual(double.PositiveInfinity, vals.Value.Item1);
+        Assert.NotEqual(double.NegativeInfinity, vals.Value.Item2);
     }
 
     async Task ExerciseArchiveGetDataIter(IMZPeakArchiveStorage archiveStorage)

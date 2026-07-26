@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using System.Numerics;
 using MZPeak.Storage;
 using ParquetSharp.Arrow;
+using System.Security.Cryptography.X509Certificates;
 
 
 namespace MZPeak.Metadata;
@@ -267,6 +268,75 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         {
             InitializeTables().Wait();
         }
+    }
+
+    /// <summary>
+    /// Get the min and max m/z values across all spectra.
+    ///
+    /// This depends upon the MS:1000527 and MS:1000528 parameters, assuming they are present and are mapped to columns.
+    /// </summary>
+    /// <returns></returns>
+    public (double, double)? MZRange()
+    {
+        var handle = Namespace.OpenMetadata();
+        var mapping = Namespace.ColumnMappings(DataKind.Metadata);
+        if (mapping == null || handle == null) return null;
+        int lowColIdx = mapping.FindIndex(c => c.Accession == "MS:1000528");
+        int hiColIdx = mapping.FindIndex(c =>  c.Accession == "MS:1000527");
+        if (lowColIdx == -1 || hiColIdx == -1) return null;
+        var lowCol = mapping[lowColIdx];
+        var hiCol = mapping[hiColIdx];
+
+        lowColIdx = -1;
+        hiColIdx = -1;
+        var minValue = double.PositiveInfinity;
+        var maxValue = double.NegativeInfinity;
+        for (var i = 0; i < handle.NumRowGroups; i++)
+        {
+            var rg = handle.ParquetReader.RowGroup(i);
+            var rgMeta = rg.MetaData;
+            if (lowColIdx == -1)
+            {
+                var q = string.Join('.', lowCol.Path);
+                for (var j = 0; j < rgMeta.NumColumns; j++)
+                {
+                    var col = handle.ParquetReader.FileMetaData.Schema.Column(j);
+                    if (col.Path.ToDotString() == q)
+                    {
+                        lowColIdx = j;
+                        break;
+                    }
+                }
+            }
+            if (hiColIdx == -1)
+            {
+                var q = string.Join('.', hiCol.Path);
+                for (var j = 0; j < rgMeta.NumColumns; j++)
+                {
+                    var col = handle.ParquetReader.FileMetaData.Schema.Column(j);
+                    if (col.Path.ToDotString() == q)
+                    {
+                        hiColIdx = j;
+                        break;
+                    }
+                }
+            }
+            if (hiColIdx == -1 || lowColIdx == -1) return null;
+
+            var lowColMeta = rgMeta.GetColumnChunkMetaData(lowColIdx);
+            if (!lowColMeta.IsStatsSet) continue;
+            if (!(lowColMeta.Statistics?.HasMinMax ?? false)) continue;
+
+            var hiColMeta = rgMeta.GetColumnChunkMetaData(hiColIdx);
+            if (!hiColMeta.IsStatsSet) continue;
+            if (!(hiColMeta.Statistics?.HasMinMax ?? false)) continue;
+
+            var minValueOf = Convert.ToDouble(lowColMeta.Statistics.MaxUntyped);
+            var maxValueOf = Convert.ToDouble(hiColMeta.Statistics.MaxUntyped);
+            minValue = double.Min(minValue, minValueOf);
+            maxValue = double.Max(maxValue, maxValueOf);
+        }
+        return (minValue, maxValue);
     }
 
     void loadSpectrumInterpolationModels(ListArray modelArr, UInt64Array indexArr, ref SpacingModels accumulator)

@@ -1398,26 +1398,19 @@ public class ThermoMZPeakWriter : IDisposable
     )
     {
         List<Param> paramList = @params ?? new();
+        paramList.Add(SpectrumProperties.LowestObservedMZ.Param(scanStatistics.LowMass, Unit.MZ));
+        paramList.Add(SpectrumProperties.HighestObservedMZ.Param(scanStatistics.HighMass, Unit.MZ));
         paramList.Add(GetMSLevel(scanFilter));
         paramList.Add(GetPolarity(scanFilter));
-        paramList.Add(new Param(
-            SpectrumProperties.BasePeakIntensity.Name(),
-            SpectrumProperties.BasePeakIntensity.CURIE(),
+        paramList.Add(SpectrumProperties.BasePeakIntensity.Param(
             scanStatistics.BasePeakIntensity,
-            Unit.NumberOfDetectorCounts.CURIE()
+            Unit.NumberOfDetectorCounts
         ));
-        paramList.Add(new Param(
-            SpectrumProperties.BasePeakMZ.Name(),
-            SpectrumProperties.BasePeakMZ.CURIE(),
-            scanStatistics.BasePeakMass,
-            Unit.MZ.CURIE()
-        ));
-        paramList.Add(new Param(
-            SpectrumProperties.TotalIonCurrent.Name(),
-            SpectrumProperties.TotalIonCurrent.CURIE(),
-            scanStatistics.TIC,
-            Unit.NumberOfDetectorCounts.CURIE()
-        ));
+        paramList.Add(SpectrumProperties.BasePeakMZ.Param(
+            scanStatistics.BasePeakMass, Unit.MZ));
+        paramList.Add(SpectrumProperties.TotalIonCurrent.Param(
+            scanStatistics.TIC, Unit.NumberOfDetectorCounts));
+
         if (scanStatistics.IsCentroidScan)
             paramList.Add(SpectrumRepresentation.CentroidSpectrum.AsParam());
         else
