@@ -283,10 +283,11 @@ public class WriteTest
     public void WriteMemory_Test()
     {
         var stream = new MemoryStream();
-        var writer = new MZPeakWriter(new ZipStreamArchiveWriter<MemoryStream>(stream));
-        writer.AddSpectrum("foobar", 299.0, null, [new Param("baz", 5)], EntryDerivedMetadata.Empty);
-        writer.WriteSpectrumMetadata();
-        writer.Dispose();
+        using (var writer = new MZPeakWriter(new ZipStreamArchiveWriter<MemoryStream>(stream)))
+        {
+            writer.AddSpectrum("foobar", 299.0, null, [new Param("baz", 5)], EntryDerivedMetadata.Empty);
+            writer.WriteSpectrumMetadata();
+        }
         stream.Flush();
         stream.Seek(0, SeekOrigin.Begin);
 

@@ -146,11 +146,11 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
 /// <summary>
 /// Reader for mzPeak archive files containing mass spectrometry data.
 /// </summary>
-public class MzPeakReader
+public class MzPeakReader : IDisposable
 {
     internal static ILogger? Logger = null;
 
-    IMZPeakArchiveStorage storage;
+    IMZPeakArchiveStorage _Storage;
 
     SpectrumMetadataReader? spectrumMetadata;
     ChromatogramMetadataReader? chromatogramMetadata;
@@ -160,6 +160,8 @@ public class MzPeakReader
     DataArraysReaderMeta? chromatogramArraysMeta = null;
     DataArraysReaderMeta? spectrumPeaksArraysMeta = null;
     DataArraysReaderMeta? wavelengthSpectrumArraysMeta = null;
+
+    public IMZPeakArchiveStorage Storage => _Storage;
 
     /// <summary>
     /// Whether to prefer loading profile data or centroid data when both are available for spectra
@@ -219,7 +221,7 @@ public class MzPeakReader
                 storage.DecryptionConfigurations[k] = v;
             }
         }
-        this.storage = storage;
+        _Storage = storage;
         var stream = storage.OpenNamespace(EntityType.Spectrum);
         spectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
         stream = storage.OpenNamespace(EntityType.Chromatogram);
@@ -395,7 +397,7 @@ public class MzPeakReader
 
     DataArraysReader? OpenSpectrumDataReader()
     {
-        var dataFacet = storage.SpectrumData();
+        var dataFacet = Storage.SpectrumData();
         DataArraysReader reader;
         if (dataFacet == null)
         {
@@ -416,7 +418,7 @@ public class MzPeakReader
 
     DataArraysReader? OpenSpectrumPeaksDataReader()
     {
-        var dataFacet = storage.SpectrumPeaks();
+        var dataFacet = Storage.SpectrumPeaks();
         DataArraysReader reader;
         if (dataFacet == null)
         {
@@ -439,7 +441,7 @@ public class MzPeakReader
 
     DataArraysReader? OpenChromatogramDataReader()
     {
-        var dataFacet = storage.ChromatogramData();
+        var dataFacet = Storage.ChromatogramData();
         DataArraysReader reader;
         if (dataFacet == null)
         {
@@ -459,7 +461,7 @@ public class MzPeakReader
 
     DataArraysReader? OpenWavelengthSpectrumDataReader()
     {
-        var dataFacet = storage.WavelengthSpectrumData();
+        var dataFacet = Storage.WavelengthSpectrumData();
         DataArraysReader reader;
         if (dataFacet == null)
         {
@@ -520,5 +522,10 @@ public class MzPeakReader
         var reader = OpenChromatogramDataReader();
         if (reader == null) return null;
         return await reader.ReadForIndex(index);
+    }
+
+    void IDisposable.Dispose()
+    {
+        Storage.Dispose();
     }
 }

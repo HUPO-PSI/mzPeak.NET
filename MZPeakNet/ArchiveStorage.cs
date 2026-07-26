@@ -16,6 +16,7 @@ using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionP
 using MZPeak.ControlledVocabulary;
 using System.Net.Http.Headers;
 using System.Threading;
+using System.IO.MemoryMappedFiles;
 
 #region Index File Implementation
 
@@ -419,7 +420,12 @@ public class MzPeakFacetNamespace
 
 #endregion
 
-public interface IMZPeakArchiveStorage
+/// <summary>
+/// A common interface for reading mzPeak archives from different types of underlying storage
+/// including local ZIP archives and directories, in-memory ZIP archives, or remote ZIP archives
+/// accessed over HTTP(S).
+/// </summary>
+public interface IMZPeakArchiveStorage : IDisposable
 {
     internal static ILogger? Logger = null;
 
@@ -556,7 +562,7 @@ public interface IMZPeakArchiveStorage
     /// Open the chromatogram metadata volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? ChromatogramMetadata()
+    public FileReader? ChromatogramMetadata()
     {
         var entry = FileIndex().FindEntry(EntityType.Chromatogram, DataKind.Metadata);
         if (entry == null) return null;
@@ -599,7 +605,7 @@ public interface IMZPeakArchiveStorage
     /// Open the wavelength spectrum data arrays volume, if it exists, null otherwise.
     /// </summary>
     /// <returns></returns>
-    public ParquetSharp.Arrow.FileReader? WavelengthSpectrumData()
+    public FileReader? WavelengthSpectrumData()
     {
         var entry = FileIndex().FindEntry(EntityType.WavelengthSpectrum, DataKind.DataArrays);
         if (entry == null) return null;
@@ -624,31 +630,50 @@ public interface IMZPeakArchiveStorage
 /// <summary>
 /// A facade around a single Stream that spans only a byte range
 /// </summary>
-public class StreamSegment : Stream
+public class StreamSegment : Stream, IDisposable
 {
+    /// <summary>
+    /// The underlying stream to read from
+    /// </summary>
     Stream Stream;
 
+    /// <summary>
+    /// The offset in the underlying stream to the segment's first byte
+    /// </summary>
     long Offset;
 
-    long _length;
+    /// <summary>
+    /// The length of the segment in bytes
+    /// </summary>
+    long SegmentLength;
 
+    /// <summary>
+    /// Whether or not to leave the underlying stream open when this stream is closed
+    /// </summary>
     bool LeaveOpen;
 
+    /// <summary>
+    /// Create a new Stream object that spans a segment of an existing Stream.
+    /// </summary>
+    /// <param name="stream">The stream to read from</param>
+    /// <param name="offset">The offset to the 0th byte in the segment</param>
+    /// <param name="length">The length of the segment in bytes</param>
+    /// <param name="leaveOpen">Whether or not to leave the underlying stream open when this stream is closed</param>
     public StreamSegment(Stream stream, long offset, long length, bool leaveOpen = false)
     {
         Stream = stream;
         Offset = offset;
-        _length = length;
+        SegmentLength = length;
         LeaveOpen = leaveOpen;
+        Configure();
     }
 
-    public new void Dispose()
+    void IDisposable.Dispose()
     {
         if (!LeaveOpen)
         {
             Stream.Dispose();
         }
-        ;
     }
 
     public override bool CanRead => true;
@@ -657,7 +682,7 @@ public class StreamSegment : Stream
 
     public override bool CanWrite => false;
 
-    public override long Length => _length;
+    public override long Length => SegmentLength;
 
     public override long Position
     {
@@ -665,17 +690,14 @@ public class StreamSegment : Stream
         set => Stream.Position = Offset + value;
     }
 
-    public override void Flush()
-    {
-        Stream.Flush();
-    }
+    public override void Flush() => Stream.Flush();
 
     public override int Read(byte[] buffer, int offset, int count)
     {
         long bytesToRead = count - offset;
-        if (Position + bytesToRead > _length)
+        if (Position + bytesToRead > SegmentLength)
         {
-            bytesToRead = _length - Position;
+            bytesToRead = SegmentLength - Position;
         }
         return Stream.Read(buffer, offset, (int)bytesToRead);
     }
@@ -686,12 +708,12 @@ public class StreamSegment : Stream
         {
             case SeekOrigin.Begin:
                 {
-                    Position = offset < _length ? offset : _length;
+                    Position = offset < SegmentLength ? offset : SegmentLength;
                     break;
                 }
             case SeekOrigin.Current:
                 {
-                    Position = Position + offset < _length ? Position + offset : _length;
+                    Position = Position + offset < SegmentLength ? Position + offset : SegmentLength;
                     break;
                 }
             case SeekOrigin.End:
@@ -721,6 +743,9 @@ public class StreamSegment : Stream
 
 #region ZIP Archive Reading
 
+/// <summary>
+/// A base class providing common methods for mzPeak ZIP archive reading.
+/// </summary>
 public abstract class BaseZipArchive : IMZPeakArchiveStorage
 {
     static int ZIP_LEADER = 0x04034b50;
@@ -730,12 +755,22 @@ public abstract class BaseZipArchive : IMZPeakArchiveStorage
 
     public DecryptionConfigurations DecryptionConfigurations { get; set; }
 
+    /// <summary>
+    /// Check if the provided bytes matches the ZIP magic bytes
+    /// </summary>
+    /// <param name="data">Bytes to compare</param>
+    /// <returns>Whether the bytes imply this is a ZIP archive</returns>
     public static bool IsZipArchiveHeader(byte[] data)
     {
         if (data == null || data.Length < 4) return false;
         return BitConverter.ToInt32(data, 0) == ZIP_LEADER;
     }
 
+    /// <summary>
+    /// Check if this stream is a ZIP archive by checking if it starts with ZIP magic bytes
+    /// </summary>
+    /// <param name="stream"></param>
+    /// <returns></returns>
     public static bool IsStreamZip(Stream stream)
     {
         long? pos = null;
@@ -770,37 +805,135 @@ public abstract class BaseZipArchive : IMZPeakArchiveStorage
         return fileIndex;
     }
 
+    /// <summary>
+    /// Open the main archive stream which will be used to access the contained entry files.
+    /// </summary>
+    /// <returns></returns>
     public abstract Stream OpenArchiveStream();
 
-    public abstract ZipArchive OpenArchive();
+    /// <summary>
+    /// Get a `ZipArchive` instance handle wrapping the entire archive stream
+    /// </summary>
+    /// <returns></returns>
+    public virtual ZipArchive OpenArchive()
+    {
+        var stream = OpenArchiveStream();
+        return new ZipArchive(stream, ZipArchiveMode.Read);
+    }
 
+    /// <summary>
+    /// Open a specific file entry in the ZIP archive
+    /// </summary>
+    /// <param name="name"></param>
+    /// <returns></returns>
     public abstract Stream OpenStream(string name);
 
-    protected void extractInitialMetadata()
+    /// <summary>
+    /// Find and load the mzPeak file index JSON from the ZIP archive, as well as enumerating
+    /// the files in the archive to match up with the index contents.
+    /// </summary>
+    /// <exception cref="InvalidDataException">If the index file was not successfully parsed</exception>
+    /// <exception cref="FileNotFoundException">If the index file is not found</exception>
+    protected void ExtractInitialMetadata()
     {
         List<string> fileNames = [];
-        var archive = OpenArchive();
         FileIndex? fileIndex = null;
-        foreach (var entry in archive.Entries)
+        using (var archive = OpenArchive())
         {
-            fileNames.Add(entry.Name);
-            if (entry.Name == Storage.FileIndex.FILE_NAME)
+            foreach (var entry in archive.Entries)
             {
-                using (var stream = new StreamReader(entry.Open()))
+                fileNames.Add(entry.Name);
+                if (entry.Name == Storage.FileIndex.FILE_NAME)
                 {
-                    var indexJson = stream.ReadToEnd();
-                    fileIndex = JsonSerializer.Deserialize<FileIndex>(indexJson);
-                    if (fileIndex == null) throw new InvalidDataException($"Index JSON file did not deserialize successfully from {indexJson}");
+                    using (var stream = new StreamReader(entry.Open()))
+                    {
+                        var indexJson = stream.ReadToEnd();
+                        fileIndex = JsonSerializer.Deserialize<FileIndex>(indexJson);
+                        if (fileIndex == null) throw new InvalidDataException($"Index JSON file did not deserialize successfully from {indexJson}");
+                    }
                 }
             }
         }
-        archive.Dispose();
         this.fileNames = fileNames;
         if (fileIndex == null)
-        {
             throw new FileNotFoundException("Index JSON file not found");
-        }
         this.fileIndex = fileIndex;
+    }
+
+    /// <summary>
+    /// A method to open an archive entry as a SegmentStream, assuming the underlying ZIP archive
+    /// source supports having multiple independent cursors e.g. like a file on disk opened for reading
+    /// multiple times.
+    /// </summary>
+    /// <param name="name">The name of the ZIP entry to open</param>
+    /// <returns></returns>
+    /// <exception cref="FileNotFoundException">When the provided name is not found</exception>
+    /// <exception cref="InvalidDataException">When the ZIP entry is compressed. Only uncompressed members are supported</exception>
+    protected virtual Stream OpenStreamIsolated(string name)
+    {
+        Stream stream;
+        long length = 0;
+        long offset = 0;
+        using (stream = OpenArchiveStream())
+        {
+
+            var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            var entry = archive.GetEntry(name);
+            if (entry == null)
+                throw new FileNotFoundException(name);
+
+            // Hacky means of checking that the file isn't compressed since the actual compression
+            // method isn't exposed by the ZipArchiveEntry API
+            if (entry.Length != entry.CompressedLength)
+                throw new InvalidDataException("File in MZPeak ZIP Archive cannot be stored with compression");
+
+            length = entry.Length;
+            // Hacky means of getting the offset of the file contents since it isn't exposed either
+            using (var substreamNotSeekable = entry.Open())
+                offset = stream.Position;
+        }
+        stream = OpenArchiveStream();
+        var segStream = new StreamSegment(stream, offset, length);
+        return segStream;
+    }
+
+    /// <summary>
+    /// A method to open an archive entry as a SegmentStream, re-using the archive's stream. This implies that
+    /// there may not be more than one opened entry at a time. This is needed when the archive cannot be re-opened
+    /// like when wrapping a MemoryStream.
+    /// </summary>
+    /// <param name="name">The name of the ZIP entry to open</param>
+    /// <returns></returns>
+    /// <exception cref="FileNotFoundException">When the provided name is not found</exception>
+    /// <exception cref="InvalidDataException">When the ZIP entry is compressed. Only uncompressed members are supported</exception>
+    protected virtual Stream OpenStreamShared(string name)
+    {
+        long offset = 0;
+        long length;
+        var stream = OpenArchiveStream();
+        var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+        var entry = archive.GetEntry(name);
+        if (entry == null)
+            throw new FileNotFoundException(name);
+
+        // Hacky means of checking that the file isn't compressed
+        if (entry.Length != entry.CompressedLength)
+            throw new InvalidDataException("File in MZPeak ZIP Archive cannot be stored with compression");
+
+        length = entry.Length;
+
+        // Hacky means of getting the offset of the file contents
+        using (var substreamNotSeekable = entry.Open())
+            offset = stream.Position;
+
+        // Don't close the shared main stream
+        var segStream = new StreamSegment(stream, offset, length, true);
+        return segStream;
+    }
+
+    void IDisposable.Dispose()
+    {
+
     }
 }
 
@@ -812,56 +945,20 @@ public class LocalZipArchive : BaseZipArchive
     public LocalZipArchive(string path, DecryptionConfigurations? decryptionConfigurations = null) : base(decryptionConfigurations)
     {
         Path = path;
-        extractInitialMetadata();
+        ExtractInitialMetadata();
     }
 
     public override Stream OpenArchiveStream()
     {
         var stream = File.OpenRead(Path);
-        return stream;
+        return new BufferedStream(stream);
     }
 
-    public override ZipArchive OpenArchive()
-    {
-        var stream = OpenArchiveStream();
-        return new ZipArchive(stream, ZipArchiveMode.Read);
-    }
-
-    public override Stream OpenStream(string name)
-    {
-        {
-            var stream = OpenArchiveStream();
-            var archive = new ZipArchive(stream, ZipArchiveMode.Read);
-            var entry = archive.GetEntry(name);
-            if (entry == null)
-            {
-                throw new FileNotFoundException(name);
-            }
-
-            // Hacky means of checking that the file isn't compressed
-            if (entry.Length != entry.CompressedLength)
-            {
-                throw new IOException("File in MZPeak ZIP Archive cannot be stored with compression");
-            }
-
-            var length = entry.Length;
-
-            // Hacky means of getting the offset of the file contents
-            var substreamNotSeekable = entry.Open();
-            var offset = stream.Position;
-            substreamNotSeekable.Close();
-
-            stream.Close();
-            stream = OpenArchiveStream();
-            var segStream = new StreamSegment(stream, offset, length);
-            segStream.Configure();
-            return segStream;
-        }
-    }
+    public override Stream OpenStream(string name) => OpenStreamIsolated(name);
 }
 
 
-public class ZipArchiveStream<T> : BaseZipArchive where T : Stream
+public class ZipArchiveStream<T> : BaseZipArchive, IDisposable where T : Stream
 {
     T Stream;
 
@@ -870,8 +967,10 @@ public class ZipArchiveStream<T> : BaseZipArchive where T : Stream
         Stream = stream;
         if (!Stream.CanRead) throw new InvalidOperationException("Stream must be readable");
         if (!Stream.CanSeek) throw new InvalidOperationException("Stream must be seekable");
-        extractInitialMetadata();
+        ExtractInitialMetadata();
     }
+
+    void IDisposable.Dispose() => Stream.Dispose();
 
     public override ZipArchive OpenArchive()
     {
@@ -884,34 +983,47 @@ public class ZipArchiveStream<T> : BaseZipArchive where T : Stream
         return Stream;
     }
 
-    public override Stream OpenStream(string name)
+    public override Stream OpenStream(string name) => OpenStreamShared(name);
+}
+
+
+public class MemoryMappedZipArchive : BaseZipArchive, IDisposable
+{
+    public string? Path {get; protected set;}
+    public MemoryMappedFile Handle {get; protected set;}
+
+    public MemoryMappedZipArchive(MemoryMappedFile handle)
     {
-        var stream = OpenArchiveStream();
-        var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
-        var entry = archive.GetEntry(name);
-        if (entry == null)
-        {
-            throw new FileNotFoundException(name);
-        }
+        Path = null;
+        Handle = handle;
+        ExtractInitialMetadata();
+    }
 
-        // Hacky means of checking that the file isn't compressed
-        if (entry.Length != entry.CompressedLength)
-        {
-            throw new IOException("File in MZPeak ZIP Archive cannot be stored with compression");
-        }
+    public MemoryMappedZipArchive(string path)
+    {
+        Path = path;
 
-        var length = entry.Length;
+        Handle = MemoryMappedFile.CreateFromFile(
+            new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.Read),
+            null,
+            0,
+            MemoryMappedFileAccess.Read,
+            HandleInheritability.Inheritable,
+            false
+        );
+        ExtractInitialMetadata();
+    }
 
-        // Hacky means of getting the offset of the file contents
-        var substreamNotSeekable = entry.Open();
-        var offset = stream.Position;
-        substreamNotSeekable.Close();
+    public override Stream OpenArchiveStream() => Handle.CreateViewStream();
 
-        stream = OpenArchiveStream();
-        var segStream = new StreamSegment(stream, offset, length, true);
-        return segStream;
+    public override Stream OpenStream(string name) => OpenStreamShared(name);
+
+    void IDisposable.Dispose()
+    {
+        Handle.Dispose();
     }
 }
+
 
 #endregion
 
@@ -919,6 +1031,8 @@ public class ZipArchiveStream<T> : BaseZipArchive where T : Stream
 
 /// <summary>
 /// A seekable read-only file stream-like API around an HTTP(S) URL.
+///
+/// The stream itself is unbuffered. If buffering is desired, wrap in a BufferedStream.
 ///
 /// Requires that the host supports Range Requests (https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Range_requests)
 /// </summary>
@@ -1086,56 +1200,18 @@ public class HttpZipArchive : BaseZipArchive
     public Uri Url;
     HttpClient? localClient = null;
 
-    public HttpZipArchive(string url, HttpClient? httpClient = null, Dictionary<string, FileDecryptionProperties>? decryptionConfigs = null) : this(new Uri(url), httpClient, decryptionConfigs) { }
+    public HttpZipArchive(string url, HttpClient? httpClient = null, DecryptionConfigurations? decryptionConfigs = null) : this(new Uri(url), httpClient, decryptionConfigs) { }
 
-    public HttpZipArchive(Uri url, HttpClient? httpClient = null, Dictionary<string, FileDecryptionProperties>? decryptionConfigs = null) : base(decryptionConfigs)
+    public HttpZipArchive(Uri url, HttpClient? httpClient = null, DecryptionConfigurations? decryptionConfigs = null) : base(decryptionConfigs)
     {
         Url = url;
         localClient = httpClient;
-        extractInitialMetadata();
+        ExtractInitialMetadata();
     }
 
-    public override ZipArchive OpenArchive()
-    {
-        return new ZipArchive(OpenArchiveStream());
-    }
+    public override Stream OpenArchiveStream() => new BufferedStream(new HttpStream(Url, localClient));
 
-    public override Stream OpenArchiveStream()
-    {
-        return new HttpStream(Url, localClient);
-    }
-
-    public override Stream OpenStream(string name)
-    {
-        {
-            var stream = OpenArchiveStream();
-            var archive = new ZipArchive(stream, ZipArchiveMode.Read);
-            var entry = archive.GetEntry(name);
-            if (entry == null)
-            {
-                throw new FileNotFoundException(name);
-            }
-
-            // Hacky means of checking that the file isn't compressed
-            if (entry.Length != entry.CompressedLength)
-            {
-                throw new IOException("File in MZPeak ZIP Archive cannot be stored with compression");
-            }
-
-            var length = entry.Length;
-
-            // Hacky means of getting the offset of the file contents
-            var substreamNotSeekable = entry.Open();
-            var offset = stream.Position;
-            substreamNotSeekable.Close();
-
-            stream.Close();
-            stream = OpenArchiveStream();
-            var segStream = new StreamSegment(stream, offset, length);
-            segStream.Configure();
-            return segStream;
-        }
-    }
+    public override Stream OpenStream(string name) => OpenStreamIsolated(name);
 }
 
 #endregion
@@ -1154,30 +1230,22 @@ public class DirectoryArchive : IMZPeakArchiveStorage
         fileNames = new List<string>();
         fileIndex = new FileIndex();
         DecryptionConfigurations = decryptionConfigurations ?? new();
-        extractInitialMetadata();
+        ExtractInitialMetadata();
     }
 
-    public FileIndex FileIndex()
-    {
-        return fileIndex;
-    }
+    public FileIndex FileIndex() => fileIndex;
 
-    public List<string> FileNames()
-    {
-        return fileNames;
-    }
+    public List<string> FileNames() => fileNames;
 
     public Stream OpenStream(string name)
     {
         var pathOf = System.IO.Path.Join(Path, name);
         if (!File.Exists(pathOf))
-        {
             throw new FileNotFoundException(name);
-        }
         return new FileStream(pathOf, FileMode.Open);
     }
 
-    void extractInitialMetadata()
+    void ExtractInitialMetadata()
     {
         List<string> fileNames = [];
         FileIndex? fileIndex = null;
@@ -1185,12 +1253,10 @@ public class DirectoryArchive : IMZPeakArchiveStorage
         foreach (var entry in Directory.EnumerateFileSystemEntries(Path))
         {
             if (!File.Exists(entry)) continue;
-
             fileNames.Add(entry);
             var fName = System.IO.Path.GetFileName(entry);
             if (fName == Storage.FileIndex.FILE_NAME)
             {
-
                 using (var stream = new StreamReader(File.Open(entry, FileMode.Open)))
                 {
                     var indexJson = stream.ReadToEnd();
@@ -1203,14 +1269,14 @@ public class DirectoryArchive : IMZPeakArchiveStorage
                 }
             }
         }
-
         this.fileNames = fileNames;
         if (fileIndex == null)
-        {
             throw new FileNotFoundException("Index JSON file not found");
-        }
         this.fileIndex = fileIndex;
     }
+
+    public virtual void Dispose()
+    {}
 }
 
 
@@ -1226,8 +1292,6 @@ public interface IMZPeakArchiveWriter : IDisposable
 
 public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 {
-    public static ILogger? Logger = null;
-
     public string Path;
     public FileIndex FileIndex;
 
@@ -1237,7 +1301,7 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
         FileIndex = new();
     }
 
-    public void Dispose()
+    void IDisposable.Dispose()
     {
         var path = System.IO.Path.Join(Path, FileIndex.FILE_NAME);
         using (var stream = File.Create(path))
@@ -1264,8 +1328,6 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
 
 public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
 {
-    // public static ILogger? Logger = null;
-
     ZipArchive Archive;
     T OuterStream;
     Stream? CurrentStream;
@@ -1295,7 +1357,7 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         }
     }
 
-    public void Dispose()
+    void IDisposable.Dispose()
     {
         CloseCurrent();
         var entry = Archive.CreateEntry(FileIndex.FILE_NAME, CompressionLevel.NoCompression);
@@ -1322,8 +1384,5 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         return CurrentStream;
     }
 
-    FileIndex IMZPeakArchiveWriter.FileIndex()
-    {
-        return FileIndex;
-    }
+    FileIndex IMZPeakArchiveWriter.FileIndex() => FileIndex;
 }

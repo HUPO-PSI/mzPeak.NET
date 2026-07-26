@@ -92,7 +92,9 @@ public class MZPeakWriter : IDisposable
     /// <summary>The current writer state.</summary>
     public WriterState State = WriterState.Start;
     MzPeakMetadata MzPeakMetadata;
-    IMZPeakArchiveWriter Storage;
+    IMZPeakArchiveWriter _Storage;
+
+    public IMZPeakArchiveWriter Storage => _Storage;
 
     protected string? PeakPath = null;
     protected Stream? PeakStream = null;
@@ -237,7 +239,7 @@ public class MZPeakWriter : IDisposable
     {
         CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
         var managedStream = new ManagedOutputStream(stream);
 
         var writerProps = SpectrumDataWriterPropertiesBuilder();
@@ -289,7 +291,7 @@ public class MZPeakWriter : IDisposable
     public virtual void StartChromatogramData()
     {
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
         var managedStream = new ManagedOutputStream(stream);
         var schema = ChromatogramData.ArrowSchema();
         var writerProps = ChromatogramDataWriterPropertiesBuilder();
@@ -332,7 +334,7 @@ public class MZPeakWriter : IDisposable
         if (WavelengthSpectrumData == null)
             return;
         var entry = FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.DataArrays);
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
         var managedStream = new ManagedOutputStream(stream);
 
         var writerProps = WavelengthSpectrumDataWriterPropertiesBuilder();
@@ -408,7 +410,7 @@ public class MZPeakWriter : IDisposable
         {
             CloseCurrentWriter();
             var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
-            var stream = Storage.OpenStream(entry);
+            var stream = _Storage.OpenStream(entry);
             var managedStream = new ManagedOutputStream(stream);
 
             var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
@@ -430,7 +432,7 @@ public class MZPeakWriter : IDisposable
         FlushSpectrumPeakData();
         CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
-        var outStream = Storage.OpenStream(entry);
+        var outStream = _Storage.OpenStream(entry);
         PeakWriter.Close();
         PeakStream.Seek(0, SeekOrigin.Begin);
         PeakStream.CopyTo(outStream);
@@ -457,7 +459,7 @@ public class MZPeakWriter : IDisposable
             spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
         if (chromatogramArrayIndex == null)
             chromatogramArrayIndex = DefaultChromatogramArrayIndex(useChunked);
-        Storage = storage;
+        _Storage = storage;
         MzPeakMetadata = new();
         SpectrumMetadata = new();
         SpectrumData = spectrumArrayIndex.InferBufferFormat() switch
@@ -975,7 +977,7 @@ public class MZPeakWriter : IDisposable
             [],
             SpectrumMetadata.Spectrum.ColumnMappings()
         );
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
         var managedStream = new ManagedOutputStream(stream);
         var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
@@ -1010,7 +1012,7 @@ public class MZPeakWriter : IDisposable
             [],
             SpectrumMetadata.Scan.ColumnMappings()
         );
-        stream = Storage.OpenStream(entry);
+        stream = _Storage.OpenStream(entry);
         managedStream = new ManagedOutputStream(stream);
         writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
@@ -1047,7 +1049,7 @@ public class MZPeakWriter : IDisposable
             [],
             SpectrumMetadata.Precursor.ColumnMappings()
         );
-        stream = Storage.OpenStream(entry);
+        stream = _Storage.OpenStream(entry);
         managedStream = new ManagedOutputStream(stream);
         writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
@@ -1084,7 +1086,7 @@ public class MZPeakWriter : IDisposable
             [],
             SpectrumMetadata.SelectedIon.ColumnMappings()
         );
-        stream = Storage.OpenStream(entry);
+        stream = _Storage.OpenStream(entry);
         managedStream = new ManagedOutputStream(stream);
         writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
@@ -1160,7 +1162,7 @@ public class MZPeakWriter : IDisposable
         );
 
         Logger?.LogInformation($"Writing wavelength spectrum metadata, {WavelengthSpectrumMetadata.Length} rows to write");
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
         var managedStream = new ManagedOutputStream(stream);
 
         var writerProps = new WriterPropertiesBuilder()
@@ -1187,7 +1189,7 @@ public class MZPeakWriter : IDisposable
             WavelengthSpectrumMetadata.Scan.ColumnMappings()
         );
 
-        stream = Storage.OpenStream(entry);
+        stream = _Storage.OpenStream(entry);
         managedStream = new ManagedOutputStream(stream);
 
         writerProps = new WriterPropertiesBuilder()
@@ -1242,7 +1244,7 @@ public class MZPeakWriter : IDisposable
             [],
             ChromatogramMetadata.Chromatogram.ColumnMappings()
         );
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
 
         var managedStream = new ManagedOutputStream(stream);
 
@@ -1269,7 +1271,7 @@ public class MZPeakWriter : IDisposable
             [],
             ChromatogramMetadata.Precursor.ColumnMappings()
         );
-        stream = Storage.OpenStream(entry);
+        stream = _Storage.OpenStream(entry);
 
         managedStream = new ManagedOutputStream(stream);
 
@@ -1296,7 +1298,7 @@ public class MZPeakWriter : IDisposable
             [],
             ChromatogramMetadata.SelectedIon.ColumnMappings()
         );
-        stream = Storage.OpenStream(entry);
+        stream = _Storage.OpenStream(entry);
 
         managedStream = new ManagedOutputStream(stream);
 
@@ -1351,7 +1353,7 @@ public class MZPeakWriter : IDisposable
     public Stream StartEntry(FileIndexEntry entry)
     {
         CloseCurrentWriter();
-        var stream = Storage.OpenStream(entry);
+        var stream = _Storage.OpenStream(entry);
         CurrentEntry = entry;
         return stream;
     }
@@ -1362,41 +1364,41 @@ public class MZPeakWriter : IDisposable
 
     public void WriteFileMetadataToIndex()
     {
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.VERSION_KEY,
             MZPeakConstants.MZPEAK_VERSION
         );
         List<ControlledVocabularyEntry> cvList = ControlledVocabularyList();
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.CV_LIST_KEY,
             JsonSerializer.SerializeToNode(cvList)
         );
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.FILE_DESCRIPTION_KEY,
             JsonSerializer.SerializeToNode(FileDescription)
         );
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.INSTRUMENT_CONFIGURATION_LIST_KEY,
             JsonSerializer.SerializeToNode(InstrumentConfigurations)
         );
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.DATA_PROCESSING_METHOD_LIST_KEY,
             JsonSerializer.SerializeToNode(DataProcessingMethods)
         );
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.SOFTWARE_LIST_KEY,
             JsonSerializer.SerializeToNode(Softwares)
         );
 
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.SAMPLE_LIST_KEY,
             JsonSerializer.SerializeToNode(Samples)
         );
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.SCAN_SETTINGS_LIST_KEY,
             JsonSerializer.SerializeToNode(ScanSettings)
         );
-        Storage.FileIndex().Metadata.Add(
+        _Storage.FileIndex().Metadata.Add(
             MZPeakConstants.MS_RUN_KEY,
             JsonSerializer.SerializeToNode(Run)
         );
@@ -1407,9 +1409,9 @@ public class MZPeakWriter : IDisposable
     {
         WriteFileMetadataToIndex();
         FlushStandardContent();
-        Storage.Dispose();
+        _Storage.Dispose();
     }
 
     /// <summary>Disposes resources and closes the writer.</summary>
-    public void Dispose() => Close();
+    void IDisposable.Dispose() => Close();
 }

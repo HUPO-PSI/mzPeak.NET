@@ -374,7 +374,7 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
         }
         else
         {
-            throw new InvalidDataException("Data layout not recognized");
+            throw new InvalidDataException($"Data layout not recognized: {Metadata.Format}");
         }
 
         var result = await reader.ReadRowsOf(key);
@@ -395,7 +395,7 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>
         }
         else
         {
-            throw new InvalidDataException("Data layout not recognized");
+            throw new InvalidDataException($"Data layout not recognized: {Metadata.Format}");
         }
         return reader.GetIter();
     }

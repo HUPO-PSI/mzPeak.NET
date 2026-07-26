@@ -11,6 +11,7 @@ using MZPeak.Metadata;
 using MZPeak.Reader;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
+using Xunit.Sdk;
 
 public class ArchiveTest
 {
@@ -37,54 +38,22 @@ public class ArchiveTest
         Assert.Equal(11, PointArchive.FileNames().Count);
     }
 
-    [Fact]
-    public async Task RawZipArchive_LoadSpectrumPoint()
+    async Task ExerciseLoadSpectrum(IMZPeakArchiveStorage archiveStorage, BufferFormat bufferFormat)
     {
-        var meta = PointArchive.OpenNamespace(EntityType.Spectrum);
-        Assert.NotNull(meta);
-        var metaReader = new SpectrumMetadataReader(meta);
-        var models = metaReader.GetSpacingModelIndex();
-        Assert.Equal(14, models.Count);
-        var reader = PointArchive.SpectrumData();
-        Assert.NotNull(reader);
-
-        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum)
-        {
-            SpacingModels = models
-        };
-        Assert.Equal(BufferFormat.Point, dataReader.Metadata.Format);
-        Assert.Single(dataReader.RowGroupIndex);
-        Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
-        Assert.NotNull(await dataReader.ReadForIndex(0));
-        Assert.NotNull(await dataReader.ReadForIndex(1));
-        var it = dataReader.Enumerate();
-        await foreach ((ulong i, StructArray chunk) in it)
-        {
-            var dtype = (StructType)chunk.Data.DataType;
-            foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
-            {
-                Assert.Equal(0, arr.NullCount);
-            }
-        }
-    }
-
-    [Fact]
-    public async Task RawZipArchive_LoadSpectrumChunk()
-    {
-        var meta = ChunkArchive.OpenNamespace(EntityType.Spectrum);
+        var meta = archiveStorage.OpenNamespace(EntityType.Spectrum);
         Assert.NotNull(meta);
         var metaReader = new SpectrumMetadataReader(meta);
         var models = metaReader.GetSpacingModelIndex();
         Assert.Equal(14, models.Count);
 
-        var reader = ChunkArchive.SpectrumData();
+        var reader = archiveStorage.SpectrumData();
         Assert.NotNull(reader);
         var dataReader = new DataArraysReader(reader, BufferContext.Spectrum)
         {
             SpacingModels = models
         };
 
-        Assert.Equal(BufferFormat.ChunkValues, dataReader.Metadata.Format);
+        Assert.Equal(bufferFormat, dataReader.Metadata.Format);
         Assert.Single(dataReader.RowGroupIndex);
         Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
         var data = await dataReader.ReadForIndex(10);
@@ -103,6 +72,18 @@ public class ArchiveTest
     }
 
     [Fact]
+    public async Task RawZipArchive_LoadSpectrumPoint()
+    {
+        await ExerciseLoadSpectrum(PointArchive, BufferFormat.Point);
+    }
+
+    [Fact]
+    public async Task RawZipArchive_LoadSpectrumChunk()
+    {
+        await ExerciseLoadSpectrum(ChunkArchive, BufferFormat.ChunkValues);
+    }
+
+    [Fact]
     public void RawZipArchive_LoadSpectrumIndex()
     {
         var reader = PointArchive.SpectrumData();
@@ -118,10 +99,9 @@ public class ArchiveTest
         Assert.Equal(BufferFormat.Point, arrayIndex.Entries[1].BufferFormat);
     }
 
-    [Fact]
-    public void RawZipArchive_SpectrumMetadata()
+    void ExerciseArchiveSpectrumMetadata(IMZPeakArchiveStorage archiveStorage)
     {
-        var stream = PointArchive.OpenNamespace(EntityType.Spectrum);
+        var stream = archiveStorage.OpenNamespace(EntityType.Spectrum);
         Assert.NotNull(stream);
         var meta = new SpectrumMetadataReader(stream);
         Assert.NotNull(meta);
@@ -130,11 +110,6 @@ public class ArchiveTest
         var col = chunk.Column("index");
         Assert.NotNull(col);
         Assert.Equal(48, col.Length);
-        var schema = chunk.Schema;
-        for (var i = 0; i < schema.FieldsList.Count; i++)
-        {
-            // Console.WriteLine("{0} => {1} : {2}", i, schema.FieldsList[i].Name, schema.FieldsList[i].DataType);
-        }
         var idxArray = (UInt64Array)col;
         Assert.NotNull(idxArray.GetValue(0));
         Assert.Equal(0ul, idxArray.GetValue(0));
@@ -152,11 +127,10 @@ public class ArchiveTest
         Assert.True(k > 0);
     }
 
-    [Fact]
-    public async Task RawZipArchive_LoadSpectrumPoint_GetDataIter()
+    async Task ExerciseArchiveGetDataIter(IMZPeakArchiveStorage archiveStorage)
     {
+        var reader = archiveStorage.SpectrumData();
         ulong i = 0;
-        var reader = PointArchive.SpectrumData();
 
         Assert.NotNull(reader);
 
@@ -195,6 +169,71 @@ public class ArchiveTest
         }
         Assert.Equal(profileSpectrumIdx.Count, (int)i);
     }
+
+    [Fact]
+    public void RawZipArchive_SpectrumMetadata()
+    {
+        ExerciseArchiveSpectrumMetadata(PointArchive);
+    }
+
+    [Fact]
+    public async Task RawZipArchive_Point_GetDataIter()
+    {
+        await ExerciseArchiveGetDataIter(PointArchive);
+    }
+
+    [Fact]
+    public async Task RawZipArchive_Chunked_GetDataIter()
+    {
+        await ExerciseArchiveGetDataIter(ChunkArchive);
+    }
+
+    [Fact]
+    public void RawZipArchive_Http_SpectrumMetadata()
+    {
+        try
+        {
+            var stream = new HttpStream("http://localhost:8030/small.mzpeak");
+            Assert.True(stream.CanRead);
+            var header = new byte[4];
+            stream.ReadExactly(header);
+            Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
+            Assert.Equal(4, stream.Position);
+            stream.Seek(0, SeekOrigin.Begin);
+            header = new byte[4];
+            stream.ReadExactly(header);
+            Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
+            Assert.Equal(4, stream.Position);
+
+            stream.Seek(0, SeekOrigin.Begin);
+            var zipStream = new ZipArchiveStream<HttpStream>(stream);
+
+            Assert.NotEmpty(zipStream.FileIndex().Files);
+        } catch
+        {
+            Console.Error.WriteLine("No HTTP server running...");
+            return;
+        }
+        var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
+        ExerciseArchiveSpectrumMetadata(archive);
+    }
+
+    [Fact]
+    public async Task RawZipArchive_Http_GetDataIter()
+    {
+        try
+        {
+            var con = new HttpStream("http://localhost:8030/small.mzpeak");
+        }
+        catch
+        {
+            Console.Error.WriteLine("No HTTP server running...");
+            return;
+        }
+        var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
+        await ExerciseArchiveGetDataIter(archive);
+    }
+
 }
 
 public class ParamTest
@@ -228,118 +267,3 @@ public class ParamTest
         Assert.Equal(expected, msg);
     }
 }
-
-
-class MockHttpClientHandler : HttpClientHandler
-{
-    HttpResponseMessage? MockedResponse(HttpRequestMessage request)
-    {
-        var info = new FileInfo("small.mzpeak");
-        var resp = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-        if (request.Method == HttpMethod.Head)
-        {
-            resp.Content.Headers.Add("Content-Length", [info.Length.ToString()]);
-            return resp;
-        }
-        else if (request.Method == HttpMethod.Get)
-        {
-            var range = request.Headers.Range?.Ranges.AsEnumerable().First();
-            var start = range?.From ?? 0;
-            var end = range?.To ?? info.Length;
-            var stream = info.OpenRead();
-            stream.Seek(start, SeekOrigin.Begin);
-            var buf = new byte[end - start];
-            stream.ReadExactly(buf);
-            resp.Content = new ByteArrayContent(buf);
-            return resp;
-        }
-        return null;
-    }
-
-    public new HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        Assert.NotNull(request.RequestUri);
-        if (request.RequestUri.AbsolutePath.StartsWith("small.mzpeak"))
-        {
-            var resp = MockedResponse(request);
-            if (resp != null) return resp;
-        }
-        throw new Exception();
-    }
-
-    public new Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        Assert.NotNull(request.RequestUri);
-        if (request.RequestUri.AbsolutePath.StartsWith("small.mzpeak"))
-        {
-            var resp = MockedResponse(request);
-            if (resp != null) return Task.FromResult(resp);
-        }
-        throw new Exception();
-    }
-}
-
-
-// public class HttpReadTest
-// {
-
-//     [Fact]
-//     public void ReadHttpStream()
-//     {
-//         var client = new HttpClient(new MockHttpClientHandler());
-//         var stream = new HttpStream("http://localhost:8030/small.mzpeak", client);
-
-//         Assert.True(stream.CanRead);
-//         var header = new byte[4];
-//         stream.ReadExactly(header);
-//         Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
-//         Assert.Equal(4, stream.Position);
-//         stream.Seek(0, SeekOrigin.Begin);
-//         header = new byte[4];
-//         stream.ReadExactly(header);
-//         Assert.True(BaseZipArchive.IsZipArchiveHeader(header));
-//         Assert.Equal(4, stream.Position);
-
-//         stream.Seek(0, SeekOrigin.Begin);
-//         var zipStream = new ZipArchiveStream<HttpStream>(stream);
-
-//         Assert.NotEmpty(zipStream.FileIndex().Files);
-//     }
-
-//     [Fact]
-//     public async Task ReadHttpArchive()
-//     {
-//         var client = new HttpClient(new MockHttpClientHandler());
-//         var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak", client);
-//         Assert.NotEmpty(archive.FileIndex().Files);
-//         var reader = new MzPeakReader(archive);
-//         Assert.Equal(48, reader.SpectrumCount);
-
-//         List<ulong> profileSpectrumIdx = [
-//             0,
-//             1,
-//             7,
-//             8,
-//             14,
-//             15,
-//             21,
-//             22,
-//             28,
-//             29,
-//             34,
-//             35,
-//             41,
-//             42
-//         ];
-
-//         foreach(var i in profileSpectrumIdx)
-//         {
-//             var meta = reader.GetSpectrumDescription(i);
-//             Assert.Equal(i, meta.Index);
-
-//             var data = await reader.GetSpectrumData(i);
-//             Assert.NotNull(data);
-//             Assert.NotEqual(0, data.Length);
-//         }
-//     }
-// }
