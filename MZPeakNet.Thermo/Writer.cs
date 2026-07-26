@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using Apache.Arrow;
 using Apache.Arrow.Types;
 
-using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Reader.Visitors;
@@ -15,7 +14,6 @@ using ParquetSharp;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
 using ThermoFisher.CommonCore.Data.Interfaces;
-using ThermoFisher.CommonCore.MassPrecisionEstimator;
 
 namespace MZPeak.Thermo;
 
@@ -146,7 +144,7 @@ public class ConversionContextHelper
     public Dictionary<int, List<int?>> PreviousMSLevels;
     public Dictionary<int, uint> MSLevelCounts;
 
-    public PrecisionEstimate PrecisionEstimate;
+    // public PrecisionEstimate PrecisionEstimate;
 
     public ConversionContextHelper()
     {
@@ -154,7 +152,7 @@ public class ConversionContextHelper
         Headers = new();
         PreviousMSLevels = new();
         MSLevelCounts = new();
-        PrecisionEstimate = new();
+        // PrecisionEstimate = new();
     }
 
     public bool GetShortTrailerExtraFor(IRawDataPlus accessor, int scanNumber, string key, out short value)
@@ -364,7 +362,7 @@ public class ConversionContextHelper
 
     public void Initialize(IRawDataPlus accessor)
     {
-        PrecisionEstimate.Rawfile = accessor;
+        // PrecisionEstimate.Rawfile = accessor;
         var headers = accessor.GetTrailerExtraHeaderInformation();
         for (var i = 0; i < headers.Length; i++)
         {
@@ -1164,9 +1162,9 @@ public record ArrowStatusLog
 class CustomizedMZPeakWriter : MZPeakWriter
 {
     public CustomizedMZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex = null, ArrayIndex? chromatogramArrayIndex = null,
-                                  bool includeSpectrumPeakData = false, ArrayIndex? spectrumPeakArrayIndex = null, bool useChunked = false,
+                                  ArrayIndex? spectrumPeakArrayIndex = null, bool useChunked = false,
                                   Dictionary<string, FileEncryptionProperties>? encryptionConfigurations = null, ParquetDataWriterConfig? dataWriterConfig = null) :
-                                  base(storage, spectrumArrayIndex, chromatogramArrayIndex, includeSpectrumPeakData, spectrumPeakArrayIndex, useChunked, encryptionConfigurations, dataWriterConfig)
+                                  base(storage, spectrumArrayIndex, chromatogramArrayIndex, spectrumPeakArrayIndex, useChunked, encryptionConfigurations, dataWriterConfig)
     {
     }
 
@@ -1258,8 +1256,7 @@ public class ThermoMZPeakWriter : IDisposable
             storage,
             spectrumArrayIndex,
             chromatogramArrayIndex,
-            includeSpectrumPeakData: spectrumPeakArrayIndex != null,
-            spectrumPeakArrayIndex: spectrumPeakArrayIndex,
+            spectrumPeakArrayIndex,
             useChunked: useChunked,
             encryptionConfigurations,
             dataWriterConfig);
@@ -1304,8 +1301,8 @@ public class ThermoMZPeakWriter : IDisposable
     public EntryDerivedMetadata AddSpectrumPeakData(ulong entryIndex, CentroidStream centroids)
     {
         if (centroids.Length == 0) return EntryDerivedMetadata.Empty;
-        ConversionHelper.PrecisionEstimate.ScanNumber = centroids.ScanNumber;
         // TODO: Collect and store this optionally?
+        // ConversionHelper.PrecisionEstimate.ScanNumber = centroids.ScanNumber;
         // var estimate = ConversionHelper.PrecisionEstimate.GetMassPrecisionEstimate();
         // estimate[0].MassAccuracyInPpm
         var mzArray = Compute.Compute.CastDouble(centroids.Masses);

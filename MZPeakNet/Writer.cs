@@ -1,9 +1,6 @@
 namespace MZPeak.Writer;
 
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Apache.Arrow;
 using Microsoft.Extensions.Logging;
 using MZPeak.Compute;
@@ -14,7 +11,7 @@ using MZPeak.Writer.Data;
 using MZPeak.Writer.Visitors;
 using ParquetSharp;
 using ParquetSharp.Arrow;
-
+using ParquetSharp.IO;
 using EncryptionConfigurations = Dictionary<string, ParquetSharp.FileEncryptionProperties>;
 
 /// <summary>
@@ -107,7 +104,7 @@ public class MZPeakWriter : IDisposable
 
     BaseDataLayoutWriter SpectrumData;
     BaseDataLayoutWriter ChromatogramData;
-    BaseDataLayoutWriter? SpectrumPeakData = null;
+    BaseDataLayoutWriter SpectrumPeakData;
     BaseDataLayoutWriter? WavelengthSpectrumData = null;
 
     public ParquetDataWriterConfig DataWriterConfig {get; set;}
@@ -115,7 +112,7 @@ public class MZPeakWriter : IDisposable
     bool standardContentFlushed = false;
 
     public bool SpectrumHasArrayType(ArrayType arrayType) => SpectrumData.HasArrayType(arrayType);
-    public bool SpectrumPeaksHasArrayType(ArrayType arrayType) => SpectrumPeakData?.HasArrayType(arrayType) ?? false;
+    public bool SpectrumPeaksHasArrayType(ArrayType arrayType) => SpectrumPeakData.HasArrayType(arrayType);
     public bool ChromatogramHasArrayType(ArrayType arrayType) => ChromatogramData.HasArrayType(arrayType);
 
     public EncryptionConfigurations EncryptionConfigurations { get; set; }
@@ -166,7 +163,7 @@ public class MZPeakWriter : IDisposable
     protected SchemaDescriptor TranslateSchema(Schema schema)
     {
         var stream = new MemoryStream();
-        var tmp = new FileWriter(new ParquetSharp.IO.ManagedOutputStream(stream), schema);
+        var tmp = new FileWriter(new ManagedOutputStream(stream), schema);
         tmp.Close();
         stream.Seek(0, SeekOrigin.Begin);
         var reader = new ParquetFileReader(stream);
@@ -180,7 +177,7 @@ public class MZPeakWriter : IDisposable
         WavelengthSpectrumMetadata = new WavelengthSpectrumMetadataBuilder();
     }
 
-    public ParquetSharp.WriterPropertiesBuilder ConfigureByteShuffleColumnsFrom(ParquetSharp.WriterPropertiesBuilder writerProps, ArrayIndex arrayIndex, ArrayType targetArrayType, Schema schema)
+    public WriterPropertiesBuilder ConfigureByteShuffleColumnsFrom(WriterPropertiesBuilder writerProps, ArrayIndex arrayIndex, ArrayType targetArrayType, Schema schema)
     {
         /* Three-fold API workaround
             Step 1: Translate Arrow schema to Parquet schema using temporary in-memory Parquet file because
@@ -210,9 +207,9 @@ public class MZPeakWriter : IDisposable
         return writerProps;
     }
 
-    protected virtual ParquetSharp.WriterPropertiesBuilder SpectrumDataWriterPropertiesBuilder()
+    protected virtual WriterPropertiesBuilder SpectrumDataWriterPropertiesBuilder()
     {
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -221,7 +218,7 @@ public class MZPeakWriter : IDisposable
             .DisableDictionary($"{SpectrumData.LayoutName()}.{SpectrumData.BufferContext.IndexName()}")
             .Encoding(
                 $"{SpectrumData.LayoutName()}.{SpectrumData.BufferContext.IndexName()}",
-                ParquetSharp.Encoding.DeltaBinaryPacked
+                Encoding.DeltaBinaryPacked
             ).DataPagesize(
                 DataWriterConfig.PageSize
             ).MaxRowGroupLength(
@@ -241,7 +238,7 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.DataArrays);
         var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var managedStream = new ManagedOutputStream(stream);
 
         var writerProps = SpectrumDataWriterPropertiesBuilder();
 
@@ -255,9 +252,9 @@ public class MZPeakWriter : IDisposable
         CurrentEntry = entry;
     }
 
-    protected virtual ParquetSharp.WriterPropertiesBuilder ChromatogramDataWriterPropertiesBuilder()
+    protected virtual WriterPropertiesBuilder ChromatogramDataWriterPropertiesBuilder()
     {
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -266,7 +263,7 @@ public class MZPeakWriter : IDisposable
             .DisableDictionary($"{ChromatogramData.LayoutName()}.{ChromatogramData.BufferContext.IndexName()}")
             .Encoding(
                 $"{ChromatogramData.LayoutName()}.{ChromatogramData.BufferContext.IndexName()}",
-                ParquetSharp.Encoding.DeltaBinaryPacked
+                Encoding.DeltaBinaryPacked
             ).DataPagesize(
                 DataWriterConfig.PageSize
             ).MaxRowGroupLength(
@@ -293,7 +290,7 @@ public class MZPeakWriter : IDisposable
     {
         var entry = FileIndexEntry.FromEntityAndData(EntityType.Chromatogram, DataKind.DataArrays);
         var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var managedStream = new ManagedOutputStream(stream);
         var schema = ChromatogramData.ArrowSchema();
         var writerProps = ChromatogramDataWriterPropertiesBuilder();
 
@@ -302,10 +299,10 @@ public class MZPeakWriter : IDisposable
         CurrentWriter = new FileWriter(managedStream, schema, writerProps.Build(), arrowProps.Build());
     }
 
-    protected virtual ParquetSharp.WriterPropertiesBuilder WavelengthSpectrumDataWriterPropertiesBuilder()
+    protected virtual WriterPropertiesBuilder WavelengthSpectrumDataWriterPropertiesBuilder()
     {
         if (WavelengthSpectrumData == null) throw new InvalidOperationException("Cannot configure, WavelengthSpectrumData is null");
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -314,7 +311,7 @@ public class MZPeakWriter : IDisposable
             .DisableDictionary($"{SpectrumData.LayoutName()}.{WavelengthSpectrumData.BufferContext.IndexName()}")
             .Encoding(
                 $"{WavelengthSpectrumData.LayoutName()}.{WavelengthSpectrumData.BufferContext.IndexName()}",
-                ParquetSharp.Encoding.DeltaBinaryPacked
+                Encoding.DeltaBinaryPacked
             ).DataPagesize(
                 DataWriterConfig.PageSize
             ).MaxRowGroupLength(
@@ -336,7 +333,7 @@ public class MZPeakWriter : IDisposable
             return;
         var entry = FileIndexEntry.FromEntityAndData(EntityType.WavelengthSpectrum, DataKind.DataArrays);
         var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var managedStream = new ManagedOutputStream(stream);
 
         var writerProps = WavelengthSpectrumDataWriterPropertiesBuilder();
         var schema = WavelengthSpectrumData.ArrowSchema();
@@ -363,12 +360,12 @@ public class MZPeakWriter : IDisposable
 
     public ArrayIndex SpectrumArrayIndex => SpectrumData.ArrayIndex;
     public ArrayIndex ChromatogramArrayIndex => ChromatogramData.ArrayIndex;
-    public ArrayIndex? SpectrumPeakArrayIndex => SpectrumPeakData?.ArrayIndex;
+    public ArrayIndex SpectrumPeakArrayIndex => SpectrumPeakData.ArrayIndex;
 
-    protected virtual ParquetSharp.WriterPropertiesBuilder SpectrumPeakDataWriterPropertiesBuilder()
+    protected virtual WriterPropertiesBuilder SpectrumPeakDataWriterPropertiesBuilder()
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException();
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -377,7 +374,7 @@ public class MZPeakWriter : IDisposable
             .DisableDictionary($"{SpectrumPeakData.LayoutName()}.{SpectrumPeakData.BufferContext.IndexName()}")
             .Encoding(
                 $"{SpectrumPeakData.LayoutName()}.{SpectrumPeakData.BufferContext.IndexName()}",
-                ParquetSharp.Encoding.DeltaBinaryPacked
+                Encoding.DeltaBinaryPacked
             ).DataPagesize(
                 DataWriterConfig.PageSize
             ).MaxRowGroupLength(
@@ -400,7 +397,7 @@ public class MZPeakWriter : IDisposable
         {
             PeakPath = Path.GetTempFileName();
             PeakStream = File.Open(PeakPath, FileMode.Create, FileAccess.ReadWrite);
-            var managedStream = new ParquetSharp.IO.ManagedOutputStream(PeakStream);
+            var managedStream = new ManagedOutputStream(PeakStream);
             var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
 
             var schema = SpectrumPeakData.ArrowSchema();
@@ -412,7 +409,7 @@ public class MZPeakWriter : IDisposable
             CloseCurrentWriter();
             var entry = FileIndexEntry.FromEntityAndData(EntityType.Spectrum, DataKind.Peaks);
             var stream = Storage.OpenStream(entry);
-            var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+            var managedStream = new ManagedOutputStream(stream);
 
             var writerProps = SpectrumPeakDataWriterPropertiesBuilder();
 
@@ -450,7 +447,6 @@ public class MZPeakWriter : IDisposable
     public MZPeakWriter(IMZPeakArchiveWriter storage,
                         ArrayIndex? spectrumArrayIndex = null,
                         ArrayIndex? chromatogramArrayIndex = null,
-                        bool includeSpectrumPeakData = false,
                         ArrayIndex? spectrumPeakArrayIndex = null,
                         bool useChunked = false,
                         EncryptionConfigurations? encryptionConfigurations = null,
@@ -478,8 +474,7 @@ public class MZPeakWriter : IDisposable
             _ => throw new NotImplementedException($"Buffer format {chromatogramArrayIndex.InferBufferFormat()} not recognized")
         };
         ChromatogramData.ShouldRemoveZeroRuns = false;
-        if (includeSpectrumPeakData)
-            SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
+        SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
         WavelengthSpectrumMetadata = null;
         DataWriterConfig = dataWriterConfig ?? new();
     }
@@ -510,16 +505,35 @@ public class MZPeakWriter : IDisposable
     /// <summary>Gets the current wavelength spectrum index.</summary>
     public ulong CurrentWavelengthSpectrum => WavelengthSpectrumMetadata?.SpectrumCounter ?? 0;
 
+    protected bool ShouldFlushSpectrumData() => SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize ||
+        (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0);
+
+    protected bool ShouldFlushSpectrumPeakData() => PeakWriter != null && (
+        SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize ||
+        SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0);
+
     /// <summary>Adds spectrum data arrays from a dictionary.</summary>
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
     public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
-        var r = SpectrumData.Add(entryIndex, arrays, isProfile);
-        if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
+        EntryDerivedMetadata r;
+        if (isProfile != null && !(bool)isProfile)
         {
-            FlushSpectrumData();
+            r = SpectrumPeakData.Add(entryIndex, arrays, isProfile);
+            if (ShouldFlushSpectrumPeakData())
+            {
+                FlushSpectrumPeakData();
+            }
+        }
+        else
+        {
+            r = SpectrumData.Add(entryIndex, arrays, isProfile);
+            if (ShouldFlushSpectrumData())
+            {
+                FlushSpectrumData();
+            }
         }
         return r;
     }
@@ -530,10 +544,22 @@ public class MZPeakWriter : IDisposable
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
     public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
     {
-        var r = SpectrumData.Add(entryIndex, arrays, isProfile);
-        if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
+        EntryDerivedMetadata r;
+        if (isProfile != null && !(bool)isProfile)
         {
-            FlushSpectrumData();
+            r = SpectrumPeakData.Add(entryIndex, arrays, isProfile);
+            if (ShouldFlushSpectrumPeakData())
+            {
+                FlushSpectrumPeakData();
+            }
+        }
+        else
+        {
+            r = SpectrumData.Add(entryIndex, arrays, isProfile);
+            if (ShouldFlushSpectrumData())
+            {
+                FlushSpectrumData();
+            }
         }
         return r;
     }
@@ -544,10 +570,22 @@ public class MZPeakWriter : IDisposable
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
     public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
     {
-        var r = SpectrumData.Add(entryIndex, arrays, isProfile);
-        if (SpectrumData.BufferedSize > DataWriterConfig.RowGroupSize || (SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0 && SpectrumMetadata.SpectrumCounter > 0))
+        EntryDerivedMetadata r;
+        if (isProfile != null && !(bool)isProfile)
         {
-            FlushSpectrumData();
+            r = SpectrumPeakData.Add(entryIndex, arrays, isProfile);
+            if (ShouldFlushSpectrumPeakData())
+            {
+                FlushSpectrumPeakData();
+            }
+        }
+        else
+        {
+            r = SpectrumData.Add(entryIndex, arrays, isProfile);
+            if (ShouldFlushSpectrumData())
+            {
+                FlushSpectrumData();
+            }
         }
         return r;
     }
@@ -559,7 +597,7 @@ public class MZPeakWriter : IDisposable
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
-        if (PeakWriter != null && (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0))
+        if (ShouldFlushSpectrumPeakData())
         {
             FlushSpectrumPeakData();
         }
@@ -573,7 +611,7 @@ public class MZPeakWriter : IDisposable
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
-        if (PeakWriter != null && (SpectrumPeakData.BufferedSize > DataWriterConfig.RowGroupSize || SpectrumMetadata.SpectrumCounter % DataWriterConfig.EntryBufferSize == 0))
+        if (ShouldFlushSpectrumPeakData())
         {
             FlushSpectrumPeakData();
         }
@@ -587,6 +625,10 @@ public class MZPeakWriter : IDisposable
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException("Spectrum peak writing is not enabled");
         var r = SpectrumPeakData.Add(entryIndex, arrays, false);
+        if (ShouldFlushSpectrumPeakData())
+        {
+            FlushSpectrumPeakData();
+        }
         return r;
     }
 
@@ -934,7 +976,7 @@ public class MZPeakWriter : IDisposable
             SpectrumMetadata.Spectrum.ColumnMappings()
         );
         var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var managedStream = new ManagedOutputStream(stream);
         var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -969,7 +1011,7 @@ public class MZPeakWriter : IDisposable
             SpectrumMetadata.Scan.ColumnMappings()
         );
         stream = Storage.OpenStream(entry);
-        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        managedStream = new ManagedOutputStream(stream);
         writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -1006,7 +1048,7 @@ public class MZPeakWriter : IDisposable
             SpectrumMetadata.Precursor.ColumnMappings()
         );
         stream = Storage.OpenStream(entry);
-        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        managedStream = new ManagedOutputStream(stream);
         writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -1043,7 +1085,7 @@ public class MZPeakWriter : IDisposable
             SpectrumMetadata.SelectedIon.ColumnMappings()
         );
         stream = Storage.OpenStream(entry);
-        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        managedStream = new ManagedOutputStream(stream);
         writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
@@ -1119,15 +1161,15 @@ public class MZPeakWriter : IDisposable
 
         Logger?.LogInformation($"Writing wavelength spectrum metadata, {WavelengthSpectrumMetadata.Length} rows to write");
         var stream = Storage.OpenStream(entry);
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var managedStream = new ManagedOutputStream(stream);
 
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
-            .Encoding("index", ParquetSharp.Encoding.DeltaBinaryPacked);
+            .Encoding("index", Encoding.DeltaBinaryPacked);
         var arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
         var batch = WavelengthSpectrumMetadata.Spectrum.BuildRecordBatch(meta);
@@ -1146,16 +1188,16 @@ public class MZPeakWriter : IDisposable
         );
 
         stream = Storage.OpenStream(entry);
-        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        managedStream = new ManagedOutputStream(stream);
 
-        writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
             .EnableStatistics()
             .EnableWritePageIndex()
-            .Encoding("source_index", ParquetSharp.Encoding.DeltaBinaryPacked)
-            .Encoding("scan_index", ParquetSharp.Encoding.DeltaBinaryPacked);
+            .Encoding("source_index", Encoding.DeltaBinaryPacked)
+            .Encoding("scan_index", Encoding.DeltaBinaryPacked);
         arrowProps = new ArrowWriterPropertiesBuilder().StoreSchema();
 
         batch = WavelengthSpectrumMetadata.Scan.BuildRecordBatch(meta);
@@ -1170,12 +1212,15 @@ public class MZPeakWriter : IDisposable
     protected virtual Dictionary<string, string> PrepareRunLevelMetadataDictionary()
     {
         var meta = new Dictionary<string, string>();
-        meta["file_description"] = JsonSerializer.Serialize(FileDescription);
-        meta["instrument_configuration_list"] = JsonSerializer.Serialize(InstrumentConfigurations);
-        meta["data_processing_method_list"] = JsonSerializer.Serialize(DataProcessingMethods);
-        meta["software_list"] = JsonSerializer.Serialize(Softwares);
-        meta["sample_list"] = JsonSerializer.Serialize(Samples);
-        meta["run"] = JsonSerializer.Serialize(Run);
+        meta[MZPeakConstants.FILE_DESCRIPTION_KEY] = JsonSerializer.Serialize(FileDescription);
+        meta[MZPeakConstants.INSTRUMENT_CONFIGURATION_LIST_KEY] = JsonSerializer.Serialize(InstrumentConfigurations);
+        meta[MZPeakConstants.DATA_PROCESSING_METHOD_LIST_KEY] = JsonSerializer.Serialize(DataProcessingMethods);
+        meta[MZPeakConstants.SOFTWARE_LIST_KEY] = JsonSerializer.Serialize(Softwares);
+        meta[MZPeakConstants.SAMPLE_LIST_KEY] = JsonSerializer.Serialize(Samples);
+        meta[MZPeakConstants.SCAN_SETTINGS_LIST_KEY] = JsonSerializer.Serialize(ScanSettings);
+        meta[MZPeakConstants.MS_RUN_KEY] = JsonSerializer.Serialize(Run);
+        meta[MZPeakConstants.CV_LIST_KEY] = JsonSerializer.Serialize(ControlledVocabularyList());
+        meta[MZPeakConstants.VERSION_KEY] = MZPeakConstants.MZPEAK_VERSION;
         return meta;
     }
 
@@ -1191,7 +1236,6 @@ public class MZPeakWriter : IDisposable
         meta["chromatogram_data_point_count"] = ChromatogramData.NumberOfPoints.ToString();
 
         // Chromatogram
-
         var entry = FileIndexEntry.FromEntityAndData(
             EntityType.Chromatogram,
             DataKind.Metadata,
@@ -1200,9 +1244,9 @@ public class MZPeakWriter : IDisposable
         );
         var stream = Storage.OpenStream(entry);
 
-        var managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        var managedStream = new ManagedOutputStream(stream);
 
-        var writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        var writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -1219,7 +1263,6 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
 
         // Precursors
-
         entry = FileIndexEntry.FromEntityAndData(
             EntityType.Chromatogram,
             DataKind.Precursors,
@@ -1228,9 +1271,9 @@ public class MZPeakWriter : IDisposable
         );
         stream = Storage.OpenStream(entry);
 
-        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        managedStream = new ManagedOutputStream(stream);
 
-        writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -1255,9 +1298,9 @@ public class MZPeakWriter : IDisposable
         );
         stream = Storage.OpenStream(entry);
 
-        managedStream = new ParquetSharp.IO.ManagedOutputStream(stream);
+        managedStream = new ManagedOutputStream(stream);
 
-        writerProps = new ParquetSharp.WriterPropertiesBuilder()
+        writerProps = new WriterPropertiesBuilder()
             .Compression(ParquetSharp.Compression.Zstd)
             .CompressionLevel(DataWriterConfig.CompressionLevel)
             .EnableDictionary()
@@ -1313,10 +1356,9 @@ public class MZPeakWriter : IDisposable
         return stream;
     }
 
-    public ParquetSharp.IO.ManagedOutputStream StartParquetEntry(FileIndexEntry entry)
-    {
-        return new ParquetSharp.IO.ManagedOutputStream(StartEntry(entry));
-    }
+    public ManagedOutputStream StartParquetEntry(FileIndexEntry entry) => new ManagedOutputStream(StartEntry(entry));
+
+    public List<ControlledVocabularyEntry> ControlledVocabularyList() => [ControlledVocabularyEntry.PSIMS, ControlledVocabularyEntry.Unit];
 
     public void WriteFileMetadataToIndex()
     {
@@ -1324,7 +1366,7 @@ public class MZPeakWriter : IDisposable
             MZPeakConstants.VERSION_KEY,
             MZPeakConstants.MZPEAK_VERSION
         );
-        List<ControlledVocabularyEntry> cvList = [ControlledVocabularyEntry.PSIMS, ControlledVocabularyEntry.Unit];
+        List<ControlledVocabularyEntry> cvList = ControlledVocabularyList();
         Storage.FileIndex().Metadata.Add(
             MZPeakConstants.CV_LIST_KEY,
             JsonSerializer.SerializeToNode(cvList)
@@ -1369,8 +1411,5 @@ public class MZPeakWriter : IDisposable
     }
 
     /// <summary>Disposes resources and closes the writer.</summary>
-    public void Dispose()
-    {
-        Close();
-    }
+    public void Dispose() => Close();
 }

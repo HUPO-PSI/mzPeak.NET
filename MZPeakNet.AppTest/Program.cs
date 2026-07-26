@@ -77,7 +77,7 @@ internal class Program
     static Command CreateReadCommand()
     {
         var cmd = new Command("read", "Read an existing mzPeak file");
-        Argument<FileInfo> filePath = new Argument<FileInfo>("file").AcceptExistingOnly();
+        Argument<string> filePath = new Argument<string>("file");
         cmd.Arguments.Add(filePath);
         Option<string> decryptionKey = new Option<string>("--decryption-key", ["-d"])
         {
@@ -216,7 +216,7 @@ internal class Program
         await job.Main();
     }
 
-    static async Task ReadFile(FileInfo fileInfo, string? decryptionKey = null)
+    static async Task ReadFile(string fileInfo, string? decryptionKey = null)
     {
         var job = new ReadFileTask(fileInfo, decryptionKey);
         await job.Main();
@@ -478,12 +478,12 @@ public class ThermoTranslateTask : CLITask
 
 public class ReadFileTask : CLITask
 {
-    FileInfo FileInfo;
+    string FilePath;
     string? DecryptionKey;
 
-    public ReadFileTask(FileInfo fileInfo, string? decryptionKey = null)
+    public ReadFileTask(string filePath, string? decryptionKey = null)
     {
-        FileInfo = fileInfo;
+        FilePath = filePath;
         DecryptionKey = decryptionKey;
     }
 
@@ -500,8 +500,8 @@ public class ReadFileTask : CLITask
 
             decryptionConfigs = FileIndex.UniformDecryption(config);
         }
-        Logger?.LogInformation($"Reading {FileInfo}");
-        var reader = new MZPeak.Reader.MzPeakReader(FileInfo.FullName, decryptionConfigs: decryptionConfigs);
+        Logger?.LogInformation($"Reading {FilePath}");
+        var reader = new MZPeak.Reader.MzPeakReader(FilePath, decryptionConfigs: decryptionConfigs);
         Logger?.LogInformation($"{reader.SpectrumCount} spectra detected, {reader.ChromatogramCount} chromatograms detected");
         Logger?.LogInformation($"Spectrum storage format = {reader.SpectrumDataFormat}");
         if (reader.HasWavelengthData)

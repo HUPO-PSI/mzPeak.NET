@@ -168,8 +168,45 @@ public class MzPeakReader
 
     /// <summary>Creates a reader for the mzPeak file at the specified path.</summary>
     /// <param name="path">The file path to the mzPeak archive.</param>
-    public MzPeakReader(string path, Dictionary<string, FileDecryptionProperties>? decryptionConfigs=null) : this(new LocalZipArchive(path), decryptionConfigs)
+    public MzPeakReader(string path, Dictionary<string, FileDecryptionProperties>? decryptionConfigs=null) : this(OpenStorage(path), decryptionConfigs)
     { }
+
+    public static IMZPeakArchiveStorage OpenStorage(string location, Dictionary<string, FileDecryptionProperties>? decryptionConfigs = null, HttpClient? httpClient = null)
+    {
+        if (location.Contains("://"))
+        {
+            try
+            {
+                var url = new Uri(location);
+                if (url.Scheme == "http" || url.Scheme == "https")
+                {
+                    return new HttpZipArchive(url, httpClient, decryptionConfigs);
+                }
+            }
+            catch (Exception err)
+            {
+                Logger?.LogDebug($"Failed to recognize URL {location} : {err}");
+            }
+        }
+        var finfo = new FileInfo(location);
+        if ((finfo.Attributes & FileAttributes.Directory) == FileAttributes.Directory)
+        {
+            return new DirectoryArchive(location, decryptionConfigs);
+        }
+        else
+        {
+            var buf = new byte[4];
+            finfo.OpenRead().ReadExactly(buf);
+            if (BaseZipArchive.IsZipArchiveHeader(buf))
+            {
+                return new LocalZipArchive(location, decryptionConfigs);
+            }
+            else
+            {
+                throw new InvalidDataException($"Unrecognized data format: {location}");
+            }
+        }
+    }
 
     /// <summary>Creates a reader using the specified storage backend.</summary>
     /// <param name="storage">The archive storage implementation.</param>
