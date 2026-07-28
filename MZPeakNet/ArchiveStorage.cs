@@ -6,17 +6,17 @@ using System.Text.Json.Serialization;
 using System.IO.Compression;
 
 using ParquetSharp.IO;
-using ParquetSharp.Encryption;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
 using ParquetSharp;
 using ParquetSharp.Arrow;
-using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 using MZPeak.ControlledVocabulary;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.IO.MemoryMappedFiles;
+
+using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 
 #region Index File Implementation
 
@@ -167,6 +167,46 @@ class DataKindTJsonConverter : JsonConverter<DataKind>
     }
 }
 
+/// <summary>
+/// JSON codec for serializing ["list", "of", "strings"] as "list.of.strings" and deserializing
+/// back to the original. Also handles reading the original.
+/// </summary>
+class DotPathJsonConverter : JsonConverter<List<string>>
+{
+    public override List<string>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        List<string> values = [];
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    var value = reader.GetString();
+                    if (value == null) throw new JsonException("Unexpected null value");
+                    values.Add(value);
+                }
+                else if (reader.TokenType == JsonTokenType.EndArray) break;
+                else throw new JsonException("Expected only a string or an array of strings");
+            }
+        }
+        else if (reader.TokenType == JsonTokenType.String)
+        {
+            var value = reader.GetString();
+            if (value == null)  throw new JsonException("Unexpected null value");
+            values = value.Split(".").ToList();
+        }
+        else throw new JsonException("Expected only a string or an array of strings");
+        return values;
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<string> value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(string.Join('.', value));
+    }
+}
+
+
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record class ColumnMapping
 {
@@ -174,6 +214,7 @@ public record class ColumnMapping
     public string Name {get; set;}
 
     [JsonPropertyName("path")]
+    [JsonConverter(typeof(DotPathJsonConverter))]
     public List<string> Path {get; set;}
 
     [JsonPropertyName("accession")]
