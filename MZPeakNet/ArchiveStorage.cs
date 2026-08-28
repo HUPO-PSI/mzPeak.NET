@@ -17,6 +17,8 @@ using System.Threading;
 using System.IO.MemoryMappedFiles;
 
 using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
+using Apache.Arrow;
+using ParquetSharp.Schema;
 
 #region Index File Implementation
 
@@ -223,6 +225,9 @@ public record class ColumnMapping
     [JsonPropertyName("unit")]
     public string? Unit {get; set;}
 
+    [JsonPropertyName("term_marker")]
+    public bool? TermMarker {get; set;}
+
     [JsonIgnore]
     public string? CURIE => Accession;
     [JsonIgnore]
@@ -238,6 +243,159 @@ public record class ColumnMapping
         Path = path;
         Accession = accession;
         Unit = unit;
+    }
+
+    public int? FindColumnIndexIn(SchemaDescriptor schema)
+    {
+        var path = string.Join(".", Path);
+        for(var i = 0; i < schema.NumColumns; i++)
+        {
+            var col = schema.Column(i);
+            if (col.Path.ToDotString() == path)
+            {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    public (IArrowArray Min, IArrowArray Max, long NullCount)? Statistics(ParquetFileReader reader)
+    {
+        var colIndex = FindColumnIndexIn(reader.FileMetaData.Schema);
+        if (colIndex == null) return null;
+        IArrowArrayBuilder? minBuilder = null;
+        IArrowArrayBuilder? maxBuilder = null;
+        PhysicalType? physicalType = null;
+        long nullCount = 0;
+        for(var i = 0; i < reader.FileMetaData.NumRowGroups; i++)
+        {
+            var rg = reader.RowGroup(i);
+            var col = rg.MetaData.GetColumnChunkMetaData(colIndex.Value);
+            var stats = col.Statistics;
+            if (stats != null && stats.HasMinMax)
+            {
+                nullCount += stats.NullCount;
+                physicalType = stats.PhysicalType;
+                switch (stats.PhysicalType)
+                {
+                    case PhysicalType.Boolean:
+                        {
+                            if (minBuilder == null || maxBuilder == null)
+                            {
+                                minBuilder = new BooleanArray.Builder();
+                                maxBuilder = new BooleanArray.Builder();
+                            }
+                            var groupMin = Convert.ToBoolean(stats.MinUntyped);
+                            var groupMax = Convert.ToBoolean(stats.MaxUntyped);
+                            ((BooleanArray.Builder)minBuilder).Append(groupMin);
+                            ((BooleanArray.Builder)maxBuilder).Append(groupMax);
+                            break;
+                        }
+                    case PhysicalType.Float:
+                        {
+                            if (minBuilder == null || maxBuilder == null)
+                            {
+                                minBuilder = new FloatArray.Builder();
+                                maxBuilder = new FloatArray.Builder();
+                            }
+                            var groupMin = (float)Convert.ToDouble(stats.MinUntyped);
+                            var groupMax = (float)Convert.ToDouble(stats.MaxUntyped);
+                            ((FloatArray.Builder)minBuilder).Append(groupMin);
+                            ((FloatArray.Builder)maxBuilder).Append(groupMax);
+                            break;
+                        }
+                    case PhysicalType.Double:
+                        {
+                            if (minBuilder == null || maxBuilder == null)
+                            {
+                                minBuilder = new DoubleArray.Builder();
+                                maxBuilder = new DoubleArray.Builder();
+                            }
+                            var groupMin = Convert.ToDouble(stats.MinUntyped);
+                            var groupMax = Convert.ToDouble(stats.MaxUntyped);
+                            ((DoubleArray.Builder)minBuilder).Append(groupMin);
+                            ((DoubleArray.Builder)maxBuilder).Append(groupMax);
+                            break;
+                        }
+                    case PhysicalType.Int32:
+                        {
+                            if (minBuilder == null || maxBuilder == null)
+                            {
+                                minBuilder = new Int32Array.Builder();
+                                maxBuilder = new Int32Array.Builder();
+                            }
+                            var groupMin = Convert.ToInt32(stats.MinUntyped);
+                            var groupMax = Convert.ToInt32(stats.MaxUntyped);
+                            ((Int32Array.Builder)minBuilder).Append(groupMin);
+                            ((Int32Array.Builder)maxBuilder).Append(groupMax);
+                            break;
+                        }
+                    case PhysicalType.Int64:
+                        {
+                            if (minBuilder == null || maxBuilder == null)
+                            {
+                                minBuilder = new Int64Array.Builder();
+                                maxBuilder = new Int64Array.Builder();
+                            }
+                            var groupMin = Convert.ToInt64(stats.MinUntyped);
+                            var groupMax = Convert.ToInt64(stats.MaxUntyped);
+                            ((Int64Array.Builder)minBuilder).Append(groupMin);
+                            ((Int64Array.Builder)maxBuilder).Append(groupMax);
+                            break;
+                        }
+                    case PhysicalType.ByteArray:
+                    case PhysicalType.Int96:
+                    case PhysicalType.FixedLenByteArray:
+                        {
+                            break;
+                        }
+                }
+            }
+        }
+
+        if (minBuilder != null && maxBuilder != null)
+        {
+            switch (physicalType)
+            {
+                case PhysicalType.Boolean:
+                    {
+                        var minArr = ((BooleanArray.Builder)minBuilder).Build();
+                        var maxArr = ((BooleanArray.Builder)maxBuilder).Build();
+                        return (minArr, maxArr, nullCount);
+                    }
+                case PhysicalType.Float:
+                    {
+                        var minArr = ((FloatArray.Builder)minBuilder).Build();
+                        var maxArr = ((FloatArray.Builder)maxBuilder).Build();
+                        return (minArr, maxArr, nullCount);
+                    }
+                case PhysicalType.Double:
+                    {
+                        var minArr = ((DoubleArray.Builder)minBuilder).Build();
+                        var maxArr = ((DoubleArray.Builder)maxBuilder).Build();
+                        return (minArr, maxArr, nullCount);
+                    }
+                case PhysicalType.Int32:
+                    {
+                        var minArr = ((Int32Array.Builder)minBuilder).Build();
+                        var maxArr = ((Int32Array.Builder)maxBuilder).Build();
+                        return (minArr, maxArr, nullCount);
+                    }
+                case PhysicalType.Int64:
+                    {
+                        var minArr = ((Int64Array.Builder)minBuilder).Build();
+                        var maxArr = ((Int64Array.Builder)maxBuilder).Build();
+                        return (minArr, maxArr, nullCount);
+                    }
+                case PhysicalType.ByteArray:
+                case PhysicalType.Int96:
+                case PhysicalType.FixedLenByteArray:
+                    {
+                        return null;
+                    }
+            }
+        }
+        return null;
     }
 
     public override string ToString()

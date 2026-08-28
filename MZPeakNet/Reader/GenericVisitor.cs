@@ -743,6 +743,7 @@ public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffse
         var CURIE = columnMapping?.Accession;
         var UnitCURIE = columnMapping?.Unit;
         var name = columnMapping?.Name ?? field.Name;
+        var isMarker = columnMapping?.TermMarker ?? false;
         switch (array.Data.DataType.TypeId)
         {
             case ArrowTypeId.Int8:
@@ -810,11 +811,24 @@ public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffse
             case ArrowTypeId.Boolean:
                 {
                     BooleanArray arr = (BooleanArray)array;
-                    for (int j = 0; j < Offsets.Count; j++)
+                    if (isMarker)
                     {
-                        var i = Offsets[j];
-                        var value = arr.GetValue(i);
-                        Values[j].Parameters.Add(new Param(name, accession: CURIE, rawValue: value, UnitCURIE));
+                        for (int j = 0; j < Offsets.Count; j++)
+                        {
+                            var i = Offsets[j];
+                            var value = arr.GetValue(i);
+                            if (value != null && (bool)value)
+                                Values[j].Parameters.Add(new Param(name, accession: CURIE, rawValue: null, UnitCURIE));
+                        }
+                    }
+                    else
+                    {
+                        for (int j = 0; j < Offsets.Count; j++)
+                        {
+                            var i = Offsets[j];
+                            var value = arr.GetValue(i);
+                            Values[j].Parameters.Add(new Param(name, accession: CURIE, rawValue: value, UnitCURIE));
+                        }
                     }
                     break;
                 }

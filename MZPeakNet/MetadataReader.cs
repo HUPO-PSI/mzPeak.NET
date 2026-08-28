@@ -295,31 +295,19 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         {
             var rg = handle.ParquetReader.RowGroup(i);
             var rgMeta = rg.MetaData;
+
             if (lowColIdx == -1)
             {
-                var q = string.Join('.', lowCol.Path);
-                for (var j = 0; j < rgMeta.NumColumns; j++)
-                {
-                    var col = handle.ParquetReader.FileMetaData.Schema.Column(j);
-                    if (col.Path.ToDotString() == q)
-                    {
-                        lowColIdx = j;
-                        break;
-                    }
-                }
+                var tmp = lowCol.FindColumnIndexIn(rgMeta.Schema);
+                Console.WriteLine($"Searched for {lowCol}, found {tmp}");
+                if (tmp != null)
+                    lowColIdx = (int)tmp;
             }
             if (hiColIdx == -1)
             {
-                var q = string.Join('.', hiCol.Path);
-                for (var j = 0; j < rgMeta.NumColumns; j++)
-                {
-                    var col = handle.ParquetReader.FileMetaData.Schema.Column(j);
-                    if (col.Path.ToDotString() == q)
-                    {
-                        hiColIdx = j;
-                        break;
-                    }
-                }
+                var tmp = hiCol.FindColumnIndexIn(rgMeta.Schema);
+                if (tmp != null)
+                    hiColIdx = (int)tmp;
             }
             if (hiColIdx == -1 || lowColIdx == -1) return null;
 

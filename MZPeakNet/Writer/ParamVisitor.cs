@@ -269,7 +269,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
     public string? FixedUnit;
     public ArrowType ValueType;
     protected IArrowArrayBuilder Value;
-
+    public bool TermMarker {get; protected set;}
     public int Length => Value.Length;
 
     public StringArray.Builder? UnitValue;
@@ -279,12 +279,21 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         return accessionCURIE == AccessionCURIE;
     }
 
+    public static CustomBuilderFromParam TermMarkerFor(string accessionCURIE, string name)
+    {
+        return new CustomBuilderFromParam(accessionCURIE, name, new BooleanType())
+        {
+            TermMarker = true
+        };
+    }
+
     public CustomBuilderFromParam(string accessionCURIE, string name, ArrowType arrowType, string? fixedUnit = null, bool includeUnitValue = false)
     {
         AccessionCURIE = accessionCURIE;
         Name = name;
         ValueType = arrowType;
         FixedUnit = fixedUnit;
+        TermMarker = false;
         if (fixedUnit != null && includeUnitValue) throw new InvalidOperationException("May only specify one of fixedUnit or includingUnitValue");
         UnitValue = includeUnitValue ? new StringArray.Builder() : null;
         switch (arrowType.TypeId)
@@ -430,6 +439,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
             AppendNull();
             return;
         }
+
         switch (ValueType.TypeId)
         {
             case ArrowTypeId.Int64:
@@ -489,6 +499,9 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
                 }
             case ArrowTypeId.Boolean:
                 {
+                    if (TermMarker)
+                    ((BooleanArray.Builder)Value).Append(param.AccessionCURIE == AccessionCURIE);
+                    else
                     ((BooleanArray.Builder)Value).Append(param.AsBoolean());
                     break;
                 }
