@@ -834,14 +834,36 @@ public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffse
                 }
             case ArrowTypeId.String:
                 {
-                    foreach ((var i, var val) in VisitString((StringArray)array))
-                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
+                    if (columnMapping?.TermMarker ?? false)
+                    {
+                        foreach ((var i, var val) in VisitString((StringArray)array))
+                        {
+                            if (val != null)
+                                Values[i].Parameters.Add(new Param(name, accession: val, null));
+                        }
+                    }
+                    else
+                    {
+                        foreach ((var i, var val) in VisitString((StringArray)array))
+                            Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
+                    }
                     break;
                 }
             case ArrowTypeId.LargeString:
                 {
-                    foreach ((var i, var val) in VisitString((LargeStringArray)array))
-                        Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
+                    if (columnMapping?.TermMarker ?? false)
+                    {
+                        foreach ((var i, var val) in VisitString((LargeStringArray)array))
+                        {
+                            if (val != null)
+                                Values[i].Parameters.Add(new Param(name, accession: val, null));
+                        }
+                    }
+                    else
+                    {
+                        foreach ((var i, var val) in VisitString((LargeStringArray)array))
+                            Values[i].Parameters.Add(new Param(name, accession: CURIE, rawValue: val, UnitCURIE));
+                    }
                     break;
                 }
             default: throw new NotImplementedException($"{array.Data.DataType.Name} from {field.Name}");

@@ -248,22 +248,22 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     public SpectrumBuilder() : base(new()
     {
         // Required CV terms
-        new CustomBuilderFromParam("MS:1000511", "ms_level", new Int8Type()),
-        new ChildTermParamBuilder("MS:1000525", "spectrum_representation", [
+        new CustomBuilderFromParam("MS:1000511", "ms level", new Int8Type()),
+        new ChildTermParamBuilder("MS:1000525", "spectrum representation", [
             SpectrumRepresentation.CentroidSpectrum.CURIE(),
             SpectrumRepresentation.ProfileSpectrum.CURIE()
         ]),
-        new CustomBuilderFromParam("MS:1000465", "scan_polarity", new Int8Type()),
-        new CustomBuilderFromParam("MS:1000559", "spectrum_type", new StringType()),
+        new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int8Type()),
+        new CustomBuilderFromParam("MS:1000559", "spectrum type", new StringType()),
 
         // Optional spectrum properties (commonly present)
-        new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), "number_of_data_points", new UInt64Type()),
-        new CustomBuilderFromParam(SpectrumProperties.NumberOfPeaks.CURIE(), "number_of_peaks", new UInt64Type()),
-        new CustomBuilderFromParam(SpectrumProperties.BasePeakMZ.CURIE(), "base_peak_mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.BasePeakIntensity.CURIE(), "base_peak_intensity", new DoubleType(), Unit.MZ.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.TotalIonCurrent.CURIE(), "total_ion_current", new DoubleType(), Unit.MZ.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.LowestObservedMZ.CURIE(), "lowest_observed_mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.HighestObservedMZ.CURIE(), "highest_observed_mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), "number of data points", new UInt64Type()),
+        new CustomBuilderFromParam(SpectrumProperties.NumberOfPeaks.CURIE(), "number of peaks", new UInt64Type()),
+        new CustomBuilderFromParam(SpectrumProperties.BasePeakMZ.CURIE(), "base peak mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.BasePeakIntensity.CURIE(), "base peak intensity", new DoubleType(), Unit.MZ.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.TotalIonCurrent.CURIE(), "total ion current", new DoubleType(), Unit.MZ.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.LowestObservedMZ.CURIE(), "lowest observed mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.HighestObservedMZ.CURIE(), "highest observed mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
     })
     {
         Index = new();
@@ -444,10 +444,10 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
 
     public ScanBuilder() : base(new()
     {
-        new CustomBuilderFromParam(ScanAttribute.ScanStartTime.CURIE(), "scan_start_time", new DoubleType(), Unit.Minute.CURIE()),
-        new CustomBuilderFromParam(ScanAttribute.FilterString.CURIE(), "filter_string", new StringType()),
-        new CustomBuilderFromParam(ScanAttribute.PresetScanConfiguration.CURIE(), "preset_scan_configuration", new Int64Type()),
-        new CustomBuilderFromParam(ScanAttribute.IonInjectionTime.CURIE(), "ion_injection_time", new DoubleType(), Unit.Millisecond.CURIE()),
+        new CustomBuilderFromParam(ScanAttribute.ScanStartTime.CURIE(), "scan start time", new DoubleType(), Unit.Minute.CURIE()),
+        new CustomBuilderFromParam(ScanAttribute.FilterString.CURIE(), "filter string", new StringType()),
+        new CustomBuilderFromParam(ScanAttribute.PresetScanConfiguration.CURIE(), "preset scan configuration", new Int64Type()),
+        new CustomBuilderFromParam(ScanAttribute.IonInjectionTime.CURIE(), "ion injection time", new DoubleType(), Unit.Millisecond.CURIE()),
     })
     {
         // TODO: Fill in the scan index and spectrum reference arrays
@@ -711,9 +711,9 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
 
     public SelectedIonBuilder() : base(new()
         {
-            new CustomBuilderFromParam("MS:1000744", "selected_ion_mz", new DoubleType(), "MS:1000040"),
-            new CustomBuilderFromParam("MS:1000042", "peak_intensity", new FloatType(), "MS:1000131"),
-            new CustomBuilderFromParam("MS:1000041", "charge_state", new Int32Type())
+            new CustomBuilderFromParam("MS:1000744", "selected ion mz", new DoubleType(), "MS:1000040"),
+            new CustomBuilderFromParam("MS:1000042", "peak intensity", new FloatType(), "MS:1000131"),
+            new CustomBuilderFromParam("MS:1000041", "charge state", new Int32Type())
         })
     {
         SourceIndex = new();
@@ -814,14 +814,14 @@ public class ChromatogramBuilder : ParamVisitorCollection, IArrowBuilder<(ulong,
     public ChromatogramBuilder() : base(new()
     {
         // Required CV terms
-        new CustomBuilderFromParam("MS:1000465", "scan_polarity", new Int8Type()),
+        new CustomBuilderFromParam("MS:1000465", "scan polarity", new Int8Type()),
         new ChildTermParamBuilder(
             "MS:1000626",
-            "chromatogram_type",
+            "chromatogram type",
             ChromatogramTypesMethods.FromCURIE.Values.Select(v => v.CURIE()).ToList()
         ),
         // Optional properties (commonly present)
-        new CustomBuilderFromParam("MS:1003060", "number_of_data_points", new UInt64Type()),
+        new CustomBuilderFromParam("MS:1003060", "number of data points", new UInt64Type()),
     })
     {
         Index = new();
@@ -949,19 +949,19 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
     public WavelengthSpectrumBuilder() : base(new()
     {
         // Required CV terms
-        new ChildTermParamBuilder("MS:1000525", "spectrum_representation", [
+        new ChildTermParamBuilder("MS:1000525", "spectrum representation", [
             SpectrumRepresentation.CentroidSpectrum.CURIE(),
             SpectrumRepresentation.ProfileSpectrum.CURIE()
         ]),
-        new CustomBuilderFromParam("MS:1000559", "spectrum_type", new StringType()),
+        new CustomBuilderFromParam("MS:1000559", "spectrum type", new StringType()),
 
         // Optional spectrum properties (commonly present)
-        new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), "number_of_data_points", new UInt64Type()),
-        new CustomBuilderFromParam("MS:1003812", "lambda_max", new DoubleType(), Unit.Nanometer.CURIE()),
-        new CustomBuilderFromParam("MS:1000505", "base_peak_intensity", new DoubleType(), "MS:1000131"),
-        new CustomBuilderFromParam("MS:1000285", "total_ion_current", new DoubleType(), "MS:1000131"),
-        new CustomBuilderFromParam("MS:1000619", "lowest_observed_wavelength", new DoubleType(), Unit.Nanometer.CURIE()),
-        new CustomBuilderFromParam("MS:1000618", "highest_observed_wavelength", new DoubleType(), Unit.Nanometer.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), "number of data points", new UInt64Type()),
+        new CustomBuilderFromParam("MS:1003812", "lambda max", new DoubleType(), Unit.Nanometer.CURIE()),
+        new CustomBuilderFromParam("MS:1000505", "base peak intensity", new DoubleType(), "MS:1000131"),
+        new CustomBuilderFromParam("MS:1000285", "total ion current", new DoubleType(), "MS:1000131"),
+        new CustomBuilderFromParam("MS:1000619", "lowest observed wavelength", new DoubleType(), Unit.Nanometer.CURIE()),
+        new CustomBuilderFromParam("MS:1000618", "highest observed wavelength", new DoubleType(), Unit.Nanometer.CURIE()),
     })
     {
         Index = new();

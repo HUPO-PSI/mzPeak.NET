@@ -287,13 +287,13 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
         };
     }
 
-    public CustomBuilderFromParam(string accessionCURIE, string name, ArrowType arrowType, string? fixedUnit = null, bool includeUnitValue = false)
+    public CustomBuilderFromParam(string accessionCURIE, string name, ArrowType arrowType, string? fixedUnit = null, bool includeUnitValue = false, bool termMarker = false)
     {
         AccessionCURIE = accessionCURIE;
         Name = name;
         ValueType = arrowType;
         FixedUnit = fixedUnit;
-        TermMarker = false;
+        TermMarker = termMarker;
         if (fixedUnit != null && includeUnitValue) throw new InvalidOperationException("May only specify one of fixedUnit or includingUnitValue");
         UnitValue = includeUnitValue ? new StringArray.Builder() : null;
         switch (arrowType.TypeId)
@@ -590,7 +590,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
     /// Render the Param name as a column name
     /// </summary>
     /// <returns></returns>
-    protected string ColumnName() => Name;
+    protected string ColumnName() => Name.Replace(" ", "_");
 
     public List<IArrowArray> Build()
     {
@@ -738,7 +738,7 @@ public class CustomBuilderFromParam : IArrowBuilder<Param>
 public class ChildTermParamBuilder : CustomBuilderFromParam
 {
     public List<string> ChildTermAccessionCURIEs;
-    public ChildTermParamBuilder(string accessionCURIE, string name, List<string> childTerms) : base(accessionCURIE, name, new StringType(), null, false)
+    public ChildTermParamBuilder(string accessionCURIE, string name, List<string> childTerms) : base(accessionCURIE, name, new StringType(), null, false, true)
     {
         ChildTermAccessionCURIEs = childTerms;
     }
