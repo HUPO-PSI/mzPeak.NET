@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.IO.Compression;
+using System.Security.Cryptography;
 
 using ParquetSharp.IO;
 using System.Text;
@@ -423,7 +424,10 @@ public record FileIndexEntry
     [JsonPropertyName("column_mapping")]
     public List<ColumnMapping> ColumnMappings {get; set;}
 
-    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings = null)
+    [JsonPropertyName("checksum")]
+    public string? Checksum {get; set;}
+
+    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings = null, string? checksum = null)
     {
         string entityTypeTag = "";
         switch (entityType.Tag)
@@ -502,22 +506,24 @@ public record FileIndexEntry
             entityType,
             dataKind,
             @params ?? [],
-            columnMappings ?? []
+            columnMappings ?? [],
+            checksum: checksum
         );
     }
 
-    public FileIndexEntry(string name, EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings=null)
+    public FileIndexEntry(string name, EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings=null, string? checksum=null)
     {
         Name = name;
         EntityType = entityType;
         DataKind = dataKind;
         Params = @params ?? [];
         ColumnMappings = columnMappings ?? [];
+        Checksum = checksum;
     }
 
     public override string ToString()
     {
-        return $@"FileIndexEntry({Name}, {EntityType}, {DataKind}, [{string.Join(", ", Params.Select(p => p.ToString()))}], [{string.Join(", ", ColumnMappings.Select(e => e.ToString()))}])";
+        return $@"FileIndexEntry({Name}, {EntityType}, {DataKind}, [{string.Join(", ", Params.Select(p => p.ToString()))}], [{string.Join(", ", ColumnMappings.Select(e => e.ToString()))}], Checksum = {Checksum})";
     }
 }
 
@@ -682,6 +688,63 @@ public interface IMZPeakArchiveStorage : IDisposable
             props,
             arrowProps
         );
+    }
+
+    /// <summary>
+    /// Open an entry and compute the SHA512 checksum from the byte stream
+    /// </summary>
+    /// <param name="entry">The entry to check</param>
+    /// <returns>The checksum as a hex string if it could be computed</returns>
+    public string? ChecksumEntry(FileIndexEntry entry)
+    {
+        var stream = OpenEntry(entry.EntityType, entry.DataKind);
+        if (stream == null) return null;
+        var chk = SHA512.Create();
+        var digest = chk.ComputeHash(stream);
+        return BitConverter.ToString(digest).Replace("-", "").ToLower();
+    }
+
+    /// <summary>
+    /// Check if an entry's checksum matches the checksum stored in the file index.
+    /// </summary>
+    /// <param name="entry">The entry to check</param>
+    /// <returns>Whether the checksums match, or could be computed and compared at all</returns>
+    public bool? CheckFileIntegrity(FileIndexEntry entry)
+    {
+        if (entry.Checksum == null) return null;
+        var chk = ChecksumEntry(entry);
+        return chk == null ? null : chk == entry.Checksum;
+    }
+
+    /// <summary>
+    /// Check if all the entries in the archive match their checksums.
+    /// </summary>
+    /// <returns>
+    ///     Whether all the files were valid, and which entries failed to validate
+    /// </returns>
+    public (bool, List<(FileIndexEntry, string?)>) CheckArchiveIntegrity()
+    {
+        List<(FileIndexEntry, string?)> failed = [];
+        var valid = true;
+        foreach(var entry in FileIndex().Files)
+        {
+            var state = CheckFileIntegrity(entry);
+            switch (state)
+            {
+                case true:
+                    {
+                        continue;
+                    }
+                case false:
+                case null:
+                {
+                    valid &= false;
+                    failed.Add((entry, ChecksumEntry(entry)));
+                    break;
+                }
+            }
+        }
+        return (valid, failed);
     }
 
     /// <summary>
@@ -1479,11 +1542,97 @@ public class DirectoryArchive : IMZPeakArchiveStorage
 }
 
 
+public class SHA512HashingStream : Stream, IDisposable
+{
+    Stream Stream;
+    SHA512 Context;
+
+    string? _Checksum;
+
+    public SHA512HashingStream(Stream stream)
+    {
+        Context = SHA512.Create();
+        Stream = stream;
+        _Checksum = null;
+    }
+
+    public SHA512HashingStream(Stream stream, byte[] salt) : this(stream)
+    {
+        Context.TransformBlock(salt, 0, salt.Length, null, 0);
+    }
+
+    public string? Checksum => _Checksum;
+
+    public override bool CanRead => Stream.CanRead;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => Stream.CanWrite;
+
+    public override long Length => Stream.Length;
+
+    public override long Position
+    {
+        get => Stream.Position;
+        set => Stream.Position = value;
+    }
+
+    public override void Flush()
+    {
+        Stream.Flush();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        Context.TransformBlock(buffer, 0, count, null, 0);
+        return Stream.Read(buffer, offset, count);
+    }
+
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        return Stream.Seek(offset, origin);
+    }
+
+    public override void SetLength(long value)
+    {
+        Stream.SetLength(value);
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        Context.TransformBlock(buffer, 0, count, null, 0);
+        Stream.Write(buffer, offset, count);
+    }
+
+    public override void Close()
+    {
+        if (_Checksum != null) return;
+        Stream.Close();
+        Context.TransformFinalBlock(System.Array.Empty<byte>(), 0, 0);
+        if (Context.Hash != null)
+            _Checksum = BitConverter.ToString(Context.Hash).Replace("-", "").ToLower();
+        Context.Dispose();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        Close();
+    }
+
+    void IDisposable.Dispose()
+    {
+        Close();
+    }
+}
+
+
 public interface IMZPeakArchiveWriter : IDisposable
 {
     internal static ILogger? Logger = null;
 
-    public Stream OpenStream(FileIndexEntry indexEntry);
+    public SHA512HashingStream OpenStream(FileIndexEntry indexEntry);
+
+    public void CloseStream(SHA512HashingStream stream, FileIndexEntry indexEntry);
 
     public FileIndex FileIndex();
 }
@@ -1511,16 +1660,22 @@ public class DirectoryArchiveWriter : IMZPeakArchiveWriter
         }
     }
 
-    public Stream OpenStream(FileIndexEntry indexEntry)
+    public SHA512HashingStream OpenStream(FileIndexEntry indexEntry)
     {
         var path = System.IO.Path.Join(Path, indexEntry.Name);
         FileIndex.Files.Add(indexEntry);
-        return File.Create(path);
+        return new SHA512HashingStream(File.Create(path));
     }
 
     FileIndex IMZPeakArchiveWriter.FileIndex()
     {
         return FileIndex;
+    }
+
+    public void CloseStream(SHA512HashingStream stream, FileIndexEntry indexEntry)
+    {
+        stream.Close();
+        indexEntry.Checksum = stream.Checksum;
     }
 }
 
@@ -1529,8 +1684,9 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
 {
     ZipArchive Archive;
     T OuterStream;
-    Stream? CurrentStream;
+    SHA512HashingStream? CurrentStream;
     ZipArchiveEntry? CurrentEntry;
+    FileIndexEntry? CurrentIndexEntry;
     long LastStart;
     public FileIndex FileIndex;
 
@@ -1549,10 +1705,19 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         if (CurrentStream != null)
         {
             IMZPeakArchiveWriter.Logger?.LogDebug($"Closing current stream for {CurrentEntry}");
-            CurrentStream.Close();
+            if (CurrentIndexEntry != null && CurrentIndexEntry.Checksum == null)
+            {
+                CurrentStream.Close();
+                CurrentIndexEntry.Checksum = CurrentStream.Checksum;
+            }
+            else
+            {
+                CurrentStream.Close();
+            }
             IMZPeakArchiveWriter.Logger?.LogDebug($"{(OuterStream.Position - LastStart) / 1000000.0} MB written");
             CurrentStream = null;
             CurrentEntry = null;
+            CurrentIndexEntry = null;
         }
     }
 
@@ -1571,17 +1736,25 @@ public class ZipStreamArchiveWriter<T> : IMZPeakArchiveWriter where T : Stream
         Archive.Dispose();
     }
 
-    public Stream OpenStream(FileIndexEntry indexEntry)
+    public SHA512HashingStream OpenStream(FileIndexEntry indexEntry)
     {
         CloseCurrent();
         IMZPeakArchiveWriter.Logger?.LogDebug($"Opening {indexEntry}");
         var entry = Archive.CreateEntry(indexEntry.Name, CompressionLevel.NoCompression);
         LastStart = OuterStream.Position;
-        CurrentStream = entry.Open();
+        CurrentStream = new SHA512HashingStream(entry.Open());
         CurrentEntry = entry;
+        CurrentIndexEntry = indexEntry;
         FileIndex.Files.Add(indexEntry);
         return CurrentStream;
     }
 
     FileIndex IMZPeakArchiveWriter.FileIndex() => FileIndex;
+
+    public void CloseStream(SHA512HashingStream stream, FileIndexEntry indexEntry)
+    {
+        if (CurrentStream != stream || indexEntry != CurrentIndexEntry)
+            throw new InvalidOperationException("Attempting to close a stream out of order. ZipStreamArchiveWriter cannot write more than one stream at a time!");
+        CloseCurrent();
+    }
 }

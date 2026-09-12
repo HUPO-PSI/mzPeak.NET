@@ -295,6 +295,7 @@ public class WriteTest
 
         var readerStorage = new ZipArchiveStream<MemoryStream>(stream);
         var reader = new MzPeakReader(readerStorage);
+
         Assert.NotNull(reader.SpectrumTable);
         var meta = ((StructArray)reader.SpectrumTable.Array(0)).AsRecordBatch();
         Assert.NotNull(meta);

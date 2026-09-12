@@ -354,6 +354,7 @@ public class MZPeakWriter : IDisposable
     {
         if (CurrentEntry != null)
         {
+            Logger?.LogDebug($"Closing {CurrentEntry} from CloseCurrentWriter");
             CurrentWriter?.Close();
             CurrentEntry = null;
             CurrentWriter = null;
@@ -437,6 +438,7 @@ public class MZPeakWriter : IDisposable
         PeakStream.Seek(0, SeekOrigin.Begin);
         PeakStream.CopyTo(outStream);
         PeakStream.Close();
+        _Storage.CloseStream(outStream, entry);
     }
 
     /// <summary>Creates an mzPeak writer.</summary>
@@ -1337,6 +1339,7 @@ public class MZPeakWriter : IDisposable
             }
             else
             {
+                Logger?.LogInformation($"Dumping peak data from memory");
                 StartSpectrumPeakData();
                 FlushSpectrumPeakData();
                 CloseCurrentWriter();

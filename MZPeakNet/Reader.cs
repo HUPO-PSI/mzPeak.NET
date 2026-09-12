@@ -6,6 +6,7 @@ using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using Microsoft.Extensions.Logging;
 using ParquetSharp;
+using ParquetSharp.Arrow;
 
 namespace MZPeak.Reader;
 
@@ -228,6 +229,36 @@ public class MzPeakReader : IDisposable
         chromatogramMetadata = stream == null ? null : new ChromatogramMetadataReader(stream);
         stream = storage.OpenNamespace(EntityType.WavelengthSpectrum);
         wavelengthSpectrumMetadata = stream == null ? null : new SpectrumMetadataReader(stream);
+    }
+
+    /// <summary>
+    /// Check if all the entries in the archive match their checksums.
+    /// </summary>
+    /// <returns>
+    ///     Whether all the files were valid, and which entries failed to validate
+    /// </returns>
+    public (bool, List<(FileIndexEntry, string?)>) CheckArchiveIntegrity()
+    {
+        return _Storage.CheckArchiveIntegrity();
+    }
+
+    /// <summary>
+    /// Access the file index from the archive
+    /// </summary>
+    /// <returns></returns>
+    public Stream OpenStream(string name)
+    {
+        return _Storage.OpenStream(name);
+    }
+
+    public FileReader? OpenParquet(FileIndexEntry entry, ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null)
+    {
+        return _Storage.OpenFromFileIndexEntry(entry);
+    }
+
+    public MzPeakFacetNamespace? OpenNamespace(EntityType entityType)
+    {
+        return _Storage.OpenNamespace(entityType);
     }
 
     /// <summary>Gets the number of spectra (alias for SpectrumCount).</summary>

@@ -99,6 +99,13 @@ public class ArchiveTest
         Assert.Equal(BufferFormat.Point, arrayIndex.Entries[1].BufferFormat);
     }
 
+    void ExcerciseBasicIntegrity(IMZPeakArchiveStorage archiveStorage)
+    {
+        var (state, failed) = archiveStorage.CheckArchiveIntegrity();
+        Assert.True(state);
+        Assert.Empty(failed);
+    }
+
     void ExerciseArchiveSpectrumMetadata(IMZPeakArchiveStorage archiveStorage)
     {
         var stream = archiveStorage.OpenNamespace(EntityType.Spectrum);
@@ -221,6 +228,13 @@ public class ArchiveTest
         }
         var archive = new HttpZipArchive("http://localhost:8030/small.mzpeak");
         ExerciseArchiveSpectrumMetadata(archive);
+    }
+
+    [Fact]
+    public void RawZipArchive_CheckIntegrity()
+    {
+        ExcerciseBasicIntegrity(PointArchive);
+        ExcerciseBasicIntegrity(ChunkArchive);
     }
 
     [Fact]
