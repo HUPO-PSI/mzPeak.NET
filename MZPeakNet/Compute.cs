@@ -1362,7 +1362,7 @@ public static class Compute
     public static PrimitiveArray<T> NullifyAt<T>(PrimitiveArray<T> array, BooleanArray mask)
         where T : struct, INumber<T>
     {
-        var nullCount = mask.Sum(v => (v != null && (bool)v) ? 1 : 0);
+        var nullCount = mask.Sum(static v => (v != null && (bool)v) ? 1 : 0);
         return (PrimitiveArray<T>)ArrowArrayFactory.BuildArray(
             new ArrayData(array.Data.DataType, array.Length, nullCount, offset: array.Data.Offset, [mask.ValueBuffer.Clone(), array.ValueBuffer.Clone()], [])
         );

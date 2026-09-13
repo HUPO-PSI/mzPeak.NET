@@ -7,6 +7,7 @@ using MZPeak.Storage;
 using Microsoft.Extensions.Logging;
 using ParquetSharp;
 using ParquetSharp.Arrow;
+using System.Collections;
 
 namespace MZPeak.Reader;
 
@@ -22,7 +23,7 @@ public enum SpectrumDataModalityPreference
 /// Combines metadata and data array readers for unified access.
 /// </summary>
 /// <typeparam name="T">The metadata type (e.g., SpectrumDescription).</typeparam>
-public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArrayIndex
+public class DataFacet<T> : IEnumerable<(T, StructArray)>, IAsyncEnumerable<(T, StructArray)> where T: HasArrayIndex
 {
     MetadataReaderBase<T> MetadataReader;
     DataArraysReader DataReader;
@@ -73,6 +74,33 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
             return (meta, data);
         }
 
+    }
+
+    /// <summary>Gets the metadata and data arrays for a specific index.</summary>
+    /// <param name="index">The entry index.</param>
+    public (T, StructArray) GetSync(ulong index)
+    {
+        var meta = MetadataReader.Get(index);
+        if (meta == null) throw new IndexOutOfRangeException();
+        var dpCount = MetadataReader.NumberOfDataPointsFor(index);
+        var peakCount = MetadataReader.NumberOfPeaks(index);
+        if (dpCount != null)
+        {
+            var data = DataReader.ReadForIndexSync(index);
+            if (data == null) throw new IndexOutOfRangeException();
+            return (meta, data);
+        }
+        else if (peakCount != null && PeakReader != null)
+        {
+            var data = PeakReader.ReadForIndexSync(index);
+            if (data == null) throw new IndexOutOfRangeException();
+            return (meta, data);
+        }
+        else
+        {
+            var data = DataReader.EmptyArrays();
+            return (meta, data);
+        }
     }
 
     /// <summary>Asynchronously enumerates all entries with their metadata and data.</summary>
@@ -140,6 +168,75 @@ public class DataFacet<T> : IAsyncEnumerable<(T, StructArray)> where T: HasArray
         {
             yield return x;
         }
+    }
+
+    /// <summary>Asynchronously enumerates all entries with their metadata and data.</summary>
+    public IEnumerable<(T, StructArray)> EnumerateSync()
+    {
+        var metaRecs = MetadataReader.BulkLoad();
+        var n = (ulong)Length;
+        var dataIter = DataReader.EnumerateSync();
+        var peakIter = PeakReader?.EnumerateSync();
+
+        dataIter.Peek();
+        if (peakIter != null)
+            peakIter.Peek();
+
+        for (var i = 0ul; i < n; i++)
+        {
+            var meta = metaRecs[(int)i];
+            var dpCount = MetadataReader.NumberOfDataPointsFor(i);
+            var peakCount = MetadataReader.NumberOfPeaks(i);
+
+            if (dpCount != null && dpCount > 0 && (ModalityPreference == SpectrumDataModalityPreference.PreferProfiles || ((peakCount ?? 0) == 0)))
+            {
+                if (dataIter.Seek(i))
+                {
+                    var nextValue = dataIter.Peek();
+                    if (nextValue == null) throw new InvalidOperationException($"Data iterator seeked but did not find a value");
+                    var (dataIdx, data) = nextValue.Value;
+                    if (dataIdx != i) throw new InvalidOperationException($"Data iterator is out of sync: {dataIdx} != {i}");
+                    meta.ArrayIndex = DataReader.ArrayIndex;
+                    yield return (meta, data);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Data iterator is out of sync with records: {i} expected {dpCount}, found nothing");
+                }
+            }
+
+            else if (peakCount != null && peakCount > 0 && peakIter != null && (ModalityPreference == SpectrumDataModalityPreference.PreferPeaks || (dpCount ?? 0) == 0))
+            {
+                if (peakIter.Seek(i))
+                {
+                    var nextValue = peakIter.Peek();
+                    if (nextValue == null) throw new InvalidOperationException($"Peak iterator seeked but did not find a value");
+                    var (dataIdx, data) = nextValue.Value;
+                    if (dataIdx != i) throw new InvalidOperationException($"Peak iterator is out of sync: {dataIdx} != {i}");
+                    meta.ArrayIndex = PeakReader?.ArrayIndex;
+                    yield return (meta, data);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Peak iterator is out of sync with records: {i} expected {peakCount}, found nothing {peakIter.PeekIndex()}");
+                }
+            }
+            else
+            {
+                meta.ArrayIndex = DataReader.ArrayIndex;
+                yield return (meta, DataReader.EmptyArrays());
+            }
+        }
+    }
+
+    public IEnumerator<(T, StructArray)> GetEnumerator()
+    {
+        return EnumerateSync().GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 }
 
@@ -404,6 +501,17 @@ public class MzPeakReader : IDisposable
         }
     }
 
+    /// <summary>Synchronously enumerates all spectra with their descriptions and data.</summary>
+    public IEnumerable<(SpectrumDescription, StructArray)> EnumerateSpectraSync()
+    {
+        var dataReader = OpenSpectrumDataReader();
+        if (dataReader != null && spectrumMetadata != null)
+        {
+            foreach (var item in new DataFacet<SpectrumDescription>(spectrumMetadata, dataReader, OpenSpectrumPeaksDataReader()) { ModalityPreference = SpectrumDataModalityPreference }.EnumerateSync())
+                yield return item;
+        }
+    }
+
     /// <summary>Asynchronously enumerates all chromatograms with their descriptions and data.</summary>
     public async IAsyncEnumerable<(ChromatogramDescription, StructArray)> EnumerateChromatogramsAsync()
     {
@@ -415,6 +523,17 @@ public class MzPeakReader : IDisposable
         }
     }
 
+    /// <summary>Synchronously enumerates all chromatograms with their descriptions and data.</summary>
+    public IEnumerable<(ChromatogramDescription, StructArray)> EnumerateChromatogramsSync()
+    {
+        var dataReader = OpenChromatogramDataReader();
+        if (dataReader != null && chromatogramMetadata != null)
+        {
+            foreach (var item in new DataFacet<ChromatogramDescription>(chromatogramMetadata, dataReader).EnumerateSync())
+                yield return item;
+        }
+    }
+
     /// <summary>Asynchronously enumerates all spectra with their descriptions and data.</summary>
     public async IAsyncEnumerable<(SpectrumDescription, StructArray)> EnumerateWavelengthSpectraAsync()
     {
@@ -422,6 +541,17 @@ public class MzPeakReader : IDisposable
         if (dataReader != null && wavelengthSpectrumMetadata != null)
         {
             await foreach (var item in new DataFacet<SpectrumDescription>(wavelengthSpectrumMetadata, dataReader).EnumerateAsync())
+                yield return item;
+        }
+    }
+
+    /// <summary>Synchronously enumerates all spectra with their descriptions and data.</summary>
+    public IEnumerable<(SpectrumDescription, StructArray)> EnumerateWavelengthSpectraSync()
+    {
+        var dataReader = OpenWavelengthSpectrumDataReader();
+        if (dataReader != null && wavelengthSpectrumMetadata != null)
+        {
+            foreach (var item in new DataFacet<SpectrumDescription>(wavelengthSpectrumMetadata, dataReader).EnumerateSync())
                 yield return item;
         }
     }
@@ -525,6 +655,21 @@ public class MzPeakReader : IDisposable
         return await reader.ReadForIndex(index);
     }
 
+    /// <summary>Gets the data arrays for a spectrum by index.</summary>
+    /// <param name="index">The spectrum index.</param>
+    public StructArray? GetSpectrumDataSync(ulong index, SpectrumDataModalityPreference? spectrumDataModalityPreference = SpectrumDataModalityPreference.PreferProfiles)
+    {
+        if (spectrumDataModalityPreference == SpectrumDataModalityPreference.PreferPeaks && spectrumMetadata?.NumberOfPeaks(index) > 0)
+        {
+            return GetSpectrumPeaksSync(index);
+        }
+        var reader = OpenSpectrumDataReader();
+        if (reader == null) return null;
+        var nbPoints = spectrumMetadata?.NumberOfDataPointsFor(index);
+        if (nbPoints == null) return null;
+        return reader.ReadForIndexSync(index);
+    }
+
     /// <summary>Gets the data arrays for a wavelength spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
     public async ValueTask<StructArray?> GetWavelengthSpectrumData(ulong index)
@@ -534,6 +679,14 @@ public class MzPeakReader : IDisposable
         return await reader.ReadForIndex(index);
     }
 
+    /// <summary>Gets the data arrays for a wavelength spectrum by index.</summary>
+    /// <param name="index">The spectrum index.</param>
+    public StructArray? GetWavelengthSpectrumDataSync(ulong index)
+    {
+        var reader = OpenWavelengthSpectrumDataReader();
+        if (reader == null) return null;
+        return reader.ReadForIndexSync(index);
+    }
 
     /// <summary>Gets the peak data arrays for a spectrum by index.</summary>
     /// <param name="index">The spectrum index.</param>
@@ -546,6 +699,17 @@ public class MzPeakReader : IDisposable
         return await reader.ReadForIndex(index);
     }
 
+    /// <summary>Gets the peak data arrays for a spectrum by index.</summary>
+    /// <param name="index">The spectrum index.</param>
+    public StructArray? GetSpectrumPeaksSync(ulong index)
+    {
+        var reader = OpenSpectrumPeaksDataReader();
+        if (reader == null) return null;
+        var nbPoints = spectrumMetadata?.NumberOfPeaks(index);
+        if (nbPoints == null) return null;
+        return reader.ReadForIndexSync(index);
+    }
+
     /// <summary>Gets the data arrays for a chromatogram by index.</summary>
     /// <param name="index">The chromatogram index.</param>
     public async ValueTask<StructArray?> GetChromatogramData(ulong index)
@@ -553,6 +717,15 @@ public class MzPeakReader : IDisposable
         var reader = OpenChromatogramDataReader();
         if (reader == null) return null;
         return await reader.ReadForIndex(index);
+    }
+
+    /// <summary>Gets the data arrays for a chromatogram by index.</summary>
+    /// <param name="index">The chromatogram index.</param>
+    public StructArray? GetChromatogramDataSync(ulong index)
+    {
+        var reader = OpenChromatogramDataReader();
+        if (reader == null) return null;
+        return reader.ReadForIndexSync(index);
     }
 
     void IDisposable.Dispose()

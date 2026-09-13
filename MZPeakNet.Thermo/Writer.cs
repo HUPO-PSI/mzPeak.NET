@@ -14,6 +14,7 @@ using ParquetSharp;
 using ThermoFisher.CommonCore.Data.Business;
 using ThermoFisher.CommonCore.Data.FilterEnums;
 using ThermoFisher.CommonCore.Data.Interfaces;
+using ThermoFisher.CommonCore.MassPrecisionEstimator;
 
 namespace MZPeak.Thermo;
 
@@ -144,7 +145,7 @@ public class ConversionContextHelper
     public Dictionary<int, List<int?>> PreviousMSLevels;
     public Dictionary<int, uint> MSLevelCounts;
 
-    // public PrecisionEstimate PrecisionEstimate;
+    public PrecisionEstimate PrecisionEstimate;
 
     public ConversionContextHelper()
     {
@@ -152,7 +153,7 @@ public class ConversionContextHelper
         Headers = new();
         PreviousMSLevels = new();
         MSLevelCounts = new();
-        // PrecisionEstimate = new();
+        PrecisionEstimate = new();
     }
 
     public bool GetShortTrailerExtraFor(IRawDataPlus accessor, int scanNumber, string key, out short value)

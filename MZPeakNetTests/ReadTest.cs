@@ -71,6 +71,39 @@ public class ArchiveTest
         }
     }
 
+    void ExerciseLoadSpectrumSync(IMZPeakArchiveStorage archiveStorage, BufferFormat bufferFormat)
+    {
+        var meta = archiveStorage.OpenNamespace(EntityType.Spectrum);
+        Assert.NotNull(meta);
+        var metaReader = new SpectrumMetadataReader(meta);
+        var models = metaReader.GetSpacingModelIndex();
+        Assert.Equal(14, models.Count);
+
+        var reader = archiveStorage.SpectrumData();
+        Assert.NotNull(reader);
+        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum)
+        {
+            SpacingModels = models
+        };
+
+        Assert.Equal(bufferFormat, dataReader.Metadata.Format);
+        Assert.Single(dataReader.RowGroupIndex);
+        Assert.True(dataReader.ArrayIndex.Entries.All((e) => e.SchemaIndex != null));
+        var data = dataReader.ReadForIndexSync(10);
+        Assert.NotNull(data);
+
+        var it = dataReader.EnumerateSync();
+        foreach ((ulong i, StructArray chunk) in it)
+        {
+            var dtype = (StructType)chunk.Data.DataType;
+            foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
+            {
+                Assert.Equal(0, arr.NullCount);
+                Assert.NotEqual(0, arr.Length);
+            }
+        }
+    }
+
     [Fact]
     public async Task RawZipArchive_LoadSpectrumPoint()
     {
@@ -78,9 +111,21 @@ public class ArchiveTest
     }
 
     [Fact]
+    public void RawZipArchive_LoadSpectrumPointSync()
+    {
+        ExerciseLoadSpectrumSync(PointArchive, BufferFormat.Point);
+    }
+
+    [Fact]
     public async Task RawZipArchive_LoadSpectrumChunk()
     {
         await ExerciseLoadSpectrum(ChunkArchive, BufferFormat.ChunkValues);
+    }
+
+    [Fact]
+    public void RawZipArchive_LoadSpectrumChunkSync()
+    {
+        ExerciseLoadSpectrumSync(ChunkArchive, BufferFormat.ChunkValues);
     }
 
     [Fact]
@@ -182,6 +227,49 @@ public class ArchiveTest
         Assert.Equal(profileSpectrumIdx.Count, (int)i);
     }
 
+    void ExerciseArchiveGetDataIterSync(IMZPeakArchiveStorage archiveStorage)
+    {
+        var reader = archiveStorage.SpectrumData();
+        ulong i = 0;
+
+        Assert.NotNull(reader);
+
+        var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
+        var iter = dataReader.EnumerateSync();
+
+        List<ulong> profileSpectrumIdx = [
+            0,
+            1,
+            7,
+            8,
+            14,
+            15,
+            21,
+            22,
+            28,
+            29,
+            34,
+            35,
+            41,
+            42
+        ];
+
+        foreach (var pair in iter)
+        {
+            if (pair.Item1 > 10) break;
+            Assert.Equal(profileSpectrumIdx[(int)i++], pair.Item1);
+            Assert.NotEqual(0, pair.Item2.Length);
+        }
+        iter.Seek(21);
+        i = 6;
+        foreach (var pair in iter)
+        {
+            Assert.Equal(profileSpectrumIdx[(int)i++], pair.Item1);
+            Assert.NotEqual(0, pair.Item2.Length);
+        }
+        Assert.Equal(profileSpectrumIdx.Count, (int)i);
+    }
+
     [Fact]
     public void RawZipArchive_SpectrumMetadata()
     {
@@ -192,12 +280,14 @@ public class ArchiveTest
     public async Task RawZipArchive_Point_GetDataIter()
     {
         await ExerciseArchiveGetDataIter(PointArchive);
+        ExerciseArchiveGetDataIterSync(PointArchive);
     }
 
     [Fact]
     public async Task RawZipArchive_Chunked_GetDataIter()
     {
         await ExerciseArchiveGetDataIter(ChunkArchive);
+        ExerciseArchiveGetDataIterSync(ChunkArchive);
     }
 
     [Fact]

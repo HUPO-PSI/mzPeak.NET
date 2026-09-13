@@ -15,7 +15,6 @@ using MZPeak.Storage;
 public class NullInterpolationTest
 {
     IMZPeakArchiveStorage PointArchive;
-    IMZPeakArchiveStorage ChunkArchive;
 
     public NullInterpolationTest()
     {
@@ -23,10 +22,6 @@ public class NullInterpolationTest
         string baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
         string fullPath = Path.Combine(baseDirectory, fileName);
         PointArchive = new LocalZipArchive(fullPath);
-        fileName = "small.chunked.mzpeak";
-        baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
-        fullPath = Path.Combine(baseDirectory, fileName);
-        ChunkArchive = new LocalZipArchive(fullPath);
     }
 
     [Fact]
@@ -109,10 +104,10 @@ public class NullInterpolationTest
     }
 
     [Fact]
-    public async Task TestChunking()
+    public void TestChunking()
     {
         var reader = new MzPeakReader(PointArchive);
-        var specData = await reader.GetSpectrumData(0);
+        var specData = reader.GetSpectrumDataSync(0);
         Assert.NotNull(specData);
 
         var chunk = specData;

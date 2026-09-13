@@ -194,7 +194,7 @@ public class WriteTest
         Assert.NotNull(dat0);
         Assert.NotNull(meta0);
 
-        var refParam0 = meta0.Parameters.Find((p) =>
+        var refParam0 = meta0.Parameters.Find(static (p) =>
             {
                 return p.AccessionCURIE == SpectrumProperties.NumberOfDataPoints.CURIE();
             });
