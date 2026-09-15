@@ -11,12 +11,12 @@ using MZPeak.Metadata;
 using MZPeak.Reader;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
-using Xunit.Sdk;
 
 public class ArchiveTest
 {
     IMZPeakArchiveStorage PointArchive;
     IMZPeakArchiveStorage ChunkArchive;
+    IMZPeakArchiveStorage NumpressArchive;
 
     public ArchiveTest()
     {
@@ -24,10 +24,16 @@ public class ArchiveTest
         string baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
         string fullPath = Path.Combine(baseDirectory, fileName);
         PointArchive = new LocalZipArchive(fullPath);
+
         fileName = "small.chunked.mzpeak";
         baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
         fullPath = Path.Combine(baseDirectory, fileName);
         ChunkArchive = new LocalZipArchive(fullPath);
+
+        fileName = "small.numpress.mzpeak";
+        baseDirectory = AppContext.BaseDirectory; // Gets the directory where tests are running
+        fullPath = Path.Combine(baseDirectory, fileName);
+        NumpressArchive = new LocalZipArchive(fullPath);
     }
 
     [Fact]
@@ -59,7 +65,7 @@ public class ArchiveTest
         var data = await dataReader.ReadForIndex(10);
         Assert.NotNull(data);
 
-        var it = dataReader.Enumerate();
+        var it = dataReader.EnumerateAsync();
         await foreach ((ulong i, StructArray chunk) in it)
         {
             var dtype = (StructType)chunk.Data.DataType;
@@ -92,8 +98,7 @@ public class ArchiveTest
         var data = dataReader.ReadForIndexSync(10);
         Assert.NotNull(data);
 
-        var it = dataReader.EnumerateSync();
-        foreach ((ulong i, StructArray chunk) in it)
+        foreach ((ulong i, StructArray chunk) in dataReader)
         {
             var dtype = (StructType)chunk.Data.DataType;
             foreach (var (f, arr) in dtype.Fields.Zip(chunk.Fields))
@@ -192,7 +197,7 @@ public class ArchiveTest
         Assert.NotNull(reader);
 
         var dataReader = new DataArraysReader(reader, BufferContext.Spectrum);
-        var iter = dataReader.Enumerate();
+        var iter = dataReader.EnumerateAsync();
 
         List<ulong> profileSpectrumIdx = [
             0,
@@ -343,6 +348,63 @@ public class ArchiveTest
         await ExerciseArchiveGetDataIter(archive);
     }
 
+    void ExerciseReader(IMZPeakArchiveStorage storage)
+    {
+        var reader = new MzPeakReader(storage);
+
+        Assert.Equal(48, reader.SpectrumCount);
+        ulong i = 0;
+        foreach(var (descr, data) in reader.EnumerateSpectraSync())
+        {
+            Assert.Equal(i++, descr.Index);
+            Assert.NotEqual(0, data.Length);
+        }
+        Assert.Equal(1, reader.ChromatogramCount);
+        i = 0;
+        foreach(var (descr, data) in reader.EnumerateChromatogramsSync())
+        {
+            Assert.Equal(i++, descr.Index);
+            Assert.NotEqual(0, data.Length);
+        }
+    }
+
+    async Task ExerciseReaderAsync(IMZPeakArchiveStorage storage)
+    {
+        var reader = new MzPeakReader(storage);
+
+        Assert.Equal(48, reader.SpectrumCount);
+        ulong i = 0;
+        await foreach (var (descr, data) in reader.EnumerateSpectraAsync())
+        {
+            Assert.Equal(i++, descr.Index);
+            Assert.NotEqual(0, data.Length);
+        }
+        Assert.Equal(1, reader.ChromatogramCount);
+        i = 0;
+        await foreach (var (descr, data) in reader.EnumerateChromatogramsAsync())
+        {
+            Assert.Equal(i++, descr.Index);
+            Assert.NotEqual(0, data.Length);
+        }
+    }
+
+    [Fact]
+    public void HighLevelReader_Point()
+    {
+        ExerciseReader(PointArchive);
+    }
+
+    [Fact]
+    public void HighLevelReader_Chunk()
+    {
+        ExerciseReader(ChunkArchive);
+    }
+
+    [Fact]
+    public async Task HighLevelReaderAsync_Numpress()
+    {
+        await ExerciseReaderAsync(NumpressArchive);
+    }
 }
 
 public class ParamTest

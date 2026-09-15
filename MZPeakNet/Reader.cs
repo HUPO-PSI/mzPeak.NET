@@ -108,8 +108,8 @@ public class DataFacet<T> : IEnumerable<(T, StructArray)>, IAsyncEnumerable<(T, 
     {
         var metaRecs = MetadataReader.BulkLoad();
         var n = (ulong)Length;
-        var dataIter = DataReader.Enumerate();
-        var peakIter = PeakReader?.Enumerate();
+        var dataIter = DataReader.EnumerateAsync();
+        var peakIter = PeakReader?.EnumerateAsync();
 
         await dataIter.Peek();
         if (peakIter != null)

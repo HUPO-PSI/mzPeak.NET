@@ -13,3 +13,8 @@ small:
 [positional-arguments]
 convert-thermo INPATH OUTPATH *args='':
     dotnet run --project "MZPeakNet.AppTest" -- --verbose thermo {{args}} {{INPATH}} {{OUTPATH}}
+
+
+coverage:
+    dotnet test -p:CollectCoverage=true -p:CoverletOutputFormat=cobertura
+    reportgenerator -reports:"./MZPeakNetTests/coverage.cobertura.xml" -targetdir:"coveragereport" -reporttypes:Html

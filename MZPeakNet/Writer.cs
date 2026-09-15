@@ -14,6 +14,7 @@ using ParquetSharp.Arrow;
 using ParquetSharp.IO;
 using EncryptionConfigurations = Dictionary<string, ParquetSharp.FileEncryptionProperties>;
 
+
 /// <summary>
 /// Represents the current state of the writer during file creation.
 /// </summary>
@@ -136,6 +137,7 @@ public class MZPeakWriter : IDisposable
     public List<DataProcessingMethod> DataProcessingMethods { get => MzPeakMetadata.DataProcessingMethods; set => MzPeakMetadata.DataProcessingMethods = value; }
     /// <summary>Gets or sets the run-level metadata.</summary>
     public MSRun Run { get => MzPeakMetadata.Run; set => MzPeakMetadata.Run = value; }
+    /// <summary>Gets or sets the list of scan settings.</summary>
     public List<ScanSettings> ScanSettings { get => MzPeakMetadata.ScanSettings; set => MzPeakMetadata.ScanSettings = value; }
 
     protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)

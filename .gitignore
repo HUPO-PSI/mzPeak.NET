@@ -3,3 +3,6 @@ bin/
 *.ipynb
 demo.mzpeak
 .vs
+coveragereport/
+coverage.cobertura.xml
+coverage.json
