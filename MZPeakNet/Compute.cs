@@ -8,6 +8,19 @@ using Apache.Arrow.Types;
 using MathNet.Numerics.LinearAlgebra;
 using Microsoft.Extensions.Logging;
 
+public record SliceIndex(int Start, int End)
+{
+
+    public static SliceIndex Empty => new(0, 0);
+
+    public bool Contains(int value)
+    {
+        return value >= Start && End > value;
+    }
+
+    public int Count => Math.Max(End - Start, 0);
+}
+
 public class SpacingInterpolationModel<T> where T : struct, INumber<T>
 {
     List<T> coefficients;
@@ -1100,26 +1113,97 @@ public static class Compute
         return builder.Build(allocator);
     }
 
+    public static SliceIndex? BinarySearchBetween<T>(PrimitiveArray<T> array, T value) where T : struct, INumber<T>
+    {
+        int i = BinarySearch(array, value);
+        if (i < 0 || array.GetValue(i) != value) return null;
+        int mid = i;
+        i = mid;
+        int n = array.Length;
+        if (array.GetValue(0) == value)
+        {
+            i = 0;
+        }
+        else if (array.NullCount == 0)
+        {
+            var vals = array.Values;
+            while (i > 0)
+            {
+                if (vals[i] == value) i--;
+                else break;
+            }
+        }
+        else
+        {
+            while(i > 0)
+            {
+                if (array.GetValue(i) == value)i--;
+                else break;
+            }
+        }
+        if(array.GetValue(i) != value)
+        {
+            i = Math.Max(i + 1, n);
+        }
+        int start = i;
+        i = mid;
+        if (array.NullCount == 0)
+        {
+            var vals = array.Values;
+            while (i < n)
+            {
+                if (vals[i] == value) i++;
+                else break;
+            }
+        }
+        else
+        {
+            while(i < n)
+            {
+                if (array.GetValue(i) == value) i++;
+                else break;
+            }
+        }
+        int end = i;
+        return new SliceIndex(start, end);
+    }
+
     public static int BinarySearch<T>(PrimitiveArray<T> array, T? value) where T : struct, INumber<T>
     {
         var n = array.Length;
         var lo = 0;
         var hi = n - 1;
-        var cmp = Comparer<T?>.Default.Compare;
-        while (lo <= hi)
-        {
-            int i = lo + ((hi - lo) >> 1);
-            int order = cmp(array.GetValue(i), value);
 
-            if (order == 0)
-                return i;
-            if (order < 0)
+        if (array.NullCount == 0 && value != null)
+        {
+            var vals = array.Values;
+            while (lo <= hi)
             {
-                lo = i + 1;
+                int i = lo + ((hi - lo) >> 1);
+                int order = vals[i].CompareTo(value);
+
+                if (order == 0)
+                    return i;
+                if (order < 0)
+                    lo = i + 1;
+                else
+                    hi = i - 1;
             }
-            else
+        }
+        else
+        {
+            var cmp = Comparer<T?>.Default.Compare;
+            while (lo <= hi)
             {
-                hi = i - 1;
+                int i = lo + ((hi - lo) >> 1);
+                int order = cmp(array.GetValue(i), value);
+
+                if (order == 0)
+                    return i;
+                if (order < 0)
+                    lo = i + 1;
+                else
+                    hi = i - 1;
             }
         }
         return -1;
@@ -2335,6 +2419,11 @@ public static class Compute
             chunks.Add(array.Slice(indices[i], 1));
         }
         return (Array)ArrowArrayConcatenator.Concatenate(chunks, allocator);
+    }
+
+    public static Array Take(Array array, SliceIndex index, MemoryAllocator? allocator = null)
+    {
+        return array.Slice(index.Start, index.Count);
     }
 
     public static List<Array> Take(List<Array> batch, IList<int> indices, MemoryAllocator? allocator = null)

@@ -499,9 +499,11 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>, IEnumera
     public virtual StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct)
     {
         var indexArr = (UInt64Array)rootStruct.Fields[0];
-        var mask = Compute.Equal(indexArr, entryIndex);
-        rootStruct = (StructArray)Compute.Filter(rootStruct, mask);
-        return rootStruct;
+        var slc = Compute.BinarySearchBetween(indexArr, entryIndex);
+        if (slc == null)
+            return (StructArray)rootStruct.Slice(0, 0);
+        else
+            return (StructArray)rootStruct.Slice(slc.Start, slc.Count);
     }
 
     /// <summary>Asynchronously enumerates all entries.</summary>

@@ -18,6 +18,8 @@ class BaseDataArraysIter
     protected StructArray? CurrentBatch = null;
     protected (ulong, StructArray)? NextItem = null;
 
+    public bool CurrentBatchProcessed;
+
     public (ulong, StructArray) Current => NextItem == null ? throw new InvalidOperationException() : ((ulong, StructArray))NextItem;
 
     public BaseDataArraysIter(BaseLayoutReader layoutReader, IArrowArrayStream stream)
@@ -28,6 +30,7 @@ class BaseDataArraysIter
         CurrentIndex = null;
         CurrentBatch = null;
         NextItem = null;
+        CurrentBatchProcessed = false;
     }
 
     protected ulong? FirstIndexInBatch()
@@ -41,7 +44,9 @@ class BaseDataArraysIter
     protected bool BatchHasCurrentIndex()
     {
         if (CurrentBatch == null || CurrentIndex == null) return false;
-        return Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex).Any((v) => v ?? false);
+        var idx = Compute.BinarySearch((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex);
+        if (idx == -1) return false;
+        return ((UInt64Array)CurrentBatch.Fields[0]).GetValue(idx) == (ulong)CurrentIndex;
     }
 
     public ulong? BatchMaxIndex()
@@ -65,28 +70,36 @@ class BaseDataArraysIter
         return init;
     }
 
-    protected (int, int, List<int>, StructArray)? ExtractCurrentIndexWithinCurrentBatch()
+    protected (int, int, SliceIndex, StructArray)? ExtractCurrentIndexWithinCurrentBatch()
     {
         if (CurrentBatch == null || CurrentIndex == null) return null;
-        var mask = Compute.Equal((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex);
-        var indices = mask.Select((v, i) => (v, i)).Where((v) => v.v ?? false).Select(v => v.i).ToList();
+        var span = Compute.BinarySearchBetween((UInt64Array)CurrentBatch.Fields[0], (ulong)CurrentIndex);
         var lastPossibleRowIndex = CurrentBatch.Length - 1;
         int n;
-        int start;
         StructArray chunk;
-        if (indices.Count == 0)
+        if (span == null)
         {
             n = CurrentBatch.Length;
-            start = 0;
+            span = SliceIndex.Empty;
             chunk = (StructArray)CurrentBatch.Slice(0, 0);
         }
         else
         {
-            start = indices[0];
-            n = indices.Count;
+            int start = span.Start;
+            n = span.Count;
             chunk = (StructArray)CurrentBatch.Slice(start, n);
         }
-        return (n, lastPossibleRowIndex, indices, chunk);
+        return (n, lastPossibleRowIndex, span, chunk);
+    }
+
+    public void ProcessNextBatch()
+    {
+        if (NextItem.HasValue && !CurrentBatchProcessed)
+        {
+            var batch = LayoutReader.ProcessSegment(NextItem.Value.Item1, NextItem.Value.Item2);
+            NextItem = (NextItem.Value.Item1, batch);
+            CurrentBatchProcessed = true;
+        }
     }
 }
 
@@ -169,14 +182,9 @@ class AsyncDataArraysIter : BaseDataArraysIter, IAsyncEnumerator<(ulong, StructA
         var nextBatch = await ExtractForCurrentIndex();
         if (nextBatch == null) return false;
 
-        if (doProcess)
-        {
-            nextBatch = LayoutReader.ProcessSegment(
-                (ulong)CurrentIndex,
-                nextBatch
-            );
-        }
         NextItem = ((ulong)CurrentIndex, nextBatch);
+        CurrentBatchProcessed = false;
+        if (doProcess) ProcessNextBatch();
         var nextIndex = FirstIndexInBatch();
         if (nextIndex < CurrentIndex) throw new InvalidDataException($"Next index {nextIndex} < current index {CurrentIndex}");
         CurrentIndex = nextIndex;
@@ -371,7 +379,10 @@ class SyncDataArraysIter : BaseDataArraysIter, IEnumerator<(ulong, StructArray)>
         CurrentBatch = rootStruct;
 
         var idxCol = (UInt64Array)CurrentBatch.Fields[0];
-        var lowestIndex = Compute.Min(idxCol);
+        // var lowestIndex = Compute.Min(idxCol);
+        var lowestIndexI = Compute.FirstNotNull(idxCol);
+        if (!lowestIndexI.HasValue) return false;
+        var lowestIndex = lowestIndexI.Value.Item1;
         if (updateIndex && ((CurrentIndex != null && lowestIndex > CurrentIndex) || CurrentIndex == null))
         {
             CurrentIndex = lowestIndex;
@@ -429,15 +440,11 @@ class SyncDataArraysIter : BaseDataArraysIter, IEnumerator<(ulong, StructArray)>
             return false;
         }
 
-        if (doProcess)
-        {
-            nextBatch = LayoutReader.ProcessSegment(
-                (ulong)CurrentIndex,
-                nextBatch
-            );
-        }
         NextItem = ((ulong)CurrentIndex, nextBatch);
+        CurrentBatchProcessed = false;
+        if (doProcess) ProcessNextBatch();
         var nextIndex = FirstIndexInBatch();
+
         if (nextIndex < CurrentIndex) throw new InvalidDataException($"Next index {nextIndex} < current index {CurrentIndex}");
         CurrentIndex = nextIndex;
         return true;
