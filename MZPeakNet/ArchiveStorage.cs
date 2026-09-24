@@ -1546,22 +1546,36 @@ public class SHA512HashingStream : Stream, IDisposable
 {
     Stream Stream;
     SHA512 Context;
+    SHA512? SaltedContext;
+    byte[]? Salt;
 
     string? _Checksum;
+    string? _SaltedChecksum;
 
     public SHA512HashingStream(Stream stream)
     {
         Context = SHA512.Create();
+        SaltedContext = null;
+        Salt = null;
         Stream = stream;
         _Checksum = null;
     }
 
+    public void SetSalt(byte[] salt)
+    {
+        SaltedContext = SHA512.Create();
+        SaltedContext.TransformBlock(salt, 0, salt.Length, null, 0);
+        Salt = salt;
+    }
+
     public SHA512HashingStream(Stream stream, byte[] salt) : this(stream)
     {
-        Context.TransformBlock(salt, 0, salt.Length, null, 0);
+        SetSalt(salt);
     }
 
     public string? Checksum => _Checksum;
+
+    public string? SaltedChecksum => _SaltedChecksum;
 
     public override bool CanRead => Stream.CanRead;
 
@@ -1601,6 +1615,7 @@ public class SHA512HashingStream : Stream, IDisposable
     public override void Write(byte[] buffer, int offset, int count)
     {
         Context.TransformBlock(buffer, 0, count, null, 0);
+        if (SaltedContext != null) SaltedContext.TransformBlock(buffer, 0, count, null, 0);
         Stream.Write(buffer, offset, count);
     }
 
@@ -1612,6 +1627,12 @@ public class SHA512HashingStream : Stream, IDisposable
         if (Context.Hash != null)
             _Checksum = BitConverter.ToString(Context.Hash).Replace("-", "").ToLower();
         Context.Dispose();
+        if (SaltedContext != null)
+        {
+            SaltedContext.TransformFinalBlock(System.Array.Empty<byte>(), 0, 0);
+            if (SaltedContext.Hash != null)
+                _SaltedChecksum = BitConverter.ToString(SaltedContext.Hash).Replace("-", "").ToLower();
+        }
     }
 
     protected override void Dispose(bool disposing)
