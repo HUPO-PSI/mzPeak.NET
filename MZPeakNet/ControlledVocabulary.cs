@@ -2265,6 +2265,11 @@ public class Param
     internal object? rawValue;
     public string? UnitCURIE { get; set; }
 
+    public bool IsListDouble()
+    {
+        return rawValue != null && rawValue is List<double>;
+    }
+
     public bool IsDouble()
     {
         return rawValue is double || rawValue is float;
@@ -2339,6 +2344,18 @@ public class Param
     public bool AsBoolean()
     {
         return Convert.ToBoolean(rawValue);
+    }
+
+    public List<double> AsListDouble()
+    {
+        if (rawValue != null && IsListDouble())
+        {
+            return (List<double>)rawValue;
+        }
+        else
+        {
+            return [AsDouble()];
+        }
     }
 
     public override string ToString()

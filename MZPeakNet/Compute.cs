@@ -687,6 +687,135 @@ public static class DeltaCodec
 }
 
 
+public class GridArrayBuilder
+{
+    StringArray.Builder GridType;
+    ListArray.Builder Parameters;
+    ListArray.Builder Indices;
+
+    public GridArrayBuilder()
+    {
+        GridType = new();
+        Parameters = new ListArray.Builder(new DoubleType());
+        Indices = new ListArray.Builder(new UInt32Type());
+        Parameters.Append();
+        Indices.Append();
+    }
+
+    public void Append(GridLike model, IReadOnlyList<double?> values, bool deltaSorted = false)
+    {
+        GridType.Append(model.ModelAccession());
+        ((DoubleArray.Builder)Parameters.ValueBuilder).AppendRange(model.Parameters());
+        Parameters.Append();
+        if (deltaSorted)
+        {
+            var builder = (UInt32Array.Builder)Indices.ValueBuilder;
+            var v = values[0];
+            if (v == null) throw new InvalidDataException($"Grid values cannot be null");
+            uint last = (uint)model.ToIndex((double)v);
+            builder.Append(last);
+            for(var i = 1; i < values.Count; i++)
+            {
+                v = values[i];
+                if (v == null) throw new InvalidDataException($"Grid values cannot be null");
+                var idx = (uint)model.ToIndex((double)v);
+                var dIdx = idx - last;
+                builder.Append(dIdx);
+                last = idx;
+            }
+
+        } else
+        {
+            ((UInt32Array.Builder)Indices.ValueBuilder).AppendRange(values.Select(v => {
+                if (v == null) throw new InvalidDataException($"Grid values cannot be null");
+                return (uint)model.ToIndex((double)v);
+            }));
+        }
+        Indices.Append();
+    }
+
+    public void AppendNull()
+    {
+        GridType.AppendNull();
+        Parameters.AppendNull();
+        Indices.AppendNull();
+    }
+
+    public StructArray Build()
+    {
+        var dtype = new StructType([
+            new Field("grid_type", new StringType(), true),
+            new Field("parameters", new ListType(new DoubleType()), true),
+            new Field("indices", new ListType(new UInt32Type()), true),
+        ]);
+
+        return new StructArray(
+            dtype,
+            GridType.Length,
+            [GridType.Build(), Parameters.Build(), Indices.Build()],
+            default,
+            0,
+            0);
+    }
+}
+
+
+public static class GridCodec
+{
+    public const string CURIE = "MS:1003826";
+
+    public static int Encode(GridLike model, IReadOnlyList<double?> values, GridArrayBuilder builder, bool deltaSorted = false)
+    {
+        builder.Append(model, values, deltaSorted);
+        return values.Count;
+    }
+
+    public static int Decode(StructArray values, DoubleArray.Builder accumulator, bool deltaSorted = false)
+    {
+        var dtype = (StructType)values.Data.DataType;
+        var i = dtype.GetFieldIndex("grid_type");
+        var modelType = values.Fields[i];
+        if (modelType.IsNull(0)) return 0;
+
+        i = dtype.GetFieldIndex("parameters");
+        var parameters = values.Fields[i];
+
+        i = dtype.GetFieldIndex("indices");
+        var indices = values.Fields[i];
+
+        var modelTypeStr = modelType.Data.DataType.TypeId switch
+        {
+            ArrowTypeId.String => ((StringArray)modelType).GetString(0),
+            ArrowTypeId.LargeString => ((LargeStringArray)modelType).GetString(0),
+            _ => throw new NotImplementedException()
+        };
+
+        var parametersOf = parameters.Data.DataType.TypeId switch
+        {
+            ArrowTypeId.List => (DoubleArray)((ListArray)parameters).GetSlicedValues(0),
+            ArrowTypeId.LargeList => (DoubleArray)((LargeListArray)parameters).GetSlicedValues(0),
+            _ => throw new NotImplementedException()
+        };
+
+        var indicesOf = indices.Data.DataType.TypeId switch
+        {
+            ArrowTypeId.List => (UInt32Array)((ListArray)indices).GetSlicedValues(0),
+            ArrowTypeId.LargeList => (UInt32Array)((LargeListArray)indices).GetSlicedValues(0),
+            _ => throw new NotImplementedException()
+        };
+
+        var model = GridModel.FromParameters(modelTypeStr, parametersOf.Select(v => v == null ? throw new InvalidDataException() : (double)v).ToList());
+        foreach(var v in indicesOf)
+        {
+            if (v == null) accumulator.AppendNull();
+            else
+                accumulator.Append(model.FromIndex((uint)v));
+        }
+        return indicesOf.Length;
+    }
+
+}
+
 /// <summary>
 /// Specifies how null values should be handled in aggregate computations.
 /// </summary>
