@@ -479,4 +479,62 @@ public static class GridModel
                 throw new KeyNotFoundException(accession);
         }
     }
+
+    public static void Decode(GridLike model, UInt32Array indicesOf, DoubleArray.Builder accumulator, bool deltaSorted)
+    {
+        accumulator.Reserve(indicesOf.Length);
+        if (indicesOf.NullCount == 0)
+        {
+            var indicesOfFast = indicesOf.Values;
+            if (deltaSorted)
+            {
+                var last = indicesOfFast[0];
+                accumulator.Append(model.FromIndex(last));
+                for (var j = 1; j < indicesOf.Length; j++)
+                {
+                    var v = indicesOfFast[j];
+                    v = v + last;
+                    accumulator.Append(model.FromIndex(v));
+                    last = v;
+                }
+            }
+            else
+            {
+                foreach (var v in indicesOfFast)
+                {
+                    accumulator.Append(model.FromIndex(v));
+                }
+            }
+        }
+        else
+        {
+            if (deltaSorted)
+            {
+                var last = indicesOf.GetValue(0);
+                if (last == null) accumulator.AppendNull();
+                else model.FromIndex(last.Value);
+                for (var j = 1; j < indicesOf.Length; j++)
+                {
+                    var v = indicesOf.GetValue(j);
+                    if (v == null) accumulator.AppendNull();
+                    else
+                    {
+                        v = v.Value + (last ?? 0);
+                        accumulator.Append(model.FromIndex((uint)v));
+                        last = v;
+                    }
+                }
+            }
+            else
+            {
+                foreach (var v in indicesOf)
+                {
+                    if (v == null) accumulator.AppendNull();
+                    else
+                        accumulator.Append(model.FromIndex((uint)v));
+                }
+            }
+        }
+        return;
+    }
 }

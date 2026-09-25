@@ -805,12 +805,7 @@ public static class GridCodec
         };
 
         var model = GridModel.FromParameters(modelTypeStr, parametersOf.Select(v => v == null ? throw new InvalidDataException() : (double)v).ToList());
-        foreach(var v in indicesOf)
-        {
-            if (v == null) accumulator.AppendNull();
-            else
-                accumulator.Append(model.FromIndex((uint)v));
-        }
+        GridModel.Decode(model, indicesOf, accumulator, deltaSorted);
         return indicesOf.Length;
     }
 

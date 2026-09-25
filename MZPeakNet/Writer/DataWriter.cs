@@ -300,6 +300,10 @@ public abstract class BaseDataLayoutWriter
         return (arrays, deltaModel, auxiliaryArrays);
     }
 
+    public virtual void ClearGridPolicies() {}
+    public virtual void SetGridPolicy(ArrayType arrayType, GridPolicy? policy) {}
+    public virtual GridPolicy? GetGridPolicy(ArrayType method) => null;
+
     public abstract EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
     public abstract EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
     public EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
@@ -459,6 +463,7 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         }
         NumberOfPoints += (ulong)k;
 
+        ClearGridPolicies();
         var ent = new EntryDerivedMetadata(
             deltaModel,
             auxiliaryArrays,
@@ -593,13 +598,14 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
 
     public double ChunkSize { get; set; } = 50.0;
     public ArrayIndexEntry MainAxisEntry { get; set; }
+    public Dictionary<ArrayType, GridPolicy> GridPolicies { get; set; }
 
     int MainAxisBuilderIdx;
     int StartValueBuilderIdx;
     int EndValueBuilderIdx;
     int EncodingBuilderIdx;
 
-    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE = DeltaCodec.CURIE, double chunkSize = 50.0) : base(arrayIndex)
+    public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE = DeltaCodec.CURIE, double chunkSize = 50.0, Dictionary<ArrayType, GridPolicy>? gridPolicies = null) : base(arrayIndex)
     {
         DefaultMainAxisEncodingCURIE = mainAxisEncodingCURIE;
         CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
@@ -607,7 +613,28 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         MainAxisEntry = arrayIndex.Entries.Find(
             entry => entry.BufferFormat == BufferFormat.ChunkValues) ?? throw new InvalidDataException(
             $"No main axis array found in {BufferContext} array index");
+        GridPolicies = gridPolicies ?? new();
+    }
 
+    public override void ClearGridPolicies()
+    {
+        GridPolicies.Clear();
+    }
+
+    public override void SetGridPolicy(ArrayType arrayType, GridPolicy? policy)
+    {
+        if(policy == null)
+            GridPolicies.Remove(arrayType);
+        else
+            GridPolicies[arrayType] = policy;
+
+    }
+
+    public override GridPolicy? GetGridPolicy(ArrayType method)
+    {
+        GridPolicy? policy;
+        GridPolicies.TryGetValue(method, out policy);
+        return policy;
     }
 
     protected override void InitializeBuilders()
@@ -853,6 +880,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         NumberOfPoints += (ulong)mainAxis.Length;
         CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
         CheckAllColumnsAligned();
+        ClearGridPolicies();
         var ent = new EntryDerivedMetadata(
            deltaModel,
            auxiliaryArrays,

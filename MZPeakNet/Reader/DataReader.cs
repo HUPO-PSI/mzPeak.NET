@@ -221,23 +221,13 @@ public class DataArraysReaderMeta
 
     void AnnotateSchemaIndices(FileReader reader)
     {
-        var schema = reader.ParquetReader.FileMetaData.Schema;
-        var nCols = schema.NumColumns;
-        for (var i = 0; i < nCols; i++)
+        var dtype = (StructType)reader.Schema.FieldsList[0].DataType;
+        for(var i = 0; i < dtype.Fields.Count; i++)
         {
-            var col = schema.Column(i);
-            var pathOf = col.Path.ToDotString();
-            if (pathOf.EndsWith(".list.item"))
-            {
-                pathOf = pathOf.Replace(".list.item", "");
-            }
-            else if (pathOf.EndsWith(".list.element"))
-            {
-                pathOf = pathOf.Replace(".list.element", "");
-            }
+            var f = dtype.Fields[i];
             foreach (var arrEnt in ArrayIndex.Entries)
             {
-                if (arrEnt.Path == pathOf)
+                if (arrEnt.Path.Split('.').Last() == f.Name)
                 {
                     arrEnt.SchemaIndex = i;
                 }
@@ -712,12 +702,13 @@ public class ChunkLayoutReader : BaseLayoutReader
     const string NUMPRESS_LINEAR_CURIE = "MS:1002312";
     const string NUMPRESS_SLOF_CURIE = "MS:1002314";
 
-    ArrayIndexEntry? mainAxis;
+    ArrayIndexEntry? MainAxis;
     int chunkStartIndex = -1;
     int chunkEndIndex = -1;
     int chunkEncodingIndex = -1;
     int chunkValuesIndex = -1;
-    HashSet<ArrayIndexEntry> secondaryIndices;
+    HashSet<ArrayIndexEntry> SecondaryIndices;
+    HashSet<ArrayIndexEntry> ExtraIndices;
     Dictionary<TransformKey, List<ArrayIndexEntry>> transformMap;
 
 
@@ -749,13 +740,13 @@ public class ChunkLayoutReader : BaseLayoutReader
                     }
                 case BufferFormat.ChunkValues:
                     {
-                        mainAxis = entry;
+                        MainAxis = entry;
                         chunkValuesIndex = index;
                         break;
                     }
                 case BufferFormat.ChunkSecondary:
                     {
-                        secondaryIndices.Add(entry);
+                        SecondaryIndices.Add(entry);
                         break;
                     }
                 case BufferFormat.ChunkTransform:
@@ -772,17 +763,48 @@ public class ChunkLayoutReader : BaseLayoutReader
             }
         }
 
+        foreach (var entry in ArrayIndex.Entries)
+        {
+            if (entry.SchemaIndex == null)
+            {
+                throw new InvalidOperationException(string.Format("ArrayIndex entries cannot have null indices at this point: {0}", entry));
+            }
+            var index = (int)entry.SchemaIndex;
+            switch (entry.BufferFormat)
+            {
+                case BufferFormat.ChunkStart:
+                case BufferFormat.ChunkEnd:
+                case BufferFormat.ChunkEncoding:
+                case BufferFormat.ChunkValues:
+                case BufferFormat.ChunkSecondary:
+                    {
+                        break;
+                    }
+                case BufferFormat.ChunkTransform:
+                    {
+                        if (entry.ArrayName == MainAxis?.ArrayName) break;
+                        if (SecondaryIndices.Count(v => v.ArrayName == entry.ArrayName) > 0) break;
+                        ExtraIndices.Add(entry);
+                        break;
+                    }
+                default:
+                    throw new NotImplementedException(string.Format("Unsupported buffer format {0} for the chunked layout", entry.BufferFormat));
+            }
+        }
+
+
         if (chunkEncodingIndex == -1)
             throw new InvalidOperationException("Chunk encoding column not found");
 
-        if (mainAxis == null)
+        if (MainAxis == null)
             throw new InvalidOperationException("Main axis cannot be null");
     }
 
     public ChunkLayoutReader(IArrowArrayStream reader, ArrayIndex arrayIndex, Dictionary<ulong, SpacingInterpolationModel<double>>? spacingModels = null) : base(reader, arrayIndex, spacingModels)
     {
-        mainAxis = null;
-        secondaryIndices = new();
+        MainAxis = null;
+        SecondaryIndices = new();
+        ExtraIndices = new();
         transformMap = new();
         ConfigureIndices();
     }
@@ -841,6 +863,14 @@ public class ChunkLayoutReader : BaseLayoutReader
                 }
         }
         return result;
+    }
+
+    IArrowArray DecodeGrid(StructArray gridCol, bool deltaSorted)
+    {
+
+        DoubleArray.Builder acc = new();
+        GridCodec.Decode(gridCol, acc, deltaSorted);
+        return acc.Build();
     }
 
     IArrowArray DecodeDelta(ulong entryIndex, double startValue, IArrowArray chunkValues, ArrayIndexEntry entryMeta)
@@ -907,6 +937,53 @@ public class ChunkLayoutReader : BaseLayoutReader
         throw new KeyNotFoundException($"No entry was found for {TransformKey.FromArrayIndexEntry(query)} with transform  = {transform}");
     }
 
+    protected List<IArrowArray> DecodeSecondarySLOF(IArrowArray col, ArrowType arrowType)
+    {
+        var colIsLarge = col.Data.DataType.TypeId == ArrowTypeId.LargeList;
+        List<IArrowArray> chunks = [];
+        for (var i = 0; i < col.Length; i++)
+        {
+            if (col.IsNull(i))
+                chunks.Add(arrowType.TypeId == ArrowTypeId.Float ? new FloatArray.Builder().Build() : new DoubleArray.Builder().Build());
+            else
+            {
+                var valsAt = colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i);
+                var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
+                if (arrowType.TypeId == ArrowTypeId.Float)
+                    valsAt = Compute.CastFloat(decoded);
+                else
+                    valsAt = Compute.CastDouble(decoded);
+                chunks.Add((FloatArray)valsAt);
+            }
+        }
+        return chunks;
+    }
+
+    protected List<IArrowArray> DecodeSecondaryGrid(IArrowArray col, ArrowType arrowType)
+    {
+        var gridCol = (StructArray)col;
+        List<IArrowArray> chunks = [];
+        for (var i = 0; i < col.Length; i++)
+        {
+            if (gridCol.IsNull(i))
+                chunks.Add(arrowType.TypeId == ArrowTypeId.Float ? new FloatArray.Builder().Build() : new DoubleArray.Builder().Build());
+            else
+            {
+                var block = (StructArray)gridCol.SliceShared(i, 1);
+                var data = DecodeGrid(block, false);
+                block.Dispose();
+                if (arrowType.TypeId == ArrowTypeId.Float)
+                {
+                    chunks.Add(Compute.CastFloat(data));
+                } else
+                {
+                    chunks.Add(Compute.CastDouble(data));
+                }
+            }
+        }
+        return chunks;
+    }
+
     public override StructArray ProcessSegment(ulong entryIndex, StructArray rootStruct)
     {
         var rows = base.ProcessSegment(entryIndex, rootStruct);
@@ -922,7 +999,7 @@ public class ChunkLayoutReader : BaseLayoutReader
         var valueType = chunkValuesIsLarge ? ((LargeListType)chunkValues.Data.DataType).ValueDataType : ((ListType)chunkValues.Data.DataType).ValueDataType;
         var chunkValueDouble = valueType.TypeId == ArrowTypeId.Double;
 
-        if (mainAxis == null) throw new InvalidOperationException("The main axis array cannot be null");
+        if (MainAxis == null) throw new InvalidOperationException("The main axis array cannot be null");
         List<IArrowArray> decodedValues = new();
         Dictionary<ArrayIndexEntry, List<IArrowArray>> secondaryValues = new();
         var nRows = encodingMethod.Length;
@@ -939,14 +1016,14 @@ public class ChunkLayoutReader : BaseLayoutReader
             {
                 case NoCompressionCodec.CURIE:
                     {
-                        decodedValues.Add(DecodeNoCompression(entryIndex, (double)startValue, valueList, mainAxis));
+                        decodedValues.Add(DecodeNoCompression(entryIndex, (double)startValue, valueList, MainAxis));
                         break;
                     }
                 case DeltaCodec.CURIE:
                     {
                         try
                         {
-                            decodedValues.Add(DecodeDelta(entryIndex, (double)startValue, valueList, mainAxis));
+                            decodedValues.Add(DecodeDelta(entryIndex, (double)startValue, valueList, MainAxis));
                         }
                         catch (IndexOutOfRangeException e)
                         {
@@ -959,7 +1036,7 @@ public class ChunkLayoutReader : BaseLayoutReader
                     }
                 case NUMPRESS_LINEAR_CURIE:
                     {
-                        var tfmEntry = FindEntryForTransform(mainAxis, NUMPRESS_LINEAR_CURIE);
+                        var tfmEntry = FindEntryForTransform(MainAxis, NUMPRESS_LINEAR_CURIE);
                         if (tfmEntry.SchemaIndex == null) throw new InvalidOperationException("Array index entry transform not mapped to column!");
                         var arr = rows.Fields[(int)tfmEntry.SchemaIndex];
                         if (arr.IsNull(i)) throw new InvalidOperationException("Transformed main axis array slot cannot be null");
@@ -969,11 +1046,24 @@ public class ChunkLayoutReader : BaseLayoutReader
                         decodedValues.Add(chunkValueDouble ? Compute.CastDouble(valuesNat) : Compute.CastFloat(valuesNat));
                         break;
                     }
+                case GridCodec.CURIE:
+                    {
+                        var entry = FindEntryForTransform(MainAxis, GridCodec.CURIE);
+                        if (entry.SchemaIndex == null) throw new InvalidOperationException();
+                        var arr = rows.Fields[(int)entry.SchemaIndex];
+                        if (arr.IsNull(i)) throw new InvalidOperationException("Transformed main axis array slot cannot be null");
+                        if (arr.Data.DataType.TypeId != ArrowTypeId.Struct) throw new InvalidOperationException("Grid column must be Struct");
+                        var block = ((StructArray)arr).SliceShared(i, 1);
+                        var valuesNat = DecodeGrid((StructArray)block, true);
+                        block.Dispose();
+                        decodedValues.Add(chunkValueDouble ? Compute.CastDouble(valuesNat) : Compute.CastFloat(valuesNat));
+                        break;
+                    }
                 default: throw new NotImplementedException("Unknown chunk encoding: " + method);
             }
         }
 
-        foreach (var entry in secondaryIndices)
+        foreach (var entry in SecondaryIndices)
         {
             if (entry.SchemaIndex == null)
                 throw new InvalidOperationException($"ArrayIndexEntry schema index somehow made null!?: {entry}");
@@ -1067,14 +1157,40 @@ public class ChunkLayoutReader : BaseLayoutReader
             }
         }
 
-        if (mainAxis == null)
+        foreach (var entry in ExtraIndices)
+        {
+
+            if (entry.SchemaIndex == null || entry.Transform == null)
+                throw new InvalidOperationException($"ArrayIndexEntry schema index somehow made null!?: {entry}");
+            var col = rows.Fields[(int)entry.SchemaIndex];
+
+            List<IArrowArray> chunks = [];
+            switch (entry.Transform)
+            {
+                case NUMPRESS_SLOF_CURIE:
+                    {
+                        chunks = DecodeSecondarySLOF(col, entry.GetArrowType());
+                        break;
+                    }
+                case GridCodec.CURIE:
+                    {
+                        chunks = DecodeSecondaryGrid(col, entry.GetArrowType());
+                        break;
+                    }
+                default:
+                    throw new NotImplementedException($"{entry.Transform} is not yet implemented for {entry}");
+            }
+            secondaryValues.Add(entry, chunks);
+        }
+
+        if (MainAxis == null)
             throw new InvalidOperationException("Main axis cannot be null");
 
-        var mainName = mainAxis.Path.Split(".").Last().Replace("_chunk_values", "");
+        var mainName = MainAxis.Path.Split(".").Last().Replace("_chunk_values", "");
         var fields = new List<Field>
         {
-            new Field(mainAxis.Context.IndexName(), new UInt64Type(), true),
-            new Field(mainName, mainAxis.GetArrowType(), true)
+            new Field(MainAxis.Context.IndexName(), new UInt64Type(), true),
+            new Field(mainName, MainAxis.GetArrowType(), true)
         };
 
         foreach (var ent in secondaryValues)

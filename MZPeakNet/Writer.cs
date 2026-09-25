@@ -367,6 +367,33 @@ public class MZPeakWriter : IDisposable
     public ArrayIndex ChromatogramArrayIndex => ChromatogramData.ArrayIndex;
     public ArrayIndex SpectrumPeakArrayIndex => SpectrumPeakData.ArrayIndex;
 
+    /// <summary>
+    /// Set the current grid policy for the provided array type for mass spectrum profile.
+    ///
+    /// These policies are reset after the next write.
+    /// </summary>
+    /// <param name="arrayType"></param>
+    /// <param name="policy"></param>
+    public void SetSpectrumGridPolicy(ArrayType arrayType, GridPolicy? policy) => SpectrumData.SetGridPolicy(arrayType, policy);
+
+    /// <summary>
+    /// Set the current grid policy for the provided array type for mass spectrum peaks.
+    ///
+    /// These policies are reset after the next write.
+    /// </summary>
+    /// <param name="arrayType"></param>
+    /// <param name="policy"></param>
+    public void SetSpectrumPeakGridPolicy(ArrayType arrayType, GridPolicy? policy) => SpectrumPeakData.SetGridPolicy(arrayType, policy);
+
+    /// <summary>
+    /// Set the current grid policy for the provided array type for chromatogram.
+    ///
+    /// These policies are reset after the next write.
+    /// </summary>
+    /// <param name="arrayType"></param>
+    /// <param name="policy"></param>
+    public void SetChromatogramGridPolicy(ArrayType arrayType, GridPolicy? policy) => ChromatogramData.SetGridPolicy(arrayType, policy);
+
     protected virtual WriterPropertiesBuilder SpectrumPeakDataWriterPropertiesBuilder()
     {
         if (SpectrumPeakData == null) throw new InvalidOperationException();
