@@ -120,28 +120,26 @@ public static class MSNumpress
     ///
     /// the corresponding decode function will be called.
     /// </remarks>
-    public static double[] decode(string cvAccession, ReadOnlySpan<byte> data, int dataSize)
+    public static List<double> decode(string cvAccession, ReadOnlySpan<byte> data, int dataSize)
     {
         if (cvAccession == ACC_NUMPRESS_LINEAR)
         {
             if (dataSize < 8 || data.Length < 8)
                 throw new ArgumentException("Cannot decode numLin data, need at least 8 initial bytes for fixed point.");
 
-            double[] buffer = new double[dataSize * 2];
+            List<double> buffer = [];
+            buffer.Capacity = dataSize * 2;
             int nbrOfDoubles = decodeLinear(data, dataSize, buffer);
             if (nbrOfDoubles < 0)
                 throw new ArgumentException("Corrupt numLin data!");
 
-            double[] result = new double[nbrOfDoubles];
-            System.Array.Copy(buffer, 0, result, 0, nbrOfDoubles);
-
-            return result;
+            return buffer;
         }
 
         if (cvAccession == ACC_NUMPRESS_SLOF)
         {
-            double[] result = new double[(dataSize - 8) / 2];
-            MSNumpress.decodeSlof(data, dataSize, result);
+            List<double> result = [];
+            MSNumpress.decodeSlof(data, data.Length, result);
 
             return result;
         }
@@ -151,14 +149,12 @@ public static class MSNumpress
             if (dataSize < 8 || data.Length < 8)
                 throw new ArgumentException("Cannot decode numPic data, need at least 8 initial bytes for fixed point.");
 
-            double[] buffer = new double[dataSize * 2];
-            int nbrOfDoubles = MSNumpress.decodePic(data, dataSize, buffer);
+            List<double> buffer = [];
+            buffer.Capacity = dataSize * 2;
+            int nbrOfDoubles = MSNumpress.decodePic(data, data.Length, buffer);
             if (nbrOfDoubles < 0)
                 throw new ArgumentException("Corrupt numPic data!");
-
-            double[] result = new double[nbrOfDoubles];
-            System.Array.Copy(buffer, 0, result, 0, nbrOfDoubles);
-            return result;
+            return buffer;
 
         }
 
@@ -383,7 +379,7 @@ public static class MSNumpress
     /// the last encoded int need to use either the last halfbyte, or the second last followed by a
     /// 0x0 halfbyte.
     /// </remarks>
-    public static int decodeLinear(ReadOnlySpan<byte> data, int dataSize, double[] result)
+    public static int decodeLinear(ReadOnlySpan<byte> data, int dataSize, List<double> result)
     {
         int ri = 2;
         long[] ints = new long[3];
@@ -401,7 +397,7 @@ public static class MSNumpress
         {
             ints[1] = ints[1] | ((0xFFL & data[8 + i]) << (i * 8));
         }
-        result[0] = ints[1] / fixedPoint;
+        result.Add(ints[1] / fixedPoint);
 
         if (dataSize == 12) return 1;
         if (dataSize < 16) return -1;
@@ -411,7 +407,7 @@ public static class MSNumpress
         {
             ints[2] = ints[2] | ((0xFFL & data[12 + i]) << (i * 8));
         }
-        result[1] = ints[2] / fixedPoint;
+        result.Add(ints[2] / fixedPoint);
 
         while (dec.pos < dataSize)
         {
@@ -425,7 +421,8 @@ public static class MSNumpress
 
             extrapol = ints[1] + (ints[1] - ints[0]);
             y = extrapol + ints[2];
-            result[ri++] = y / fixedPoint;
+            result.Add(y / fixedPoint);
+            ri++;
             ints[2] = y;
         }
 
@@ -492,7 +489,7 @@ public static class MSNumpress
     /// the last encoded int need to use either the last halfbyte, or the second last followed by a
     /// 0x0 halfbyte.
     /// </remarks>
-    public static int decodePic(ReadOnlySpan<byte> data, int dataSize, double[] result)
+    public static int decodePic(ReadOnlySpan<byte> data, int dataSize, List<double> result)
     {
         int ri = 0;
         long count;
@@ -505,7 +502,8 @@ public static class MSNumpress
                     break;
 
             count = dec.next();
-            result[ri++] = count;
+            ri++;
+            result.Add(count);
         }
         return ri;
     }
@@ -575,7 +573,7 @@ public static class MSNumpress
     /// The result vector will be exactly (|data| - 8) / 2 doubles.
     /// returns the number of doubles read, or -1 is there is a problem decoding.
     /// </remarks>
-    public static int decodeSlof(ReadOnlySpan<byte> data, int dataSize, double[] result)
+    public static int decodeSlof(ReadOnlySpan<byte> data, int dataSize, List<double> result)
     {
         int x;
         int ri = 0;
@@ -585,10 +583,11 @@ public static class MSNumpress
 
         if (dataSize % 2 != 0) return -1;
 
-        for (int i = 8; i < dataSize; i += 2)
+        for (int i = 8; i < data.Length; i += 2)
         {
             x = (0xff & data[i]) | ((0xff & data[i + 1]) << 8);
-            result[ri++] = Math.Exp((0xffff & x) / fixedPoint) - 1;
+            ri++;
+            result.Add(Math.Exp((0xffff & x) / fixedPoint) - 1);
         }
         return ri;
     }

@@ -948,7 +948,7 @@ public class ChunkLayoutReader : BaseLayoutReader
             else
             {
                 var valsAt = colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i);
-                var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
+                var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 4);
                 if (arrowType.TypeId == ArrowTypeId.Float)
                     valsAt = Compute.CastFloat(decoded);
                 else
@@ -1163,7 +1163,6 @@ public class ChunkLayoutReader : BaseLayoutReader
             if (entry.SchemaIndex == null || entry.Transform == null)
                 throw new InvalidOperationException($"ArrayIndexEntry schema index somehow made null!?: {entry}");
             var col = rows.Fields[(int)entry.SchemaIndex];
-
             List<IArrowArray> chunks = [];
             switch (entry.Transform)
             {
