@@ -19,7 +19,7 @@ using System.IO.MemoryMappedFiles;
 
 using DecryptionConfigurations = Dictionary<string, ParquetSharp.FileDecryptionProperties>;
 using Apache.Arrow;
-using ParquetSharp.Schema;
+using Apache.Arrow.Types;
 
 #region Index File Implementation
 
@@ -67,9 +67,11 @@ class EntityTypeJsonConverter : JsonConverter<EntityType>
 
     public override void Write(Utf8JsonWriter writer, EntityType value, JsonSerializerOptions options)
     {
-        if (value.Tag == EntityTypeTag.Other) {
+        if (value.Tag == EntityTypeTag.Other)
+        {
             writer.WriteStringValue(value.Value);
-        } else
+        }
+        else
         {
             var text = value.Tag switch
             {
@@ -196,7 +198,7 @@ class DotPathJsonConverter : JsonConverter<List<string>>
         else if (reader.TokenType == JsonTokenType.String)
         {
             var value = reader.GetString();
-            if (value == null)  throw new JsonException("Unexpected null value");
+            if (value == null) throw new JsonException("Unexpected null value");
             values = value.Split(".").ToList();
         }
         else throw new JsonException("Expected only a string or an array of strings");
@@ -214,20 +216,20 @@ class DotPathJsonConverter : JsonConverter<List<string>>
 public record class ColumnMapping
 {
     [JsonPropertyName("name")]
-    public string Name {get; set;}
+    public string Name { get; set; }
 
     [JsonPropertyName("path")]
     [JsonConverter(typeof(DotPathJsonConverter))]
-    public List<string> Path {get; set;}
+    public List<string> Path { get; set; }
 
     [JsonPropertyName("accession")]
-    public string? Accession {get; set;}
+    public string? Accession { get; set; }
 
     [JsonPropertyName("unit")]
-    public string? Unit {get; set;}
+    public string? Unit { get; set; }
 
     [JsonPropertyName("term_marker")]
-    public bool? TermMarker {get; set;}
+    public bool? TermMarker { get; set; }
 
     [JsonIgnore]
     public string? CURIE => Accession;
@@ -249,7 +251,7 @@ public record class ColumnMapping
     public int? FindColumnIndexIn(SchemaDescriptor schema)
     {
         var path = string.Join(".", Path);
-        for(var i = 0; i < schema.NumColumns; i++)
+        for (var i = 0; i < schema.NumColumns; i++)
         {
             var col = schema.Column(i);
             if (col.Path.ToDotString() == path)
@@ -268,7 +270,7 @@ public record class ColumnMapping
         IArrowArrayBuilder? maxBuilder = null;
         PhysicalType? physicalType = null;
         long nullCount = 0;
-        for(var i = 0; i < reader.FileMetaData.NumRowGroups; i++)
+        for (var i = 0; i < reader.FileMetaData.NumRowGroups; i++)
         {
             var rg = reader.RowGroup(i);
             var col = rg.MetaData.GetColumnChunkMetaData(colIndex.Value);
@@ -422,12 +424,12 @@ public record FileIndexEntry
     public List<Param> Params { get; set; }
 
     [JsonPropertyName("column_mapping")]
-    public List<ColumnMapping> ColumnMappings {get; set;}
+    public List<ColumnMapping> ColumnMappings { get; set; }
 
     [JsonPropertyName("checksum")]
-    public string? Checksum {get; set;}
+    public string? Checksum { get; set; }
 
-    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings = null, string? checksum = null)
+    public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind, List<Param>? @params = null, List<ColumnMapping>? columnMappings = null, string? checksum = null)
     {
         string entityTypeTag = "";
         switch (entityType.Tag)
@@ -511,7 +513,7 @@ public record FileIndexEntry
         );
     }
 
-    public FileIndexEntry(string name, EntityType entityType, DataKind dataKind, List<Param>? @params=null, List<ColumnMapping>? columnMappings=null, string? checksum=null)
+    public FileIndexEntry(string name, EntityType entityType, DataKind dataKind, List<Param>? @params = null, List<ColumnMapping>? columnMappings = null, string? checksum = null)
     {
         Name = name;
         EntityType = entityType;
@@ -541,7 +543,7 @@ public class FileIndex
 
     public FileIndexEntry? FindEntry(EntityType entityType, DataKind dataKind)
     {
-        foreach(var entry in Files)
+        foreach (var entry in Files)
         {
             if (entry.DataKind == dataKind && entry.EntityType == entityType)
                 return entry;
@@ -567,9 +569,9 @@ public class FileIndex
             EntityType.Chromatogram,
             EntityType.WavelengthSpectrum,
         ];
-        foreach(var e in entityTypes)
+        foreach (var e in entityTypes)
         {
-            foreach(var d in dataKinds)
+            foreach (var d in dataKinds)
             {
                 decryptionConfigs[FileIndexEntry.FromEntityAndData(e, d).Name] = decryptionProperties;
             }
@@ -585,10 +587,142 @@ public class FileIndex
 }
 
 
+public class ColumnChunkChecksum
+{
+    public required string FileName { get; set; }
+    public int RowGroup { get; set; }
+    public int Column { get; set; }
+    public required string Path { get; set; }
+    public ulong Offset { get; set; }
+    public ulong Length { get; set; }
+    public required string Digest { get; set; }
+
+    public static List<ColumnChunkChecksum> ChecksumParquet(Stream stream, string fileName)
+    {
+        List<ColumnChunkChecksum> chunks = [];
+
+        using (var managedStream = new ManagedRandomAccessFile(stream, true))
+        {
+            var reader = new ParquetFileReader(managedStream);
+            var meta = reader.FileMetaData;
+            for (var rowGroupIndex = 0; rowGroupIndex < meta.NumRowGroups; rowGroupIndex++)
+            {
+                using (var rg = reader.RowGroup(rowGroupIndex))
+                {
+                    for (var colIndex = 0; colIndex < meta.NumColumns; colIndex++)
+                    {
+                        using (var col = rg.MetaData.GetColumnChunkMetaData(colIndex))
+                        {
+                            var offset = col.FileOffset;
+                            var length = col.TotalCompressedSize;
+                            var buf = new byte[length];
+                            stream.Seek(offset, SeekOrigin.Begin);
+                            stream.ReadExactly(buf);
+                            var digest = SHA512.HashData(buf);
+                            var checksum = BitConverter.ToString(digest).Replace("-", "").ToLower();
+                            var chunk = new ColumnChunkChecksum
+                            {
+                                Column = colIndex,
+                                Digest = checksum,
+                                FileName = fileName,
+                                Length = (ulong)length,
+                                Offset = (ulong)offset,
+                                Path = meta.Schema.Column(colIndex).Path.ToDotString(),
+                                RowGroup = rowGroupIndex
+                            };
+                            chunks.Add(chunk);
+                        }
+
+                    }
+                }
+            }
+        }
+        return chunks;
+    }
+
+    public static List<ColumnChunkChecksum> FromArrow(RecordBatch batch)
+    {
+        List<ColumnChunkChecksum> chunks = [];
+        var fileNames = Compute.Compute.GetStrings(batch.Column("filename"));
+        var rowGroups = Compute.Compute.CastInt32(batch.Column("row_group"));
+        var columns = Compute.Compute.CastInt32(batch.Column("columns"));
+        var paths = Compute.Compute.GetStrings(batch.Column("path"));
+        var offsets = Compute.Compute.CastUInt64(batch.Column("offset"));
+        var lengths = Compute.Compute.CastUInt64(batch.Column("length"));
+        var digests = Compute.Compute.GetStrings(batch.Column("digest"));
+
+        for (var i = 0; i < batch.Length; i++)
+        {
+            var chunk = new ColumnChunkChecksum {
+                Column = columns.Values[i],
+                Digest = digests[i] ?? "",
+                FileName = fileNames[i] ?? "",
+                Length = lengths.Values[i],
+                Offset = offsets.Values[i],
+                Path = paths[i] ?? "",
+                RowGroup = rowGroups.Values[i]
+            };
+            chunks.Add(chunk);
+        }
+
+        return chunks;
+    }
+
+    public static RecordBatch ToArrow(IReadOnlyList<ColumnChunkChecksum> chunks)
+    {
+        List<Field> columns = [
+            new Field("filename", new StringType(), false),
+            new Field("row_group", new UInt64Type(), false),
+            new Field("column", new UInt64Type(), false),
+            new Field("path", new StringType(), false),
+            new Field("offset", new UInt64Type(), false),
+            new Field("length", new UInt64Type(), false),
+            new Field("digest", new StringType(), false),
+        ];
+
+        var fileNameBuilder = new StringArray.Builder();
+        var rowGroupBuilder = new UInt64Array.Builder();
+        var columnBuilder = new UInt64Array.Builder();
+        var pathBuilder = new StringArray.Builder();
+        var offsetBuilder = new UInt64Array.Builder();
+        var lengthBuilder = new UInt64Array.Builder();
+        var digestBuilder = new StringArray.Builder();
+
+        foreach (var chunk in chunks)
+        {
+            fileNameBuilder.Append(chunk.FileName);
+            rowGroupBuilder.Append((ulong)chunk.RowGroup);
+            columnBuilder.Append((ulong)chunk.Column);
+            pathBuilder.Append(chunk.Path);
+            offsetBuilder.Append(chunk.Offset);
+            lengthBuilder.Append(chunk.Length);
+            digestBuilder.Append(chunk.Digest);
+        }
+
+        var schema = new Schema(columns, []);
+        var batch = new RecordBatch(
+            schema,
+            [
+                fileNameBuilder.Build(),
+                rowGroupBuilder.Build(),
+                columnBuilder.Build(),
+                pathBuilder.Build(),
+                offsetBuilder.Build(),
+                lengthBuilder.Build(),
+                digestBuilder.Build()
+            ],
+            chunks.Count
+        );
+        return batch;
+    }
+
+}
+
+
 public class MzPeakFacetNamespace
 {
     public EntityType EntityType { get; set; }
-    public IMZPeakArchiveStorage Storage {get; set;}
+    public IMZPeakArchiveStorage Storage { get; set; }
 
     public override string ToString()
     {
@@ -603,7 +737,7 @@ public class MzPeakFacetNamespace
         Storage = storage;
     }
 
-    public FileReader? OpenDataKind(DataKind dataKind, ReaderProperties? props=null, ArrowReaderProperties? arrowProps=null)
+    public FileReader? OpenDataKind(DataKind dataKind, ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null)
     {
         var entry = FileIndex.FindEntry(EntityType, dataKind);
         if (entry == null) return null;
@@ -669,7 +803,7 @@ public interface IMZPeakArchiveStorage : IDisposable
         return ns.Has(DataKind.Metadata) ? ns : null;
     }
 
-    public FileReader? OpenFromFileIndexEntry(FileIndexEntry entry, ReaderProperties? props=null, ArrowReaderProperties? arrowProps=null)
+    public FileReader? OpenFromFileIndexEntry(FileIndexEntry entry, ReaderProperties? props = null, ArrowReaderProperties? arrowProps = null)
     {
         if (props == null)
             props = ReaderProperties.GetDefaultReaderProperties();
@@ -726,7 +860,7 @@ public interface IMZPeakArchiveStorage : IDisposable
     {
         List<(FileIndexEntry, string?)> failed = [];
         var valid = true;
-        foreach(var entry in FileIndex().Files)
+        foreach (var entry in FileIndex().Files)
         {
             var state = CheckFileIntegrity(entry);
             switch (state)
@@ -737,11 +871,11 @@ public interface IMZPeakArchiveStorage : IDisposable
                     }
                 case false:
                 case null:
-                {
-                    valid &= false;
-                    failed.Add((entry, ChecksumEntry(entry)));
-                    break;
-                }
+                    {
+                        valid &= false;
+                        failed.Add((entry, ChecksumEntry(entry)));
+                        break;
+                    }
             }
         }
         return (valid, failed);
@@ -1251,8 +1385,8 @@ public class ZipArchiveStream<T> : BaseZipArchive, IDisposable where T : Stream
 
 public class MemoryMappedZipArchive : BaseZipArchive, IDisposable
 {
-    public string? Path {get; protected set;}
-    public MemoryMappedFile Handle {get; protected set;}
+    public string? Path { get; protected set; }
+    public MemoryMappedFile Handle { get; protected set; }
 
     public MemoryMappedZipArchive(MemoryMappedFile handle)
     {
@@ -1538,7 +1672,7 @@ public class DirectoryArchive : IMZPeakArchiveStorage
     }
 
     public virtual void Dispose()
-    {}
+    { }
 }
 
 

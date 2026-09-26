@@ -4,6 +4,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Numpress;
 using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using System.Text;
@@ -353,6 +354,39 @@ public record ArrayIndexEntry : IEquatable<ArrayIndexEntry>
                     .Trim(),
                 "_"
             );
+        if (Transform != null)
+        {
+            switch (Transform)
+            {
+                case MSNumpress.ACC_NUMPRESS_LINEAR:
+                    {
+                        arrayName += "_numpress_linear_bytes";
+                        break;
+                    }
+                case MSNumpress.ACC_NUMPRESS_SLOF:
+                    {
+                        arrayName += "_numpress_slof_bytes";
+                        break;
+                    }
+                case MSNumpress.ACC_NUMPRESS_PIC:
+                    {
+                        arrayName += "_numpress_pic_bytes";
+                        break;
+                    }
+                case GridCodec.CURIE:
+                    {
+                        arrayName += "_grid";
+                        break;
+                    }
+                // These do not change the representation
+                case NullInterpolation.NullZeroCURIE:
+                case NullInterpolation.NullInterpolateCURIE:
+                    break;
+                default:
+                    throw new NotImplementedException($"The array transform {Transform} is not supported");
+
+            }
+        }
         if (BufferPriority == Metadata.BufferPriority.Primary)
         {
             return arrayName;
@@ -370,10 +404,7 @@ public record ArrayIndexEntry : IEquatable<ArrayIndexEntry>
         }
     }
 
-    public override int GetHashCode()
-    {
-        return (ArrayName, DataTypeCURIE, Transform, UnitCURIE).GetHashCode();
-    }
+    public override int GetHashCode() => (ArrayName, DataTypeCURIE, Transform, UnitCURIE).GetHashCode();
 
     public virtual bool Equals(ArrayIndexEntry? other)
     {

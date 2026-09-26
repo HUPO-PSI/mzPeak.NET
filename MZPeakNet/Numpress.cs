@@ -431,6 +431,14 @@ public static class MSNumpress
 
     /////////////////////////////////////////////////////////////////////////////////
 
+    public static ArraySegment<byte> EncodePic(double[] data)
+    {
+        var buf = new byte[data.Length * 5];
+        var z = encodePic(data, data.Length, buf);
+        ArraySegment<byte> x = buf[0..z];
+        return x;
+    }
+
     /// <summary>
     /// Encodes ion counts by simply rounding to the nearest 4 byte integer, and compressing each integer with encodeInt.
     /// </summary>
@@ -560,6 +568,14 @@ public static class MSNumpress
             result[ri++] = (byte)(x >> 8);
         }
         return ri;
+    }
+
+    public static byte[] EncodeSlof(double[] data)
+    {
+        var fp = optimalSlofFixedPoint(data, data.Length);
+        var buf = new byte[data.Length * 2 + 8];
+        encodeSlof(data, data.Length, buf, fp);
+        return buf;
     }
 
     /// <summary>

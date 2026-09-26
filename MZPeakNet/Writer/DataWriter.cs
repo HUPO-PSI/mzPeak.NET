@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Numpress;
 using Array = Apache.Arrow.Array;
 
 namespace MZPeak.Writer.Data;
@@ -44,7 +45,7 @@ public abstract class BaseDataLayoutWriter
     /// <summary>
     /// The array builders for all of the other columns in the table. They run parallel to <see cref="DataTypes"> and <see cref="ArrayIndex"/>
     /// </summary>
-    protected List<IArrowArrayBuilder> Arrays;
+    protected List<IArrowArrayBuilder<IArrowArray>> Arrays;
     /// <summary>
     /// The Arrow types for all of the other columns in the table. They run parallel to <see cref="Arrays"> and <see cref="ArrayIndex"/>
     /// </summary>
@@ -684,8 +685,17 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                     }
                 case BufferFormat.ChunkTransform:
                     {
-                        DataTypes.Add(new UInt8Type());
-                        Arrays.Add(new ListArray.Builder(new UInt8Type()));
+                        if (entry.Transform == GridCodec.CURIE)
+                        {
+
+                            DataTypes.Add(GridArrayBuilder.GetArrowType());
+                            Arrays.Add(new GridArrayBuilder());
+                        }
+                        else
+                        {
+                            DataTypes.Add(new UInt8Type());
+                            Arrays.Add(new ListArray.Builder(new UInt8Type()));
+                        }
                         break;
                     }
                 default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
@@ -729,15 +739,6 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
-
-        if (isProfile != null && (bool)isProfile)
-        {
-            CurrentMainAxisEncodingCURIE = DefaultMainAxisEncodingCURIE;
-        }
-        else if (isProfile != null && !(bool)isProfile)
-        {
-            CurrentMainAxisEncodingCURIE = NoCompressionCodec.CURIE;
-        }
         var mainAxis = arrays[MainAxisEntry];
 
         var spans = Chunking.ChunkEvery(mainAxis, ChunkSize);
@@ -862,10 +863,45 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                 if (arrays.TryGetValue(entry, out array))
                 {
                     var arrayChunk = array.Slice(startIdx, endIdx - startIdx);
-                    var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
-                    var dtype = DataTypes[(int)entry.SchemaIndex - 1];
-                    AppendArrayTo(builder.ValueBuilder, dtype, arrayChunk);
-                    builder.Append();
+                    if (entry.Transform != null)
+                    {
+                        var arrayType = entry.GetArrayType();
+                        if (arrayType != null && entry.Transform == GridCodec.CURIE && GridPolicies.ContainsKey((ArrayType)arrayType))
+                        {
+                            var policy = GetGridPolicy((ArrayType)arrayType);
+                            if (policy == null || policy.CurrentGrid == null)
+                                throw new NotImplementedException($"Switching when grid isn't available is not implemented");
+                            var grid = policy.CurrentGrid;
+                            var builder = (GridArrayBuilder)Arrays[(int)entry.SchemaIndex - 1];
+                            builder.Append(grid, ComputeFn.CastDouble(array));
+                        }
+                        else if (entry.Transform == MSNumpress.ACC_NUMPRESS_SLOF)
+                        {
+                            var buf = MSNumpress.EncodeSlof(ComputeFn.CastDouble(array).Values.ToArray());
+                            var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
+                            ((UInt8Array.Builder)builder.ValueBuilder).AppendRange(buf);
+                        }
+                        else if (entry.Transform == MSNumpress.ACC_NUMPRESS_PIC)
+                        {
+                            var buf = MSNumpress.EncodePic(ComputeFn.CastDouble(array).Values.ToArray());
+                            var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
+                            ((UInt8Array.Builder)builder.ValueBuilder).AppendRange(buf);
+                        }
+                        else if (entry.Transform == NullInterpolation.NullInterpolateCURIE || entry.Transform == NullInterpolation.NullZeroCURIE)
+                        {
+                            var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
+                            var dtype = DataTypes[(int)entry.SchemaIndex - 1];
+                            AppendArrayTo(builder.ValueBuilder, dtype, arrayChunk);
+                            builder.Append();
+                        } else throw new NotImplementedException($"Transform {entry.Transform} isn't supported yet");
+                    }
+                    else
+                    {
+                        var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
+                        var dtype = DataTypes[(int)entry.SchemaIndex - 1];
+                        AppendArrayTo(builder.ValueBuilder, dtype, arrayChunk);
+                        builder.Append();
+                    }
                 }
                 else
                 {

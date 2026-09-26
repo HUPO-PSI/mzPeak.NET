@@ -687,7 +687,7 @@ public static class DeltaCodec
 }
 
 
-public class GridArrayBuilder
+public class GridArrayBuilder : IArrowArrayBuilder<StructArray>
 {
     StringArray.Builder GridType;
     ListArray.Builder Parameters;
@@ -701,6 +701,17 @@ public class GridArrayBuilder
         Parameters.Append();
         Indices.Append();
     }
+
+    public static Apache.Arrow.Types.ArrowType GetArrowType()
+    {
+        return new StructType([
+            new Field("grid_type", new StringType(), true),
+            new Field("parameters", new ListType(new DoubleType()), true),
+            new Field("indices", new ListType(new UInt32Type()), true),
+        ]);
+    }
+
+    public int Length => GridType.Length;
 
     public void Append(GridLike model, IReadOnlyList<double?> values, bool deltaSorted = false)
     {
@@ -741,21 +752,22 @@ public class GridArrayBuilder
         Indices.AppendNull();
     }
 
-    public StructArray Build()
+    public StructArray Build(MemoryAllocator? allocator)
     {
-        var dtype = new StructType([
-            new Field("grid_type", new StringType(), true),
-            new Field("parameters", new ListType(new DoubleType()), true),
-            new Field("indices", new ListType(new UInt32Type()), true),
-        ]);
+        var dtype = GetArrowType();
 
         return new StructArray(
             dtype,
             GridType.Length,
-            [GridType.Build(), Parameters.Build(), Indices.Build()],
+            [GridType.Build(allocator), Parameters.Build(allocator), Indices.Build(allocator)],
             default,
             0,
             0);
+    }
+
+    public StructArray Build()
+    {
+        return Build(null);
     }
 }
 
@@ -1749,6 +1761,65 @@ public static class Compute
         }
     }
 
+    public static List<string?> GetStrings(StringArray array)
+    {
+        List<string?> strings = [];
+        for(var i = 0; i < array.Length; i++)
+        {
+            if (array.IsValid(i))
+                strings.Add(array.GetString(i));
+            else
+                strings.Add(null);
+        }
+        return strings;
+    }
+
+    public static List<string?> GetStrings(LargeStringArray array)
+    {
+        List<string?> strings = [];
+        for (var i = 0; i < array.Length; i++)
+        {
+            if (array.IsValid(i))
+                strings.Add(array.GetString(i));
+            else
+                strings.Add(null);
+        }
+        return strings;
+    }
+
+    public static List<string?> GetStrings(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.String:
+                return GetStrings((StringArray)array);
+            case ArrowTypeId.LargeString:
+                return GetStrings((LargeStringArray)array);
+            default:
+                throw new NotImplementedException($"GetStrings not implemented for {array.Data.DataType}");
+        }
+    }
+
+    public static UInt64Array CastUInt64<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
+    {
+        var builder = new UInt64Array.Builder();
+        builder.Reserve(array.Length);
+        foreach (var val in array)
+        {
+            try
+            {
+                if (val != null && T.IsFinite(val.Value)) builder.Append(ulong.CreateChecked((T)val));
+                else builder.AppendNull();
+            }
+            catch (OverflowException)
+            {
+                Logger?.LogWarning($"Overflowed {val} from type {array.Data.DataType.Name} converting to int64");
+                builder.AppendNull();
+            }
+        }
+        return builder.Build(allocator);
+    }
+
     public static Int64Array CastInt64<T>(PrimitiveArray<T> array, MemoryAllocator? allocator = null) where T : struct, INumber<T>
     {
         var builder = new Int64Array.Builder();
@@ -1887,6 +1958,36 @@ public static class Compute
                 return CastInt64((UInt16Array)array, allocator);
             case ArrowTypeId.UInt8:
                 return CastInt64((UInt8Array)array, allocator);
+            default:
+                throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
+        }
+    }
+
+
+    public static UInt64Array CastUInt64(IArrowArray array, MemoryAllocator? allocator = null)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Double:
+                return CastUInt64((DoubleArray)array, allocator);
+            case ArrowTypeId.Float:
+                return CastUInt64((FloatArray)array, allocator);
+            case ArrowTypeId.Int32:
+                return CastUInt64((Int32Array)array, allocator);
+            case ArrowTypeId.Int64:
+                return CastUInt64((Int32Array)array, allocator);
+            case ArrowTypeId.UInt32:
+                return CastUInt64((UInt32Array)array, allocator);
+            case ArrowTypeId.UInt64:
+                return (UInt64Array)array;
+            case ArrowTypeId.Int16:
+                return CastUInt64((Int16Array)array, allocator);
+            case ArrowTypeId.Int8:
+                return CastUInt64((Int8Array)array, allocator);
+            case ArrowTypeId.UInt16:
+                return CastUInt64((UInt16Array)array, allocator);
+            case ArrowTypeId.UInt8:
+                return CastUInt64((UInt8Array)array, allocator);
             default:
                 throw new InvalidDataException("Unsupported data type " + array.Data.DataType.Name);
         }

@@ -1,7 +1,7 @@
 set script-interpreter := ['bash', '-eu']
 
 test:
-    dotnet test
+    dotnet test --logger "console;verbosity=detailed"
 
 read INPATH:
     dotnet run --project "MZPeakNet.AppTest" -- --verbose read {{INPATH}}
