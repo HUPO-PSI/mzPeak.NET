@@ -85,7 +85,7 @@ public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
                     continue;
                 }
                 var vals = (UInt8Array)arr.GetSlicedValues(i);
-                Memory<byte> memory = new Memory<byte>(vals.Data.Buffers[0].Memory.ToArray());
+                Memory<byte> memory = new Memory<byte>(vals.Values.ToArray());
                 DataArrays.Add(memory);
             }
         }
@@ -102,7 +102,7 @@ public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
                     continue;
                 }
                 var vals = (UInt8Array)arr.GetSlicedValues(i);
-                Memory<byte> memory = new Memory<byte>(vals.Data.Buffers[0].Memory.ToArray());
+                Memory<byte> memory = new Memory<byte>(vals.Values.ToArray());
                 DataArrays.Add(memory);
             }
         }
