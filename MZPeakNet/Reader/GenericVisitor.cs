@@ -344,17 +344,51 @@ public record SpectrumDescription : HasArrayIndex
 
     public ArrayIndex? ArrayIndex { get; set; }
 
-    public string Id => SpectrumInfo.Id;
-    public ulong Index => SpectrumInfo.Index;
-    public byte MSLevel => SpectrumInfo.MSLevel;
-    public double Time => SpectrumInfo.Time;
-    public List<Param> Parameters => SpectrumInfo.Parameters;
-    public List<double>? MzDeltaModel => SpectrumInfo.MzDeltaModel;
-    public string? DataProcessingRef => SpectrumInfo.DataProcessingRef;
+    public string Id
+    {
+        get => SpectrumInfo.Id;
+        set => SpectrumInfo.Id = value;
+    }
+    public ulong Index
+    {
+        get => SpectrumInfo.Index;
+        set => SpectrumInfo.Index = value;
+    }
+    public byte MSLevel
+    {
+        get => SpectrumInfo.MSLevel;
+        set => SpectrumInfo.MSLevel = value;
+    }
+    public double Time
+    {
+        get => SpectrumInfo.Time;
+        set => SpectrumInfo.Time = value;
+    }
+    public List<Param> Parameters
+    {
+        get => SpectrumInfo.Parameters;
+        set => SpectrumInfo.Parameters = value;
+    }
+    public List<double>? MzDeltaModel
+    {
+        get => SpectrumInfo.MzDeltaModel;
+        set => SpectrumInfo.MzDeltaModel = value;
+    }
+    public string? DataProcessingRef
+    {
+        get => SpectrumInfo.DataProcessingRef;
+        set => SpectrumInfo.DataProcessingRef = value;
+    }
     public bool IsProfile => SpectrumInfo.IsProfile;
     public bool IsCentroid => SpectrumInfo.IsCentroid;
     public double? BasePeakMZ => SpectrumInfo.BasePeakMZ;
     public double? BasePeakIntensity => SpectrumInfo.BasePeakIntensity;
+
+    public List<AuxiliaryArray> AuxiliaryArrays
+    {
+        get => SpectrumInfo.AuxiliaryArrays;
+        set => SpectrumInfo.AuxiliaryArrays = value;
+    }
 
     public long? DataPointCount
     {
@@ -386,10 +420,31 @@ public record ChromatogramDescription : HasArrayIndex
 
     public ArrayIndex? ArrayIndex { get; set; }
 
-    public string Id => ChromatogramInfo.Id;
-    public ulong Index => ChromatogramInfo.Index;
-    public List<Param> Parameters => ChromatogramInfo.Parameters;
-    public string? DataProcessingRef => ChromatogramInfo.DataProcessingRef;
+    public string Id
+    {
+        get => ChromatogramInfo.Id;
+        set => ChromatogramInfo.Id = value;
+    }
+    public ulong Index
+    {
+        get => ChromatogramInfo.Index;
+        set => ChromatogramInfo.Index = value;
+    }
+    public List<Param> Parameters
+    {
+        get => ChromatogramInfo.Parameters;
+        set => ChromatogramInfo.Parameters = value;
+    }
+    public string? DataProcessingRef
+    {
+        get => ChromatogramInfo.DataProcessingRef;
+        set => ChromatogramInfo.DataProcessingRef = value;
+    }
+    public List<AuxiliaryArray> AuxiliaryArrays
+    {
+        get => ChromatogramInfo.AuxiliaryArrays;
+        set => ChromatogramInfo.AuxiliaryArrays = value;
+    }
 
     public ChromatogramDescription(ChromatogramInfo chromatogramInfo, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
     {

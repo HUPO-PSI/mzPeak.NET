@@ -48,11 +48,11 @@ public class WriteTest
         writer.Add(0, [
             new DoubleArray.Builder().AppendRange([250.0]).Build(),
             new FloatArray.Builder().AppendRange([1023.1f]).Build()
-        ]);
+        ], true);
         writer.Add(1, [
             new DoubleArray.Builder().AppendRange([252.0]).Build(),
             new FloatArray.Builder().AppendRange([1026.1f]).Build()
-        ]);
+        ], true);
         Assert.Equal(2ul, writer.NumberOfPoints);
     }
 
@@ -67,11 +67,11 @@ public class WriteTest
         writer.Add(0, [
             new DoubleArray.Builder().AppendRange([250.0,   251.0, 272.0, 500.0, 501.0, 512.0]).Build(),
             new FloatArray.Builder().AppendRange([1023.1f, 20.0f, 200f,  300f,  100f,  500f]).Build()
-        ]);
+        ], true);
         writer.Add(1, [
             new DoubleArray.Builder().AppendRange([252.0]).Build(),
             new FloatArray.Builder().AppendRange([1026.1f]).Build()
-        ]);
+        ], true);
         Assert.Equal(7ul, writer.NumberOfPoints);
         var bat = writer.GetRecordBatch();
         Assert.Equal(3, bat.Length);
@@ -150,14 +150,14 @@ public class WriteTest
         var index = builder.Build();
         var writer = new PointLayoutBuilder(index);
 
-        writer.Add(0, [(Apache.Arrow.Array)chunk.Fields[1], (Apache.Arrow.Array)chunk.Fields[2]]);
+        writer.Add(0, [(Apache.Arrow.Array)chunk.Fields[1], (Apache.Arrow.Array)chunk.Fields[2]], true);
 
         data = await reader.GetSpectrumData(1);
         Assert.NotNull(data);
         chunk = data;
         var n1 = chunk.Length;
 
-        writer.Add(1, [(Apache.Arrow.Array)chunk.Fields[1], (Apache.Arrow.Array)chunk.Fields[2]]);
+        writer.Add(1, [(Apache.Arrow.Array)chunk.Fields[1], (Apache.Arrow.Array)chunk.Fields[2]], true);
 
         var batch = writer.GetRecordBatch();
         Assert.Equal(1, batch.ColumnCount);

@@ -267,7 +267,9 @@ public abstract class BaseDataLayoutWriter
     /// </param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public (Dictionary<ArrayIndexEntry, Array>, SpacingInterpolationModel<double>?, List<AuxiliaryArray>) Preprocess(
+            ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool isProfile
+        )
     {
         SpacingInterpolationModel<double>? deltaModel = null;
         List<AuxiliaryArray> auxiliaryArrays = [];
@@ -280,13 +282,13 @@ public abstract class BaseDataLayoutWriter
             auxiliaryArrays.Add(AuxiliaryArray.FromValues(v, k));
         }
 
-        if (intensityArray != null && ShouldRemoveZeroRuns && (isProfile ?? true))
+        if (intensityArray != null && ShouldRemoveZeroRuns && isProfile)
         {
             var intensityArrayVal = arrays[intensityArray];
             arrays = RemoveZeroIntensityRuns(arrays, intensityArrayVal);
         }
 
-        if (isProfile ?? false)
+        if (isProfile)
         {
             if (nullInterpolate != null && nullZero != null)
             {
@@ -305,9 +307,9 @@ public abstract class BaseDataLayoutWriter
     public virtual void SetGridPolicy(ArrayType arrayType, GridPolicy? policy) {}
     public virtual GridPolicy? GetGridPolicy(ArrayType method) => null;
 
-    public abstract EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null);
-    public abstract EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null);
-    public EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
+    public abstract EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool isProfile);
+    public abstract EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool isProfile);
+    public EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool isProfile)
     {
         return Add(entryIndex, arrays.Select(a => (Array)a), isProfile);
     }
@@ -434,7 +436,7 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         return "point";
     }
 
-    public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool isProfile)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
 
@@ -468,13 +470,13 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
         var ent = new EntryDerivedMetadata(
             deltaModel,
             auxiliaryArrays,
-            (isProfile ?? false) ? k : null,
-            (isProfile ?? false) ? null : k
+            isProfile ? k : null,
+            isProfile ? null : k
         );
         return ent;
     }
 
-    public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool isProfile)
     {
         var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs, isProfile);
@@ -736,7 +738,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         return new _ArrayFilterResult(arrays, notCoveredArrays, nullInterpolate, nullZero, intensityArray);
     }
 
-    public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool isProfile)
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
         var mainAxis = arrays[MainAxisEntry];
@@ -920,13 +922,13 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         var ent = new EntryDerivedMetadata(
            deltaModel,
            auxiliaryArrays,
-           (isProfile ?? false) ? steps : null,
-           (isProfile ?? false) ? null : steps
+           isProfile ? steps : null,
+           isProfile ? null : steps
        );
         return ent;
     }
 
-    public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool isProfile)
     {
         var kvs = ArrayIndex.Entries.Where(e => e.BufferFormat switch
         {

@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using System.Numerics;
 using MZPeak.Storage;
 using ParquetSharp.Arrow;
-using System.Security.Cryptography.X509Certificates;
 
 
 namespace MZPeak.Metadata;
@@ -553,14 +552,14 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         {
             var chunk = (StructArray)SpectrumMetadata.Array(i);
             idxArr = (UInt64Array)chunk.Fields[0];
-            var first = Compute.Compute.FirstNotNull(idxArr);
-            var last = Compute.Compute.LastNotNull(idxArr);
-            if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-            var mask = Compute.Compute.Equal(idxArr, index);
-            var recs = Compute.Compute.Filter(chunk, mask);
-            var visitor = new SpectrumVisitor(Namespace.FindEntry(DataKind.Metadata)?.ColumnMappings);
-            visitor.Visit(recs);
-            rec = visitor.Values[0];
+            var found = Compute.Compute.BinarySearch(idxArr, index);
+            if (found == -1) continue;
+            using (var seg = chunk.SliceShared(found, 1))
+            {
+                var visitor = new SpectrumVisitor(Namespace.FindEntry(DataKind.Metadata)?.ColumnMappings);
+                visitor.Visit(seg);
+                rec = visitor.Values[0];
+            }
             break;
         }
         if (rec == null) throw new IndexOutOfRangeException($"{index} out of spectrum index range");
@@ -573,15 +572,15 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             {
                 var chunk = (StructArray)ScanMetadata.Array(i);
                 idxArr = (UInt64Array)chunk.Fields[0];
-                var first = Compute.Compute.FirstNotNull(idxArr);
-                var last = Compute.Compute.LastNotNull(idxArr);
-                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-                var mask = Compute.Compute.Equal(idxArr, index);
-                var recs = Compute.Compute.Filter(chunk, mask);
+                if (idxArr.First() > index || idxArr.Last() < index) continue;
+                var found = Compute.Compute.BinarySearchBetween(idxArr, index);
+                if (found == null) continue;
                 var visitor = new ScanVisitor(Namespace.FindEntry(DataKind.Scans)?.ColumnMappings);
-                visitor.Visit(recs);
-                scanRecs.AddRange(visitor.Values);
-                break;
+                using (var seg = chunk.SliceShared(found.Start, found.Count))
+                {
+                    visitor.Visit(seg);
+                    scanRecs.AddRange(visitor.Values);
+                }
             }
         }
         List<PrecursorInfo> precursorInfos = new();
@@ -591,15 +590,15 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             {
                 var chunk = (StructArray)PrecursorMetadata.Array(i);
                 idxArr = (UInt64Array)chunk.Fields[0];
-                var first = Compute.Compute.FirstNotNull(idxArr);
-                var last = Compute.Compute.LastNotNull(idxArr);
-                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-                var mask = Compute.Compute.Equal(idxArr, index);
-                var recs = Compute.Compute.Filter(chunk, mask);
+                if (idxArr.First() > index || idxArr.Last() < index) continue;
+                var found = Compute.Compute.BinarySearchBetween(idxArr, index);
+                if (found == null) continue;
                 var visitor = new PrecursorVisitor(Namespace.FindEntry(DataKind.Precursors)?.ColumnMappings);
-                visitor.Visit(recs);
-                precursorInfos.AddRange(visitor.Values);
-                break;
+                using (var seg = chunk.SliceShared(found.Start, found.Count))
+                {
+                    visitor.Visit(seg);
+                    precursorInfos.AddRange(visitor.Values);
+                }
             }
         }
         List<SelectedIonInfo> selectedIons = new();
@@ -609,14 +608,15 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             {
                 var chunk = (StructArray)SelectedIonMetadata.Array(i);
                 idxArr = (UInt64Array)chunk.Fields[0];
-                var first = Compute.Compute.FirstNotNull(idxArr);
-                var last = Compute.Compute.LastNotNull(idxArr);
-                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-                var mask = Compute.Compute.Equal(idxArr, index);
-                var recs = Compute.Compute.Filter(chunk, mask);
+                if (idxArr.First() > index || idxArr.Last() < index) continue;
+                var found = Compute.Compute.BinarySearchBetween(idxArr, index);
+                if (found == null) continue;
                 var visitor = new SelectedIonVisitor(Namespace.FindEntry(DataKind.SelectedIons)?.ColumnMappings);
-                visitor.Visit(recs);
-                selectedIons.AddRange(visitor.Values);
+                using(var seg = chunk.SliceShared(found.Start, found.Count))
+                {
+                    visitor.Visit(seg);
+                    selectedIons.AddRange(visitor.Values);
+                }
                 break;
             }
         }
@@ -824,14 +824,14 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         {
             var chunk = (StructArray)ChromatogramMetadata.Array(i);
             idxArr = (UInt64Array)chunk.Fields[0];
-            var first = Compute.Compute.FirstNotNull(idxArr);
-            var last = Compute.Compute.LastNotNull(idxArr);
-            if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-            var mask = Compute.Compute.Equal(idxArr, index);
-            var recs = Compute.Compute.Filter(chunk, mask);
-            var visitor = new ChromatogramVisitor(Namespace.FindEntry(DataKind.Metadata)?.ColumnMappings);
-            visitor.Visit(recs);
-            rec = visitor.Values[0];
+            var found = Compute.Compute.BinarySearch(idxArr, index);
+            if (found == -1) continue;
+            using (var seg = chunk.SliceShared(found, 1))
+            {
+                var visitor = new ChromatogramVisitor(Namespace.FindEntry(DataKind.Metadata)?.ColumnMappings);
+                visitor.Visit(seg);
+                rec = visitor.Values[0];
+            }
             break;
         }
         if (rec == null) throw new IndexOutOfRangeException($"{index} out of chromatogram index range");
@@ -843,15 +843,15 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             {
                 var chunk = (StructArray)PrecursorMetadata.Array(i);
                 idxArr = (UInt64Array)chunk.Fields[0];
-                var first = Compute.Compute.FirstNotNull(idxArr);
-                var last = Compute.Compute.LastNotNull(idxArr);
-                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-                var mask = Compute.Compute.Equal(idxArr, index);
-                var recs = Compute.Compute.Filter(chunk, mask);
+                if (idxArr.First() > index || idxArr.Last() < index) continue;
+                var found = Compute.Compute.BinarySearchBetween(idxArr, index);
+                if (found == null) continue;
                 var visitor = new PrecursorVisitor(Namespace.FindEntry(DataKind.Precursors)?.ColumnMappings);
-                visitor.Visit(recs);
-                precursorInfos.AddRange(visitor.Values);
-                break;
+                using (var seg = chunk.SliceShared(found.Start, found.Count))
+                {
+                    visitor.Visit(seg);
+                    precursorInfos.AddRange(visitor.Values);
+                }
             }
         }
         List<SelectedIonInfo> selectedIons = new();
@@ -861,17 +861,19 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
             {
                 var chunk = (StructArray)SelectedIonMetadata.Array(i);
                 idxArr = (UInt64Array)chunk.Fields[0];
-                var first = Compute.Compute.FirstNotNull(idxArr);
-                var last = Compute.Compute.LastNotNull(idxArr);
-                if (last == null || first == null || first.Value.Item1 > index || last.Value.Item1 < index) continue;
-                var mask = Compute.Compute.Equal(idxArr, index);
-                var recs = Compute.Compute.Filter(chunk, mask);
+                if (idxArr.First() > index || idxArr.Last() < index) continue;
+                var found = Compute.Compute.BinarySearchBetween(idxArr, index);
+                if (found == null) continue;
                 var visitor = new SelectedIonVisitor(Namespace.FindEntry(DataKind.SelectedIons)?.ColumnMappings);
-                visitor.Visit(recs);
-                selectedIons.AddRange(visitor.Values);
+                using (var seg = chunk.SliceShared(found.Start, found.Count))
+                {
+                    visitor.Visit(seg);
+                    selectedIons.AddRange(visitor.Values);
+                }
                 break;
             }
         }
+
         return new ChromatogramDescription(rec, precursorInfos, selectedIons);
     }
 

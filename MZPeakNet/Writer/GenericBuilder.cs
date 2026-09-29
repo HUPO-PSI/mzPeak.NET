@@ -259,11 +259,11 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         // Optional spectrum properties (commonly present)
         new CustomBuilderFromParam(SpectrumProperties.NumberOfDataPoints.CURIE(), "number of data points", new UInt64Type()),
         new CustomBuilderFromParam(SpectrumProperties.NumberOfPeaks.CURIE(), "number of peaks", new UInt64Type()),
-        new CustomBuilderFromParam(SpectrumProperties.BasePeakMZ.CURIE(), "base peak mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.BasePeakIntensity.CURIE(), "base peak intensity", new DoubleType(), Unit.MZ.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.TotalIonCurrent.CURIE(), "total ion current", new DoubleType(), Unit.MZ.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.LowestObservedMZ.CURIE(), "lowest observed mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
-        new CustomBuilderFromParam(SpectrumProperties.HighestObservedMZ.CURIE(), "highest observed mz", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.BasePeakMZ.CURIE(), "base peak mz", new DoubleType(), Unit.MZ.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.BasePeakIntensity.CURIE(), "base peak intensity", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.TotalIonCurrent.CURIE(), "total ion current", new DoubleType(), Unit.NumberOfDetectorCounts.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.LowestObservedMZ.CURIE(), "lowest observed mz", new DoubleType(), Unit.MZ.CURIE()),
+        new CustomBuilderFromParam(SpectrumProperties.HighestObservedMZ.CURIE(), "highest observed mz", new DoubleType(), Unit.MZ.CURIE()),
     })
     {
         Index = new();

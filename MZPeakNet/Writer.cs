@@ -549,10 +549,10 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">Dictionary mapping array index entries to arrays.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool? isProfile = null)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool isProfile)
     {
         EntryDerivedMetadata r;
-        if (isProfile != null && !(bool)isProfile)
+        if (!isProfile)
         {
             r = SpectrumPeakData.Add(entryIndex, arrays, isProfile);
             if (ShouldFlushSpectrumPeakData())
@@ -575,10 +575,10 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The data arrays to add.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool? isProfile = null)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<Array> arrays, bool isProfile)
     {
         EntryDerivedMetadata r;
-        if (isProfile != null && !(bool)isProfile)
+        if (!isProfile)
         {
             r = SpectrumPeakData.Add(entryIndex, arrays, isProfile);
             if (ShouldFlushSpectrumPeakData())
@@ -601,10 +601,10 @@ public class MZPeakWriter : IDisposable
     /// <param name="entryIndex">The spectrum index.</param>
     /// <param name="arrays">The Arrow arrays to add.</param>
     /// <param name="isProfile">Whether the spectrum is profile mode.</param>
-    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool? isProfile = null)
+    public EntryDerivedMetadata AddSpectrumData(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool isProfile)
     {
         EntryDerivedMetadata r;
-        if (isProfile != null && !(bool)isProfile)
+        if (!isProfile)
         {
             r = SpectrumPeakData.Add(entryIndex, arrays, isProfile);
             if (ShouldFlushSpectrumPeakData())
