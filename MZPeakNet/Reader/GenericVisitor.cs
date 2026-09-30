@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Storage;
@@ -547,6 +548,21 @@ public interface IPrimitiveTypeVisitor
         }
     }
 
+    public IEnumerable<ulong?> VisitUnsignedInteger<U>(PrimitiveArray<U> array) where U : struct, INumber<U>
+    {
+        for (int i = 0; i < array.Length; i++)
+        {
+            var value = array.GetValue(i);
+            if (value == null)
+                yield return null;
+            else
+            {
+                var v = (U)value;
+                yield return ulong.CreateChecked(v);
+            }
+        }
+    }
+
     public IEnumerable<double?> VisitFloat<U>(PrimitiveArray<U> array) where U : struct, INumber<U>
     {
         for (int i = 0; i < array.Length; i++)
@@ -613,6 +629,45 @@ public interface IPrimitiveTypeVisitor
             case ArrowTypeId.UInt64:
                 {
                     return VisitInteger((UInt64Array)array);
+                }
+            default: throw new InvalidCastException($"Could not convert {array.Data.DataType.Name} to an integer");
+        }
+    }
+    public IEnumerable<ulong?> VisitUnsignedInteger(IArrowArray array)
+    {
+        switch (array.Data.DataType.TypeId)
+        {
+            case ArrowTypeId.Int8:
+                {
+                    return VisitUnsignedInteger((Int8Array)array);
+                }
+            case ArrowTypeId.Int16:
+                {
+                    return VisitUnsignedInteger((Int16Array)array);
+                }
+            case ArrowTypeId.Int32:
+                {
+                    return VisitUnsignedInteger((Int32Array)array);
+                }
+            case ArrowTypeId.Int64:
+                {
+                    return VisitUnsignedInteger((Int64Array)array);
+                }
+            case ArrowTypeId.UInt8:
+                {
+                    return VisitUnsignedInteger((UInt8Array)array);
+                }
+            case ArrowTypeId.UInt16:
+                {
+                    return VisitUnsignedInteger((UInt16Array)array);
+                }
+            case ArrowTypeId.UInt32:
+                {
+                    return VisitUnsignedInteger((UInt32Array)array);
+                }
+            case ArrowTypeId.UInt64:
+                {
+                    return VisitUnsignedInteger((UInt64Array)array);
                 }
             default: throw new InvalidCastException($"Could not convert {array.Data.DataType.Name} to an integer");
         }
@@ -1375,7 +1430,7 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
             else if (f.Name == "activation") VisitActivationParameters(arr);
             else if (f.Name == "isolation_window") VisitIsolationWindowParameters(arr);
             else if (f.Name == "source_index") { }
-            else { }
+            else { MzPeakReader.Logger?.LogWarning($"Unexpected field {f.Name} of type {f.DataType} in PrecursorVisitor"); }
         }
     }
 

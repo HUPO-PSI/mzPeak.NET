@@ -673,6 +673,8 @@ public class AuxiliaryArray : IHasParameters
     /// <summary>The Apache Arrow type for this array.</summary>
     public ArrowType ArrowType => DataType.ArrowType();
 
+    public string? DataProcessesingRef;
+
     List<Param> IHasParameters.Parameters { get => Parameters; set => Parameters = value; }
 
     /// <summary>Creates an auxiliary array with the specified data and metadata.</summary>
@@ -682,7 +684,8 @@ public class AuxiliaryArray : IHasParameters
     /// <param name="unit">Optional unit of measurement.</param>
     /// <param name="compression">Compression method applied to the data.</param>
     /// <param name="parameters">Optional additional parameters.</param>
-    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression = Compression.NoCompression, List<Param>? parameters = null)
+    /// <param name="dataProcessingRef">The data processing pipeline applied to this array, instead of the default.</param>
+    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression = Compression.NoCompression, List<Param>? parameters = null, string? dataProcessingRef = null)
     {
         Data = data;
         Name = name;
@@ -690,6 +693,7 @@ public class AuxiliaryArray : IHasParameters
         Unit = unit;
         Compression = compression;
         Parameters = parameters ?? new();
+        DataProcessesingRef = dataProcessingRef;
     }
 
     /// <summary>Returns a typed view of the array data.</summary>
@@ -780,7 +784,8 @@ public class AuxiliaryArray : IHasParameters
         var name = new Param(entry.ArrayName, entry.ArrayTypeCURIE, null, entry.UnitCURIE);
         var dataType = BinaryDataTypeMethods.FromCURIE[entry.DataTypeCURIE];
         var unit = entry.GetUnit();
-        var bytes = new Memory<byte>(buffer.GetBuffer());
+
+        var bytes = buffer.ToArray();
         return new AuxiliaryArray(bytes, name, dataType, unit, Compression.NoCompression);
     }
 }

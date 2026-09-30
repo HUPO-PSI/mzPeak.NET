@@ -948,12 +948,12 @@ public class ChunkLayoutReader : BaseLayoutReader
             else
             {
                 var valsAt = colIsLarge ? ((LargeListArray)col).GetSlicedValues(i) : ((ListArray)col).GetSlicedValues(i);
-                var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 4);
+                var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).Values);
                 if (arrowType.TypeId == ArrowTypeId.Float)
                     valsAt = Compute.CastFloat(decoded);
                 else
                     valsAt = Compute.CastDouble(decoded);
-                chunks.Add((FloatArray)valsAt);
+                chunks.Add(valsAt);
             }
         }
         return chunks;
@@ -1042,7 +1042,7 @@ public class ChunkLayoutReader : BaseLayoutReader
                         if (arr.IsNull(i)) throw new InvalidOperationException("Transformed main axis array slot cannot be null");
                         var values = (PrimitiveArray<byte>)(chunkValuesIsLarge ? ((LargeListArray)arr).GetSlicedValues(i) : ((ListArray)arr).GetSlicedValues(i));
 
-                        var valuesNat = Numpress.MSNumpress.decode(NUMPRESS_LINEAR_CURIE, values.ValueBuffer.Span, values.Length * 3);
+                        var valuesNat = Numpress.MSNumpress.decode(NUMPRESS_LINEAR_CURIE, values.Values);
                         decodedValues.Add(chunkValueDouble ? Compute.CastDouble(valuesNat) : Compute.CastFloat(valuesNat));
                         break;
                     }
@@ -1087,7 +1087,7 @@ public class ChunkLayoutReader : BaseLayoutReader
                                     valsAt = (FloatArray)Compute.NullToZero((FloatArray)valsAt);
                                 else if (entry.Transform == NUMPRESS_SLOF_CURIE)
                                 {
-                                    var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
+                                    var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span);
                                     valsAt = Compute.CastFloat(decoded);
                                 }
                                 if (isTracing)
@@ -1110,7 +1110,7 @@ public class ChunkLayoutReader : BaseLayoutReader
                                     valsAt = Compute.NullToZero((DoubleArray)valsAt);
                                 else if (entry.Transform == NUMPRESS_SLOF_CURIE)
                                 {
-                                    var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span, valsAt.Length * 3);
+                                    var decoded = Numpress.MSNumpress.decode(NUMPRESS_SLOF_CURIE, ((UInt8Array)valsAt).ValueBuffer.Span);
                                     valsAt = Compute.CastDouble(decoded);
                                 }
                                 if (isTracing)

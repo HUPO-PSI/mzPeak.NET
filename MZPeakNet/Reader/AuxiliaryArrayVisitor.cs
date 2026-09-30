@@ -1,5 +1,6 @@
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 
@@ -57,7 +58,7 @@ public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
             else if (f.Name == "data_processing_ref") VisitDataProcessingRef(arr);
             else
             {
-
+                MzPeakReader.Logger?.LogWarning($"Unexpected field {f.Name} of type {f.DataType} in AuxiliaryArrayVisitor");
             }
         }
         Build();
@@ -241,7 +242,15 @@ public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
         for (var i = 0; i < DataArrays.Count; i++)
         {
             Values.Add(
-                new AuxiliaryArray(DataArrays[i], Names[i], DataTypes[i], Units[i], Compressions[i], ParameterLists.ParamsLists[i])
+                new AuxiliaryArray(
+                    DataArrays[i],
+                    Names[i],
+                    DataTypes[i],
+                    Units[i],
+                    Compressions[i],
+                    ParameterLists.ParamsLists[i],
+                    DataProcessingRefs[i]
+                )
             );
         }
     }

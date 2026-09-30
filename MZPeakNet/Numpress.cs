@@ -120,15 +120,16 @@ public static class MSNumpress
     ///
     /// the corresponding decode function will be called.
     /// </remarks>
-    public static List<double> decode(string cvAccession, ReadOnlySpan<byte> data, int dataSize)
+    public static List<double> decode(string cvAccession, ReadOnlySpan<byte> data)
     {
+        var dataSize = data.Length;
         if (cvAccession == ACC_NUMPRESS_LINEAR)
         {
             if (dataSize < 8 || data.Length < 8)
                 throw new ArgumentException("Cannot decode numLin data, need at least 8 initial bytes for fixed point.");
 
             List<double> buffer = [];
-            buffer.Capacity = dataSize * 2;
+            buffer.Capacity = dataSize / 2;
             int nbrOfDoubles = decodeLinear(data, dataSize, buffer);
             if (nbrOfDoubles < 0)
                 throw new ArgumentException("Corrupt numLin data!");
@@ -387,10 +388,10 @@ public static class MSNumpress
         long y;
         var dec = new IntDecoder(data, 16);
 
-        if (dataSize == 8) return 0;
-        if (dataSize < 8) return -1;
+        if (data.Length == 8) return 0;
+        if (data.Length < 8) return -1;
         double fixedPoint = decodeFixedPoint(data);
-        if (dataSize < 12) return -1;
+        if (data.Length < 12) return -1;
 
         ints[1] = 0;
         for (int i = 0; i < 4; i++)
@@ -399,8 +400,8 @@ public static class MSNumpress
         }
         result.Add(ints[1] / fixedPoint);
 
-        if (dataSize == 12) return 1;
-        if (dataSize < 16) return -1;
+        if (data.Length == 12) return 1;
+        if (data.Length < 16) return -1;
 
         ints[2] = 0;
         for (int i = 0; i < 4; i++)
@@ -409,9 +410,9 @@ public static class MSNumpress
         }
         result.Add(ints[2] / fixedPoint);
 
-        while (dec.pos < dataSize)
+        while (dec.pos < data.Length)
         {
-            if (dec.pos == (dataSize - 1) && dec.half)
+            if (dec.pos == (data.Length - 1) && dec.half)
                 if ((data[dec.pos] & 0xf) != 0x8)
                     break;
 

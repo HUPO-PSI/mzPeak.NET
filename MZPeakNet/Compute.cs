@@ -1279,7 +1279,7 @@ public static class Compute
         }
         if(array.GetValue(i) != value)
         {
-            i = Math.Max(i + 1, n);
+            i = Math.Min(i + 1, n);
         }
         int start = i;
         i = mid;

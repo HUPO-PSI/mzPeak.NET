@@ -1,5 +1,6 @@
 using Apache.Arrow;
 using Apache.Arrow.Types;
+using Microsoft.Extensions.Logging;
 using MZPeak.ControlledVocabulary;
 
 namespace MZPeak.Reader.Visitors;
@@ -90,6 +91,7 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
                     var v = vals.GetValue(i);
                     if (v != null)
                     {
+                        if (Params[i].rawValue != null) MzPeakReader.Logger?.LogWarning($"Parameter value {i} overwritten");
                         Params[i].rawValue = v;
                     }
                 }
@@ -102,6 +104,7 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
                     var v = vals.GetValue(i);
                     if (v != null)
                     {
+                        if (Params[i].rawValue != null) MzPeakReader.Logger?.LogWarning($"Parameter value {i} overwritten");
                         Params[i].rawValue = v;
                     }
                 }
@@ -116,6 +119,7 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
                         if (vals.IsValid(i))
                         {
                             var v = vals.GetString(i);
+                            if (Params[i].rawValue != null) MzPeakReader.Logger?.LogWarning($"Parameter value {i} overwritten");
                             Params[i].rawValue = v;
                         }
                     }
@@ -142,6 +146,7 @@ public class ParamVisitor : IArrowArrayVisitor<StructArray>
                     var v = vals.GetValue(i);
                     if (v != null)
                     {
+                        if (Params[i].rawValue != null) MzPeakReader.Logger?.LogWarning($"Parameter value {i} overwritten");
                         Params[i].rawValue = v;
                     }
                 }

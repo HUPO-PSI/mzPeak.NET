@@ -57,10 +57,10 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
     public List<Field> ArrowType()
     {
         var dataType = new StructType([
-            new Field("data", new ListType(new UInt8Type()), true),
-            new Field("name", Name.ArrowType()[0].DataType, true),
-            new Field("data_type", new StringType(), true),
-            new Field("compression", new StringType(), true),
+            new Field("data", new ListType(new UInt8Type()), false),
+            new Field("name", Name.ArrowType()[0].DataType, false),
+            new Field("data_type", new StringType(), false),
+            new Field("compression", new StringType(), false),
             new Field("unit", new StringType(), true),
             Parameters.ArrowType()[0],
             new Field("data_processing_ref", new StringType(), true),
@@ -86,12 +86,16 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
     public void Clear()
     {
         Data.Clear();
+        Data.Append();
+
         Name.Clear();
         DataType.Clear();
         Compression.Clear();
         Unit.Clear();
         DataProcessingRef.Clear();
-        Data.Append();
+
+        Parameters.Clear();
+        Parameters.Append();
     }
 
     public List<ColumnMapping> ColumnMappings()

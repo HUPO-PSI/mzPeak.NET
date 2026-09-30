@@ -512,7 +512,7 @@ public static class GridModel
             {
                 var last = indicesOf.GetValue(0);
                 if (last == null) accumulator.AppendNull();
-                else model.FromIndex(last.Value);
+                else accumulator.Append(model.FromIndex(last.Value));
                 for (var j = 1; j < indicesOf.Length; j++)
                 {
                     var v = indicesOf.GetValue(j);
