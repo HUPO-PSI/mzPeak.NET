@@ -82,6 +82,50 @@ public record ParquetDataWriterConfig(
 );
 
 
+public record SpectrumDataWriterOptions(
+    bool UseChunked = false,
+    bool ChunkedEncodingUseMSNumpressLinearEncoding = false,
+    bool ChunkedEncodingUseBasicEncoding = false,
+    bool ChunkedEncodingIntensitySLOF = false,
+    bool UseNullMarking = false,
+    bool ShouldRemoveZeroRuns = true
+)
+{
+    public static implicit operator SpectrumDataWriterOptions(bool value)
+    {
+        return new SpectrumDataWriterOptions(value);
+    }
+}
+
+
+public record SpectrumPeakDataWriterOptions(
+    bool UseChunked = false,
+    bool ChunkedEncodingUseMSNumpressLinearEncoding = false,
+    bool ChunkedEncodingUseBasicEncoding = false,
+    bool ChunkedEncodingIntensitySLOF = false
+)
+{
+    public static implicit operator SpectrumPeakDataWriterOptions(bool value)
+    {
+        return new SpectrumPeakDataWriterOptions(value);
+    }
+}
+
+
+public record ChromatogramDataWriterOptions(
+    bool UseChunked = false,
+    bool ChunkedEncodingUseMSNumpressLinearEncoding = false,
+    bool ChunkedEncodingUseBasicEncoding = false,
+    bool ChunkedEncodingIntensitySLOF = false
+)
+{
+    public static implicit operator ChromatogramDataWriterOptions(bool value)
+    {
+        return new  ChromatogramDataWriterOptions(value);
+    }
+}
+
+
 /// <summary>
 /// Writer for creating mzPeak archive files containing mass spectrometry data.
 /// </summary>
@@ -114,9 +158,6 @@ public class MZPeakWriter : IDisposable
 
     bool standardContentFlushed = false;
 
-    public bool SpectrumHasArrayType(ArrayType arrayType) => SpectrumData.HasArrayType(arrayType);
-    public bool SpectrumPeaksHasArrayType(ArrayType arrayType) => SpectrumPeakData.HasArrayType(arrayType);
-    public bool ChromatogramHasArrayType(ArrayType arrayType) => ChromatogramData.HasArrayType(arrayType);
 
     public EncryptionConfigurations EncryptionConfigurations { get; set; }
 
@@ -124,6 +165,14 @@ public class MZPeakWriter : IDisposable
 
     FileIndexEntry? CurrentEntry;
     FileWriter? CurrentWriter;
+
+    public bool SpectraShouldRemoveZeroRuns
+        {
+            get => SpectrumData.ShouldRemoveZeroRuns;
+            set => SpectrumData.ShouldRemoveZeroRuns = value;
+        }
+
+    #region Metadata Collection Properties
 
     /// <summary>Gets or sets the file description metadata.</summary>
     public FileDescription FileDescription { get => MzPeakMetadata.FileDescription; set => MzPeakMetadata.FileDescription = value; }
@@ -139,6 +188,10 @@ public class MZPeakWriter : IDisposable
     public MSRun Run { get => MzPeakMetadata.Run; set => MzPeakMetadata.Run = value; }
     /// <summary>Gets or sets the list of scan settings.</summary>
     public List<ScanSettings> ScanSettings { get => MzPeakMetadata.ScanSettings; set => MzPeakMetadata.ScanSettings = value; }
+
+    #endregion
+
+    #region Array Index Behaviors
 
     protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)
     {
@@ -163,6 +216,35 @@ public class MZPeakWriter : IDisposable
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
+
+    public bool SpectrumHasArrayType(ArrayType arrayType) => SpectrumData.HasArrayType(arrayType);
+    public bool SpectrumPeaksHasArrayType(ArrayType arrayType) => SpectrumPeakData.HasArrayType(arrayType);
+    public bool ChromatogramHasArrayType(ArrayType arrayType) => ChromatogramData.HasArrayType(arrayType);
+
+    public ArrayIndex SpectrumArrayIndex => SpectrumData.ArrayIndex;
+    public ArrayIndex ChromatogramArrayIndex => ChromatogramData.ArrayIndex;
+    public ArrayIndex SpectrumPeakArrayIndex => SpectrumPeakData.ArrayIndex;
+
+    public void SpectraUseNullMarking()
+    {
+        if (State != WriterState.Start) throw new InvalidOperationException($"Cannot enable null marking after writing has already begun");
+        int k = 0;
+        foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
+        {
+            k += 1;
+            e.Transform = NullInterpolation.NullInterpolateCURIE;
+        }
+        if (k == 0) throw new InvalidOperationException($"Failed to update transform for any m/z array entries from {SpectrumArrayIndex.Entries}");
+        k = 0;
+        foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
+        {
+            k += 1;
+            e.Transform = NullInterpolation.NullZeroCURIE;
+        }
+        if (k == 0) throw new InvalidOperationException($"Failed to update transform for any intensity array entries from {SpectrumArrayIndex.Entries}");
+    }
+
+    #endregion
 
     protected SchemaDescriptor TranslateSchema(Schema schema)
     {
@@ -363,10 +445,6 @@ public class MZPeakWriter : IDisposable
         }
     }
 
-    public ArrayIndex SpectrumArrayIndex => SpectrumData.ArrayIndex;
-    public ArrayIndex ChromatogramArrayIndex => ChromatogramData.ArrayIndex;
-    public ArrayIndex SpectrumPeakArrayIndex => SpectrumPeakData.ArrayIndex;
-
     /// <summary>
     /// Set the current grid policy for the provided array type for mass spectrum profile.
     ///
@@ -511,26 +589,6 @@ public class MZPeakWriter : IDisposable
         WavelengthSpectrumMetadata = null;
         DataWriterConfig = dataWriterConfig ?? new();
     }
-
-    public void SpectraUseNullMarking()
-    {
-        if (State != WriterState.Start) throw new InvalidOperationException($"Cannot enable null marking after writing has already begun");
-        int k = 0;
-        foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.MZArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkValues))
-        {
-            k += 1;
-            e.Transform = NullInterpolation.NullInterpolateCURIE;
-        }
-        if (k == 0) throw new InvalidOperationException($"Failed to update transform for any m/z array entries from {SpectrumArrayIndex.Entries}");
-        k = 0;
-        foreach (var e in SpectrumArrayIndex.EntriesFor(ArrayType.IntensityArray).Where(e => e.BufferFormat == BufferFormat.Point || e.BufferFormat == BufferFormat.ChunkSecondary))
-        {
-            k += 1;
-            e.Transform = NullInterpolation.NullZeroCURIE;
-        }
-        if (k == 0) throw new InvalidOperationException($"Failed to update transform for any intensity array entries from {SpectrumArrayIndex.Entries}");
-    }
-
     /// <summary>Gets the current spectrum index.</summary>
     public ulong CurrentSpectrum => SpectrumMetadata.SpectrumCounter;
     /// <summary>Gets the current chromatogram index.</summary>

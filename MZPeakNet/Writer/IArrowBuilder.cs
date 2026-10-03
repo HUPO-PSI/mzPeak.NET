@@ -22,6 +22,13 @@ public interface IArrowBuilder<T>
         return new RecordBatch(schema, arrays, arrays[0].Length);
     }
 
+    /// <summary>
+    /// Clear the member builders and reset them to an empty state.
+    ///
+    /// When building nested list arrays, they SHOULD immediately call Append() to create an
+    /// offset = 0 entry that is required for compatibility with the C++ implementation.
+    /// See <a>https://github.com/apache/arrow-dotnet/discussions/321</a>
+    /// </summary>
     public void Clear();
 
     public int Length { get; }

@@ -981,9 +981,23 @@ public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffse
     }
 }
 
+/// <summary>
+/// Types using this interface come from a *source* entity at a given index, and may have
+/// its own identifying index. This type may require two passes over the fields of a struct,
+/// one to find the `source_index` field
+/// </summary>
+/// <typeparam name="T"></typeparam>
 public interface IHasSourceIndexVisitor<T> : IVisitorAssemblyWithOffsets<T> where T : IHasSourceIndex
 {
     public T CreateFromIndex(ulong index);
+
+    public void InitializeFromSourceIndex(StructArray array)
+    {
+        var index = ((StructType)array.Data.DataType).GetFieldIndex("source_index");
+        if (index == -1)
+            throw new InvalidDataException($"source_index column is missing from {GetType().FullName}");
+        VisitSourceIndex(array.Fields[index]);
+    }
 
     public void VisitSourceIndex(IArrowArray array)
     {
@@ -1177,15 +1191,7 @@ public class ScanVisitor : IVisitorAssemblyWithOffsets<ScanInfo>, IHasIonMobilit
         Offsets.Clear();
 
         var dtype = (StructType)array.Data.DataType;
-
-        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
-        {
-            if (f.Name == "source_index")
-            {
-                ((IHasSourceIndexVisitor<ScanInfo>)this).VisitSourceIndex(arr);
-                break;
-            }
-        }
+        ((IHasSourceIndexVisitor<ScanInfo>)this).InitializeFromSourceIndex(array);
 
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
@@ -1332,15 +1338,8 @@ public class SelectedIonVisitor : IVisitorAssemblyWithOffsets<SelectedIonInfo>, 
         Offsets.Clear();
 
         var dtype = (StructType)array.Data.DataType;
+        ((IHasSourceIndexVisitor<SelectedIonInfo>)this).InitializeFromSourceIndex(array);
 
-        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
-        {
-            if (f.Name == "source_index")
-            {
-                ((IHasSourceIndexVisitor<SelectedIonInfo>)this).VisitSourceIndex(arr);
-                break;
-            }
-        }
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
             if (f.Name == "precursor_index") ((IHasPrecursorIndexVisitor<SelectedIonInfo>)this).VisitPrecursorIndex(arr);
@@ -1414,15 +1413,8 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
         Offsets.Clear();
 
         var dtype = (StructType)array.Data.DataType;
+        ((IHasSourceIndexVisitor<PrecursorInfo>)this).InitializeFromSourceIndex(array);
 
-        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
-        {
-            if (f.Name == "source_index")
-            {
-                ((IHasSourceIndexVisitor<PrecursorInfo>)this).VisitSourceIndex(arr);
-                break;
-            }
-        }
         foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
         {
             if (f.Name == "precursor_index") ((IHasPrecursorIndexVisitor<PrecursorInfo>)this).VisitPrecursorIndex(arr);

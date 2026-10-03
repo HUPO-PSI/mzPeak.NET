@@ -307,8 +307,41 @@ public abstract class BaseDataLayoutWriter
     public virtual void SetGridPolicy(ArrayType arrayType, GridPolicy? policy) {}
     public virtual GridPolicy? GetGridPolicy(ArrayType method) => null;
 
+    /// <summary>
+    /// Write the provided group of arrays to table.
+    ///
+    /// After calling, the following invariants will be upheld:
+    /// <list type="bullet">
+    ///     <item><c>ClearGridPolicies</c> is called</item>
+    ///     <item>The arrays in the index not in the provided group will be null padded to match length</item>
+    /// </list>
+    /// </summary>
+    /// <param name="entryIndex"></param>
+    /// <param name="arrays"></param>
+    /// <param name="isProfile"></param>
+    /// <returns></returns>
     public abstract EntryDerivedMetadata Add(ulong entryIndex, Dictionary<ArrayIndexEntry, Array> arrays, bool isProfile);
+
+    /// <summary>
+    /// This is an alternative signature for <c cref="Add">Add</c> that uses the ArrayIndex member
+    /// to decide which arrays in <paramref name="arrays"/> belong to which columns. If not consistent,
+    /// this can lead to undesirable cross-talk. Prefer the Dictionary-based signature.
+    /// </summary>
+    /// <param name="entryIndex"></param>
+    /// <param name="arrays"></param>
+    /// <param name="isProfile"></param>
+    /// <returns></returns>
     public abstract EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool isProfile);
+
+    /// <summary>
+    /// This is an alternative signature for <c cref="Add">Add</c> that uses the ArrayIndex member
+    /// to decide which arrays in <paramref name="arrays"/> belong to which columns. If not consistent,
+    /// this can lead to undesirable cross-talk. Prefer the Dictionary-based signature.
+    /// </summary>
+    /// <param name="entryIndex"></param>
+    /// <param name="arrays"></param>
+    /// <param name="isProfile"></param>
+    /// <returns></returns>
     public EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<IArrowArray> arrays, bool isProfile)
     {
         return Add(entryIndex, arrays.Select(a => (Array)a), isProfile);
@@ -742,6 +775,14 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     {
         (arrays, var deltaModel, var auxiliaryArrays) = Preprocess(entryIndex, arrays, isProfile);
         var mainAxis = arrays[MainAxisEntry];
+
+        // If the main axis array type has a grid encoding set, this batch will be written
+        // with the chunk encoding set for grid.
+        var mainAxisArrayType = MainAxisEntry.GetArrayType();
+        if (mainAxisArrayType != null && GetGridPolicy(mainAxisArrayType.Value) != null)
+        {
+            CurrentMainAxisEncodingCURIE = GridCodec.CURIE;
+        }
 
         var spans = Chunking.ChunkEvery(mainAxis, ChunkSize);
 
