@@ -279,6 +279,91 @@ public class WriteTest
         Assert.Equal(nPoints ?? nPeaks ?? 0, param0.AsLong());
     }
 
+    async Task<(double[] mzs, double[] intensities, double[] mzsBack, double[] intensitiesBack)> RoundTripSpectrumWithOptions(SpectrumDataWriterOptions options)
+    {
+        var stream = new MemoryStream();
+        var reader = new MzPeakReader(PointArchive);
+        var dat0 = await reader.GetSpectrumData(0);
+        var meta0 = reader.GetSpectrumDescription(0);
+        Assert.NotNull(dat0);
+        Assert.True(meta0.IsProfile);
+
+        var writer = new MZPeakWriter(new ZipStreamArchiveWriter<MemoryStream>(stream), spectrumDataOptions: options);
+        var derivedMeta = writer.AddSpectrumData(writer.CurrentSpectrum, dat0.Fields.Skip(1), meta0.IsProfile);
+        writer.AddSpectrum(meta0.Id, meta0.Time, null, meta0.Parameters, derivedMeta);
+        writer.Close();
+
+        stream.Position = 0;
+        var dupReader = new MzPeakReader(new ZipArchiveStream<MemoryStream>(stream));
+        var dupDat0 = await dupReader.GetSpectrumData(0);
+        Assert.NotNull(dupDat0);
+        return (
+            Compute.CastDouble(dat0.Fields[1]).Values.ToArray(),
+            Compute.CastDouble(dat0.Fields[2]).Values.ToArray(),
+            Compute.CastDouble(dupDat0.Fields[1]).Values.ToArray(),
+            Compute.CastDouble(dupDat0.Fields[2]).Values.ToArray()
+        );
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WriteChunkedOptions_Lossless(bool basicEncoding)
+    {
+        var (mzs, intensities, mzsBack, intensitiesBack) = await RoundTripSpectrumWithOptions(
+            new SpectrumDataWriterOptions(UseChunked: true, ChunkedEncodingUseBasicEncoding: basicEncoding, ShouldRemoveZeroRuns: false));
+        Assert.Equal(mzs, mzsBack);
+        Assert.Equal(intensities, intensitiesBack);
+    }
+
+    [Fact]
+    public async Task WriteChunkedOptions_NumpressLinear()
+    {
+        var (mzs, intensities, mzsBack, intensitiesBack) = await RoundTripSpectrumWithOptions(
+            new SpectrumDataWriterOptions(UseChunked: true, ChunkedEncodingUseMSNumpressLinearEncoding: true, ShouldRemoveZeroRuns: false));
+        Assert.Equal(mzs.Length, mzsBack.Length);
+        for (var i = 0; i < mzs.Length; i++)
+            Assert.True(Math.Abs(mzs[i] - mzsBack[i]) < 1e-4, $"m/z {mzs[i]} != {mzsBack[i]} at {i}");
+        Assert.Equal(intensities, intensitiesBack);
+    }
+
+    [Fact]
+    public async Task WriteChunkedOptions_IntensitySLOF()
+    {
+        var (mzs, intensities, mzsBack, intensitiesBack) = await RoundTripSpectrumWithOptions(
+            new SpectrumDataWriterOptions(UseChunked: true, ChunkedEncodingIntensitySLOF: true, ShouldRemoveZeroRuns: false));
+        Assert.Equal(mzs, mzsBack);
+        Assert.Equal(intensities.Length, intensitiesBack.Length);
+        for (var i = 0; i < intensities.Length; i++)
+        {
+            var err = Math.Abs(intensities[i] - intensitiesBack[i]) / Math.Max(Math.Abs(intensities[i]), 1.0);
+            Assert.True(err < 1e-3, $"intensity {intensities[i]} != {intensitiesBack[i]} at {i}");
+        }
+    }
+
+    [Fact]
+    public void WriterOptions_Conflicts()
+    {
+        Assert.Throws<ArgumentException>(() => new MZPeakWriter(
+            new ZipStreamArchiveWriter<MemoryStream>(new MemoryStream()),
+            spectrumDataOptions: new SpectrumDataWriterOptions(UseChunked: true, ChunkedEncodingUseMSNumpressLinearEncoding: true, ChunkedEncodingUseBasicEncoding: true)));
+        Assert.Throws<ArgumentException>(() => new MZPeakWriter(
+            new ZipStreamArchiveWriter<MemoryStream>(new MemoryStream()),
+            spectrumDataOptions: new SpectrumDataWriterOptions(UseChunked: true, ChunkedEncodingIntensitySLOF: true, UseNullMarking: true)));
+    }
+
+    [Fact]
+    public void WriterOptions_ChunkedPeaksAndChromatograms()
+    {
+        var writer = new MZPeakWriter(
+            new ZipStreamArchiveWriter<MemoryStream>(new MemoryStream()),
+            spectrumPeakDataOptions: true,
+            chromatogramDataOptions: true);
+        Assert.Contains(writer.SpectrumPeakArrayIndex.Entries, e => e.BufferFormat == BufferFormat.ChunkValues);
+        Assert.Contains(writer.ChromatogramArrayIndex.Entries, e => e.BufferFormat == BufferFormat.ChunkValues);
+        Assert.DoesNotContain(writer.SpectrumArrayIndex.Entries, e => e.BufferFormat == BufferFormat.ChunkValues);
+    }
+
     [Fact]
     public void WriteMemory_Test()
     {

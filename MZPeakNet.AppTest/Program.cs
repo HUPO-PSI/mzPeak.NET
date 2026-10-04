@@ -12,6 +12,7 @@ using MZPeak.Compute;
 using ParquetSharp;
 using ThermoFisher.CommonCore.Data;
 using MZPeak.ControlledVocabulary;
+using MZPeak.Writer;
 using MZPeak.Writer.Data;
 using Apache.Arrow.Types;
 
@@ -435,20 +436,17 @@ public class ThermoTranslateTask : CLITask
         var writer = new ThermoMZPeakWriter(
                 writerStorage,
                 spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, true),
-                useChunked: UseChunked,
-                includeNoise: true
+                includeNoise: true,
+                spectrumDataOptions: new SpectrumDataWriterOptions(UseChunked: UseChunked, UseNullMarking: UseNullMarking),
+                chromatogramDataOptions: UseChunked
             );
+        if (UseNullMarking)
+            Logger?.LogInformation("Using null marking");
         writer.DataWriterConfig = writer.DataWriterConfig with {
             PageSize = PageSize,
             RowGroupSize = RowGroupSize,
             CompressionLevel = ZstdLevel,
         };
-
-        if (UseNullMarking)
-        {
-            Logger?.LogInformation("Using null marking");
-            writer.SpectraUseNullMarking();
-        }
         return writer;
     }
 

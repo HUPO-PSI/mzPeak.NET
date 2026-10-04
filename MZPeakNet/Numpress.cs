@@ -571,6 +571,14 @@ public static class MSNumpress
         return ri;
     }
 
+    public static byte[] EncodeLinear(double[] data)
+    {
+        var fp = optimalLinearFixedPoint(data, data.Length);
+        var buf = new byte[data.Length * 5 + 8];
+        var z = encodeLinear(data, data.Length, buf, fp);
+        return buf[0..z];
+    }
+
     public static byte[] EncodeSlof(double[] data)
     {
         var fp = optimalSlofFixedPoint(data, data.Length);

@@ -634,12 +634,15 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
 
     public double ChunkSize { get; set; } = 50.0;
     public ArrayIndexEntry MainAxisEntry { get; set; }
+    /// <summary>The transform entry holding MS-Numpress linear encoded main axis chunks, if present in the array index.</summary>
+    public ArrayIndexEntry? MainAxisLinearEntry { get; set; }
     public Dictionary<ArrayType, GridPolicy> GridPolicies { get; set; }
 
     int MainAxisBuilderIdx;
     int StartValueBuilderIdx;
     int EndValueBuilderIdx;
     int EncodingBuilderIdx;
+    int LinearBuilderIdx = -1;
 
     public ChunkLayoutBuilder(ArrayIndex arrayIndex, string mainAxisEncodingCURIE = DeltaCodec.CURIE, double chunkSize = 50.0, Dictionary<ArrayType, GridPolicy>? gridPolicies = null) : base(arrayIndex)
     {
@@ -649,6 +652,16 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         MainAxisEntry = arrayIndex.Entries.Find(
             entry => entry.BufferFormat == BufferFormat.ChunkValues) ?? throw new InvalidDataException(
             $"No main axis array found in {BufferContext} array index");
+        MainAxisLinearEntry = arrayIndex.Entries.Find(
+            entry => entry.BufferFormat == BufferFormat.ChunkTransform
+                && entry.ArrayTypeCURIE == MainAxisEntry.ArrayTypeCURIE
+                && entry.Transform == MSNumpress.ACC_NUMPRESS_LINEAR);
+        if (mainAxisEncodingCURIE == MSNumpress.ACC_NUMPRESS_LINEAR && MainAxisLinearEntry == null)
+            throw new InvalidOperationException(
+                $"MS-Numpress linear chunk encoding requires a {MSNumpress.ACC_NUMPRESS_LINEAR} transform entry for the main axis in the {BufferContext} array index");
+        // InitializeBuilders runs in the base constructor, before MainAxisLinearEntry is known
+        if (MainAxisLinearEntry != null)
+            LinearBuilderIdx = (MainAxisLinearEntry.SchemaIndex ?? throw new InvalidOperationException("Schema index not assigned")) - 1;
         GridPolicies = gridPolicies ?? new();
     }
 
@@ -729,7 +742,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                         else
                         {
                             DataTypes.Add(new UInt8Type());
-                            Arrays.Add(new ListArray.Builder(new UInt8Type()));
+                            Arrays.Add(new ListArray.Builder(new UInt8Type()).Append());
                         }
                         break;
                     }
@@ -803,6 +816,12 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
             StartValueBuilderIdx,
             EndValueBuilderIdx
         };
+        ListArray.Builder? linearBuilder = null;
+        if (LinearBuilderIdx >= 0)
+        {
+            visited.Add(LinearBuilderIdx);
+            linearBuilder = (ListArray.Builder)Arrays[LinearBuilderIdx];
+        }
         var mainAxisBuilder = (ListArray.Builder)Arrays[MainAxisBuilderIdx];
         var startValBuilder = Arrays[StartValueBuilderIdx];
         var endValBuilder = Arrays[EndValueBuilderIdx];
@@ -852,7 +871,16 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
             }
 
             if (isTracing) Logger?.LogTrace($"{entryIndex} {startVal}-{endVal} has {chunk.Length} items");
-            if (CurrentMainAxisEncodingCURIE == DeltaCodec.CURIE)
+            if (CurrentMainAxisEncodingCURIE == MSNumpress.ACC_NUMPRESS_LINEAR)
+            {
+                if (linearBuilder == null) throw new InvalidOperationException("No MS-Numpress linear transform column is available");
+                ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(MSNumpress.ACC_NUMPRESS_LINEAR);
+                mainAxisBuilder.Append();
+                var buf = MSNumpress.EncodeLinear(ComputeFn.CastDouble(chunk).Values.ToArray());
+                ((UInt8Array.Builder)linearBuilder.ValueBuilder).AppendRange(buf);
+                linearBuilder.Append();
+            }
+            else if (CurrentMainAxisEncodingCURIE == DeltaCodec.CURIE)
             {
                 ((StringArray.Builder)Arrays[EncodingBuilderIdx]).Append(DeltaCodec.CURIE);
                 switch (MainAxisEntry.GetArrowType().TypeId)
@@ -897,6 +925,8 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                 }
             }
             else throw new NotImplementedException(CurrentMainAxisEncodingCURIE);
+            if (linearBuilder != null && CurrentMainAxisEncodingCURIE != MSNumpress.ACC_NUMPRESS_LINEAR)
+                linearBuilder.Append();
 
             foreach (var entry in ArrayIndex.Entries)
             {
@@ -920,15 +950,17 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                         }
                         else if (entry.Transform == MSNumpress.ACC_NUMPRESS_SLOF)
                         {
-                            var buf = MSNumpress.EncodeSlof(ComputeFn.CastDouble(array).Values.ToArray());
+                            var buf = MSNumpress.EncodeSlof(ComputeFn.CastDouble(arrayChunk).Values.ToArray());
                             var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
                             ((UInt8Array.Builder)builder.ValueBuilder).AppendRange(buf);
+                            builder.Append();
                         }
                         else if (entry.Transform == MSNumpress.ACC_NUMPRESS_PIC)
                         {
-                            var buf = MSNumpress.EncodePic(ComputeFn.CastDouble(array).Values.ToArray());
+                            var buf = MSNumpress.EncodePic(ComputeFn.CastDouble(arrayChunk).Values.ToArray());
                             var builder = (ListArray.Builder)Arrays[(int)entry.SchemaIndex - 1];
                             ((UInt8Array.Builder)builder.ValueBuilder).AppendRange(buf);
+                            builder.Append();
                         }
                         else if (entry.Transform == NullInterpolation.NullInterpolateCURIE || entry.Transform == NullInterpolation.NullZeroCURIE)
                         {
@@ -975,6 +1007,8 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
         {
             BufferFormat.ChunkSecondary => true,
             BufferFormat.ChunkValues => true,
+            // Secondary arrays stored only in a byte-encoded form
+            BufferFormat.ChunkTransform => e.Transform == MSNumpress.ACC_NUMPRESS_SLOF || e.Transform == MSNumpress.ACC_NUMPRESS_PIC,
             _ => false,
         }).Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs, isProfile);

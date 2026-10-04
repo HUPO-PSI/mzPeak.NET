@@ -514,6 +514,7 @@ public class ArrayIndexBuilder
     List<ArrayIndexEntry> Entries;
     BufferContext Context;
     BufferFormat Format;
+    List<string> MainAxisTransforms;
 
     internal ArrayIndexBuilder(string prefix, BufferContext context, BufferFormat bufferFormat)
     {
@@ -521,6 +522,7 @@ public class ArrayIndexBuilder
         Context = context;
         Entries = new();
         Format = bufferFormat;
+        MainAxisTransforms = new();
     }
 
     /// <summary>Creates a builder for point-format arrays.</summary>
@@ -569,6 +571,17 @@ public class ArrayIndexBuilder
     {
         entry.Path = $"{Prefix}.{entry.CreateColumnName()}";
         Entries.Add(entry);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an alternative transformed representation of the main axis for the chunked layout,
+    /// e.g. <see cref="MSNumpress.ACC_NUMPRESS_LINEAR"/>. Has no effect on the point layout.
+    /// </summary>
+    /// <param name="transform">The transform CURIE.</param>
+    public ArrayIndexBuilder AddMainAxisTransform(string transform)
+    {
+        MainAxisTransforms.Add(transform);
         return this;
     }
 
@@ -627,13 +640,23 @@ public class ArrayIndexBuilder
                 newEntry = entry with { BufferFormat = BufferFormat.ChunkEncoding };
                 newEntry.Path = $"{Prefix}.chunk_encoding";
                 Entries.Add(newEntry);
+                foreach (var transform in MainAxisTransforms)
+                {
+                    newEntry = entry with { BufferFormat = BufferFormat.ChunkTransform, Transform = transform };
+                    newEntry.Path = $"{Prefix}.{newEntry.CreateColumnName()}";
+                    Entries.Add(newEntry);
+                }
                 entry.BufferFormat = BufferFormat.ChunkValues;
                 entry.Path = $"{entry.Path}_chunk_values";
                 foundMainAxis = true;
             }
+            else if (entry.Transform == MSNumpress.ACC_NUMPRESS_SLOF || entry.Transform == MSNumpress.ACC_NUMPRESS_PIC)
+            {
+                entry.BufferFormat = BufferFormat.ChunkTransform;
+            }
             else if (entry.Transform != null && entry.Transform != NullInterpolation.NullZeroCURIE)
             {
-                throw new NotImplementedException();
+                throw new NotImplementedException($"The array transform {entry.Transform} is not supported for secondary arrays in the chunked layout");
             }
             else
             {

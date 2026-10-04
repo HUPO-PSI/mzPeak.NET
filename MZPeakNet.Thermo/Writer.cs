@@ -1163,9 +1163,14 @@ public record ArrowStatusLog
 class CustomizedMZPeakWriter : MZPeakWriter
 {
     public CustomizedMZPeakWriter(IMZPeakArchiveWriter storage, ArrayIndex? spectrumArrayIndex = null, ArrayIndex? chromatogramArrayIndex = null,
-                                  ArrayIndex? spectrumPeakArrayIndex = null, bool useChunked = false,
+                                  ArrayIndex? spectrumPeakArrayIndex = null,
+                                  SpectrumDataWriterOptions? spectrumDataOptions = null,
+                                  SpectrumPeakDataWriterOptions? spectrumPeakDataOptions = null,
+                                  ChromatogramDataWriterOptions? chromatogramDataOptions = null,
                                   Dictionary<string, FileEncryptionProperties>? encryptionConfigurations = null, ParquetDataWriterConfig? dataWriterConfig = null) :
-                                  base(storage, spectrumArrayIndex, chromatogramArrayIndex, spectrumPeakArrayIndex, useChunked, encryptionConfigurations, dataWriterConfig)
+                                  base(storage, spectrumArrayIndex, chromatogramArrayIndex, spectrumPeakArrayIndex,
+                                       spectrumDataOptions, spectrumPeakDataOptions, chromatogramDataOptions,
+                                       encryptionConfigurations, dataWriterConfig)
     {
     }
 
@@ -1227,11 +1232,11 @@ public class ThermoMZPeakWriter : IDisposable
     public ulong CurrentSpectrum => Writer.CurrentSpectrum;
     public ulong CurrentChromatogram => Writer.CurrentChromatogram;
 
-    protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)
+    protected static ArrayIndex DefaultSpectrumArrayIndex(IDataWriterOptions options)
     {
-        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
+        var builder = options.CreateArrayIndexBuilder(BufferContext.Spectrum);
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
-        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts, transform: options.IntensityTransform());
         return builder.Build();
     }
 
@@ -1272,20 +1277,22 @@ public class ThermoMZPeakWriter : IDisposable
                               ArrayIndex? chromatogramArrayIndex = null,
                               ArrayIndex? spectrumPeakArrayIndex = null,
                               bool includeNoise = false,
-                              bool useChunked = false,
+                              SpectrumDataWriterOptions? spectrumDataOptions = null,
+                              SpectrumPeakDataWriterOptions? spectrumPeakDataOptions = null,
+                              ChromatogramDataWriterOptions? chromatogramDataOptions = null,
                               Dictionary<string, ParquetSharp.FileEncryptionProperties>? encryptionConfigurations = null,
                               ParquetDataWriterConfig? dataWriterConfig = null)
     {
-        if (spectrumArrayIndex == null)
-        {
-            spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
-        }
+        spectrumDataOptions ??= new();
+        spectrumArrayIndex ??= DefaultSpectrumArrayIndex(spectrumDataOptions);
         Writer = new CustomizedMZPeakWriter(
             storage,
             spectrumArrayIndex,
             chromatogramArrayIndex,
             spectrumPeakArrayIndex,
-            useChunked: useChunked,
+            spectrumDataOptions,
+            spectrumPeakDataOptions,
+            chromatogramDataOptions,
             encryptionConfigurations,
             dataWriterConfig);
         ScanNumberToIndex = new();

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Numpress;
 using MZPeak.Storage;
 using MZPeak.Writer.Data;
 using MZPeak.Writer.Visitors;
@@ -82,6 +83,77 @@ public record ParquetDataWriterConfig(
 );
 
 
+/// <summary>
+/// Options shared by all data array writers that control the layout and chunked encoding of their arrays.
+/// </summary>
+public interface IDataWriterOptions
+{
+    /// <summary>
+    /// Whether to use the chunked layout. Only applies when the writer builds the default array index.
+    /// </summary>
+    bool UseChunked { get; }
+    /// <summary>
+    /// Whether to encode the main axis of each chunk with MS-Numpress linear prediction. This is lossy.
+    /// Requires the chunked layout, and is incompatible with <see cref="ChunkedEncodingUseBasicEncoding"/>.
+    /// </summary>
+    bool ChunkedEncodingUseMSNumpressLinearEncoding { get; }
+    /// <summary>
+    /// Whether to store the main axis of each chunk without delta encoding.
+    /// Incompatible with <see cref="ChunkedEncodingUseMSNumpressLinearEncoding"/>.
+    /// </summary>
+    bool ChunkedEncodingUseBasicEncoding { get; }
+    /// <summary>
+    /// Whether to encode the intensity array with MS-Numpress short logged float compression. This is lossy.
+    /// Requires the chunked layout and only applies when the writer builds the default array index.
+    /// </summary>
+    bool ChunkedEncodingIntensitySLOF { get; }
+}
+
+
+public static class DataWriterOptionsExtensions
+{
+    /// <summary>
+    /// Get the main axis chunk encoding CURIE these options call for.
+    /// </summary>
+    /// <exception cref="ArgumentException">If mutually exclusive encodings are requested</exception>
+    public static string MainAxisEncodingCURIE(this IDataWriterOptions options)
+    {
+        if (options.ChunkedEncodingUseMSNumpressLinearEncoding && options.ChunkedEncodingUseBasicEncoding)
+            throw new ArgumentException("Cannot use both MS-Numpress linear encoding and basic encoding for the main axis");
+        if (options.ChunkedEncodingUseMSNumpressLinearEncoding) return MSNumpress.ACC_NUMPRESS_LINEAR;
+        if (options.ChunkedEncodingUseBasicEncoding) return NoCompressionCodec.CURIE;
+        return DeltaCodec.CURIE;
+    }
+
+    /// <summary>
+    /// Create an array index builder for the layout these options call for, adding any main axis
+    /// transforms they require.
+    /// </summary>
+    public static ArrayIndexBuilder CreateArrayIndexBuilder(this IDataWriterOptions options, BufferContext context)
+    {
+        if (!options.UseChunked) return ArrayIndexBuilder.PointBuilder(context);
+        var builder = ArrayIndexBuilder.ChunkBuilder(context);
+        if (options.ChunkedEncodingUseMSNumpressLinearEncoding)
+            builder.AddMainAxisTransform(MSNumpress.ACC_NUMPRESS_LINEAR);
+        return builder;
+    }
+
+    /// <summary>
+    /// The transform to apply to the default intensity array, if any.
+    /// </summary>
+    public static string? IntensityTransform(this IDataWriterOptions options)
+    {
+        return options.UseChunked && options.ChunkedEncodingIntensitySLOF ? MSNumpress.ACC_NUMPRESS_SLOF : null;
+    }
+}
+
+
+/// <summary>
+/// Options controlling how spectrum data arrays are written.
+/// </summary>
+/// <param name="UseNullMarking">Whether to mark zero intensity runs with nulls so the m/z spacing can be interpolated on read.
+/// Applies to explicitly provided array indices too.</param>
+/// <param name="ShouldRemoveZeroRuns">Whether to remove redundant zero intensity runs from profile spectra.</param>
 public record SpectrumDataWriterOptions(
     bool UseChunked = false,
     bool ChunkedEncodingUseMSNumpressLinearEncoding = false,
@@ -89,7 +161,7 @@ public record SpectrumDataWriterOptions(
     bool ChunkedEncodingIntensitySLOF = false,
     bool UseNullMarking = false,
     bool ShouldRemoveZeroRuns = true
-)
+) : IDataWriterOptions
 {
     public static implicit operator SpectrumDataWriterOptions(bool value)
     {
@@ -98,12 +170,15 @@ public record SpectrumDataWriterOptions(
 }
 
 
+/// <summary>
+/// Options controlling how spectrum peak data arrays are written.
+/// </summary>
 public record SpectrumPeakDataWriterOptions(
     bool UseChunked = false,
     bool ChunkedEncodingUseMSNumpressLinearEncoding = false,
     bool ChunkedEncodingUseBasicEncoding = false,
     bool ChunkedEncodingIntensitySLOF = false
-)
+) : IDataWriterOptions
 {
     public static implicit operator SpectrumPeakDataWriterOptions(bool value)
     {
@@ -112,16 +187,19 @@ public record SpectrumPeakDataWriterOptions(
 }
 
 
+/// <summary>
+/// Options controlling how chromatogram data arrays are written.
+/// </summary>
 public record ChromatogramDataWriterOptions(
     bool UseChunked = false,
     bool ChunkedEncodingUseMSNumpressLinearEncoding = false,
     bool ChunkedEncodingUseBasicEncoding = false,
     bool ChunkedEncodingIntensitySLOF = false
-)
+) : IDataWriterOptions
 {
     public static implicit operator ChromatogramDataWriterOptions(bool value)
     {
-        return new  ChromatogramDataWriterOptions(value);
+        return new ChromatogramDataWriterOptions(value);
     }
 }
 
@@ -193,19 +271,19 @@ public class MZPeakWriter : IDisposable
 
     #region Array Index Behaviors
 
-    protected static ArrayIndex DefaultSpectrumArrayIndex(bool useChunked = false)
+    protected static ArrayIndex DefaultSpectrumArrayIndex(IDataWriterOptions options)
     {
-        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Spectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
+        var builder = options.CreateArrayIndexBuilder(BufferContext.Spectrum);
         builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 0);
-        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts, transform: options.IntensityTransform());
         return builder.Build();
     }
 
-    protected static ArrayIndex DefaultChromatogramArrayIndex(bool useChunked = false)
+    protected static ArrayIndex DefaultChromatogramArrayIndex(IDataWriterOptions options)
     {
-        var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.Chromatogram) : ArrayIndexBuilder.PointBuilder(BufferContext.Chromatogram);
+        var builder = options.CreateArrayIndexBuilder(BufferContext.Chromatogram);
         builder.Add(ArrayType.TimeArray, BinaryDataType.Float64, Unit.Minute, 0);
-        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
+        builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts, transform: options.IntensityTransform());
         return builder.Build();
     }
 
@@ -276,7 +354,12 @@ public class MZPeakWriter : IDisposable
         var parquetSchema = TranslateSchema(schema);
         foreach (var arrayType in arrayIndex.Entries)
         {
-            if (arrayType.ArrayTypeCURIE == targetArrayType.CURIE() && arrayType.BufferFormat != BufferFormat.ChunkEncoding)
+            if (arrayType.ArrayTypeCURIE == targetArrayType.CURIE()
+                && arrayType.BufferFormat != BufferFormat.ChunkEncoding
+                // Numpress transforms are stored as byte lists, which byte stream splitting does not apply to
+                && arrayType.Transform != MSNumpress.ACC_NUMPRESS_LINEAR
+                && arrayType.Transform != MSNumpress.ACC_NUMPRESS_SLOF
+                && arrayType.Transform != MSNumpress.ACC_NUMPRESS_PIC)
             {
                 for (var i = 0; i < parquetSchema.NumColumns; i++)
                 {
@@ -548,46 +631,79 @@ public class MZPeakWriter : IDisposable
         _Storage.CloseStream(outStream, entry);
     }
 
+    static BaseDataLayoutWriter CreateLayoutWriter(ArrayIndex arrayIndex, IDataWriterOptions options)
+    {
+        return arrayIndex.InferBufferFormat() switch
+        {
+            BufferFormat.Point => new PointLayoutBuilder(arrayIndex),
+            BufferFormat.ChunkValues => new ChunkLayoutBuilder(arrayIndex, options.MainAxisEncodingCURIE()),
+            _ => throw new NotImplementedException($"Buffer format {arrayIndex.InferBufferFormat()} not recognized")
+        };
+    }
+
+    static void ValidateOptions(IDataWriterOptions options, bool useNullMarking, string paramName)
+    {
+        try
+        {
+            options.MainAxisEncodingCURIE();
+        }
+        catch (ArgumentException e)
+        {
+            throw new ArgumentException(e.Message, paramName);
+        }
+        if (useNullMarking && (options.ChunkedEncodingUseMSNumpressLinearEncoding || options.ChunkedEncodingIntensitySLOF))
+            throw new ArgumentException("Null marking cannot be combined with MS-Numpress encodings", paramName);
+    }
+
     /// <summary>Creates an mzPeak writer.</summary>
     /// <param name="storage">The archive storage backend.</param>
     /// <param name="spectrumArrayIndex">Optional custom spectrum array index.</param>
     /// <param name="chromatogramArrayIndex">Optional custom chromatogram array index.</param>
-    /// <param name="includeSpectrumPeakData">Whether to include spectrum peak data.</param>
     /// <param name="spectrumPeakArrayIndex">Optional custom spectrum peak array index.</param>
-    /// <param name="useChunked">Optionally set any default array indices to use chunked encoding. Has no effect on explicitly provided array indices.</param>
+    /// <param name="spectrumDataOptions">
+    ///     Options for writing spectrum data arrays. Layout options (<see cref="IDataWriterOptions.UseChunked"/>,
+    ///     <see cref="IDataWriterOptions.ChunkedEncodingIntensitySLOF"/>, and the transform column required by
+    ///     <see cref="IDataWriterOptions.ChunkedEncodingUseMSNumpressLinearEncoding"/>) only affect the default
+    ///     array index. The remaining options apply to explicitly provided array indices too.
+    /// </param>
+    /// <param name="spectrumPeakDataOptions">Options for writing spectrum peak data arrays.</param>
+    /// <param name="chromatogramDataOptions">Options for writing chromatogram data arrays.</param>
+    /// <param name="encryptionConfigurations">Optional Parquet encryption configurations.</param>
+    /// <param name="dataWriterConfig">Optional Parquet writer sizing configuration.</param>
     public MZPeakWriter(IMZPeakArchiveWriter storage,
                         ArrayIndex? spectrumArrayIndex = null,
                         ArrayIndex? chromatogramArrayIndex = null,
                         ArrayIndex? spectrumPeakArrayIndex = null,
-                        bool useChunked = false,
+                        SpectrumDataWriterOptions? spectrumDataOptions = null,
+                        SpectrumPeakDataWriterOptions? spectrumPeakDataOptions = null,
+                        ChromatogramDataWriterOptions? chromatogramDataOptions = null,
                         EncryptionConfigurations? encryptionConfigurations = null,
                         ParquetDataWriterConfig? dataWriterConfig = null)
     {
+        spectrumDataOptions ??= new();
+        spectrumPeakDataOptions ??= new();
+        chromatogramDataOptions ??= new();
+        ValidateOptions(spectrumDataOptions, spectrumDataOptions.UseNullMarking, nameof(spectrumDataOptions));
+        ValidateOptions(spectrumPeakDataOptions, false, nameof(spectrumPeakDataOptions));
+        ValidateOptions(chromatogramDataOptions, false, nameof(chromatogramDataOptions));
+
         EncryptionConfigurations = encryptionConfigurations ?? new();
-        if (spectrumArrayIndex == null)
-            spectrumArrayIndex = DefaultSpectrumArrayIndex(useChunked);
-        if (chromatogramArrayIndex == null)
-            chromatogramArrayIndex = DefaultChromatogramArrayIndex(useChunked);
+        spectrumArrayIndex ??= DefaultSpectrumArrayIndex(spectrumDataOptions);
+        chromatogramArrayIndex ??= DefaultChromatogramArrayIndex(chromatogramDataOptions);
+        spectrumPeakArrayIndex ??= DefaultSpectrumArrayIndex(spectrumPeakDataOptions);
         _Storage = storage;
         MzPeakMetadata = new();
         SpectrumMetadata = new();
-        SpectrumData = spectrumArrayIndex.InferBufferFormat() switch
-        {
-            BufferFormat.Point => new PointLayoutBuilder(spectrumArrayIndex),
-            BufferFormat.ChunkValues => new ChunkLayoutBuilder(spectrumArrayIndex),
-            _ => throw new NotImplementedException($"Buffer format {spectrumArrayIndex.InferBufferFormat()} not recognized")
-        };
+        SpectrumData = CreateLayoutWriter(spectrumArrayIndex, spectrumDataOptions);
+        SpectrumData.ShouldRemoveZeroRuns = spectrumDataOptions.ShouldRemoveZeroRuns;
         ChromatogramMetadata = new();
-        ChromatogramData = chromatogramArrayIndex.InferBufferFormat() switch
-        {
-            BufferFormat.Point => new PointLayoutBuilder(chromatogramArrayIndex),
-            BufferFormat.ChunkValues => new ChunkLayoutBuilder(chromatogramArrayIndex),
-            _ => throw new NotImplementedException($"Buffer format {chromatogramArrayIndex.InferBufferFormat()} not recognized")
-        };
+        ChromatogramData = CreateLayoutWriter(chromatogramArrayIndex, chromatogramDataOptions);
         ChromatogramData.ShouldRemoveZeroRuns = false;
-        SpectrumPeakData = new PointLayoutBuilder(spectrumPeakArrayIndex ?? DefaultSpectrumArrayIndex());
+        SpectrumPeakData = CreateLayoutWriter(spectrumPeakArrayIndex, spectrumPeakDataOptions);
         WavelengthSpectrumMetadata = null;
         DataWriterConfig = dataWriterConfig ?? new();
+        if (spectrumDataOptions.UseNullMarking)
+            SpectraUseNullMarking();
     }
     /// <summary>Gets the current spectrum index.</summary>
     public ulong CurrentSpectrum => SpectrumMetadata.SpectrumCounter;
@@ -1046,7 +1162,12 @@ public class MZPeakWriter : IDisposable
         );
     }
 
-    /// <summary>Writes spectrum metadata to the archive.</summary>
+    /// <summary>
+    /// Writes spectrum metadata to the archive.
+    ///
+    /// This closes previous writer. After this returns, no writer
+    /// will be open but the archive will still be open.
+    /// </summary>
     public void WriteSpectrumMetadata()
     {
         if (State >= WriterState.SpectrumMetadata)
@@ -1206,7 +1327,12 @@ public class MZPeakWriter : IDisposable
     }
 
 
-    /// <summary>Writes chromatogram data to the archive.</summary>
+    /// <summary>
+    /// Writes chromatogram data to the archive.
+    ///
+    /// This closes previous writer. After this returns, no writer
+    /// will be open but the archive will still be open.
+    /// </summary>
     public void WriteChromatogramData()
     {
         if (State >= WriterState.ChromatogramData)
@@ -1220,6 +1346,12 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
     }
 
+    /// <summary>
+    /// Writes wavelength spectrum metadata to the archive.
+    ///
+    /// This closes previous writer. After this returns, no writer
+    /// will be open but the archive will still be open.
+    /// </summary>
     public void WriteWavelengthData()
     {
         if (State >= WriterState.WavelengthData || WavelengthSpectrumData == null)
@@ -1315,7 +1447,12 @@ public class MZPeakWriter : IDisposable
         return meta;
     }
 
-    /// <summary>Writes chromatogram metadata to the archive.</summary>
+    /// <summary>
+    /// Writes chromatogram metadata to the archive.
+    ///
+    /// This closes previous writer. After this returns, no writer
+    /// will be open but the archive will still be open.
+    /// </summary>
     public void WriteChromatogramMetadata()
     {
         if (State >= WriterState.ChromatogramMetadata)
@@ -1408,6 +1545,13 @@ public class MZPeakWriter : IDisposable
         CloseCurrentWriter();
     }
 
+    /// <summary>
+    /// Flush all the standard files to disk, closing their relevant Parquet files and releasing the accumulated
+    /// memory.
+    ///
+    /// This method <i>may</i> be called more than once. It has no effect after the first invocation. If it is not
+    /// called manually, it will be called during <see cref="Dispose"/>.
+    /// </summary>
     public void FlushStandardContent()
     {
         if (standardContentFlushed) return;
@@ -1440,6 +1584,16 @@ public class MZPeakWriter : IDisposable
         standardContentFlushed = true;
     }
 
+    /// <summary>
+    /// Begin a new entry in the archive.
+    ///
+    /// This closes the current entry's <c>Stream</c>, adds <paramref name="entry"/> to the file index
+    /// and then starts a new <c>Stream</c> for this entry.
+    ///
+    /// Use this to add arbitrary files to the archive <i>after</i> calling <see cref="FlushStandardContent"/>.
+    /// </summary>
+    /// <param name="entry"></param>
+    /// <returns>A new writable <c>Stream</c></returns>
     public Stream StartEntry(FileIndexEntry entry)
     {
         CloseCurrentWriter();
