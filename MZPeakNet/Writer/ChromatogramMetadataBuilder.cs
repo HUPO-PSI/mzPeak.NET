@@ -11,6 +11,7 @@ public class ChromatogramMetadataBuilder
     public ChromatogramBuilder Chromatogram { get; }
     public PrecursorBuilder Precursor { get; }
     public SelectedIonBuilder SelectedIon { get; }
+    public ProductBuilder Product {get; }
     public ulong ChromatogramCounter { get; protected set; }
 
     public int Length { get; private set; }
@@ -20,6 +21,7 @@ public class ChromatogramMetadataBuilder
         Chromatogram = new();
         Precursor = new();
         SelectedIon = new();
+        Product = new();
         ChromatogramCounter = 0;
     }
     /// <summary>
@@ -68,6 +70,15 @@ public class ChromatogramMetadataBuilder
         if (sourceIndex >= ChromatogramCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, ChromatogramCounter == 0 ? 0 : ChromatogramCounter - 1));
         if (precursorIndex >= ChromatogramCounter) throw new InvalidOperationException(string.Format("Precursor index {0} is greater than {1}", precursorIndex, ChromatogramCounter == 0 ? 0 : ChromatogramCounter - 1));
         SelectedIon.Append(sourceIndex, precursorIndex, ionMobility, ionMobilityType, selectedIonParams);
+    }
+
+    public void AppendProduct(ulong sourceIndex,
+        ulong? productIndex,
+        List<Param> isolationWindowParams,
+        List<Param> parameters)
+    {
+        if (sourceIndex >= ChromatogramCounter) throw new InvalidOperationException(string.Format("Source index {0} is greater than {1}", sourceIndex, ChromatogramCounter == 0 ? 0 : ChromatogramCounter - 1));
+        Product.Append(sourceIndex, productIndex, isolationWindowParams, parameters);
     }
 
     /// <summary>

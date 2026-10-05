@@ -405,6 +405,9 @@ public class MzPeakReader : IDisposable
     /// <summary>Gets the selected ion metadata for chromatograms as an Arrow ChunkedArray.</summary>
     public ChunkedArray? ChromatogramSelectedIonTable => chromatogramMetadata?.SelectedIonMetadata;
 
+    /// <summary>Gets the product metadata for chromatograms as an Arrow ChunkedArray.</summary>
+    public ChunkedArray? ChromatogramProductsTable => chromatogramMetadata?.ProductMetadata;
+
     /// <summary>Gets the wavelength spectrum metadata as an Arrow ChunkedArray.</summary>
     public ChunkedArray? WavelengthSpectrumTable => wavelengthSpectrumMetadata?.SpectrumMetadata;
 

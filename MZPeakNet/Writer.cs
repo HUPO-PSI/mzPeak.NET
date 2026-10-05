@@ -1105,6 +1105,19 @@ public class MZPeakWriter : IDisposable
         );
     }
 
+    public void AddChromatogramProduct(
+        ulong sourceIndex,
+        ulong? productIndex,
+        List<Param> isolationWindowParams,
+        List<Param> parameters)
+    {
+        ChromatogramMetadata.AppendProduct(
+            sourceIndex,
+            productIndex,
+            isolationWindowParams,
+            parameters);
+    }
+
     /// <summary>Adds a wavelength spectrum entry with metadata.</summary>
     /// <param name="id">The spectrum native ID.</param>
     /// <param name="time">The retention time.</param>
