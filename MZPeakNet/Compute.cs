@@ -1304,6 +1304,19 @@ public static class Compute
         return new SliceIndex(start, end);
     }
 
+    public static bool IsSorted<T>(PrimitiveArray<T> array) where T: struct, INumber<T>
+    {
+        if (array.NullCount > 0) return false;
+        if (array.Length == 0) return true;
+        var last = array.Values[0];
+        foreach(var v in array.Values)
+        {
+            if (v < last) return false;
+            last = v;
+        }
+        return true;
+    }
+
     public static int BinarySearch<T>(PrimitiveArray<T> array, T? value) where T : struct, INumber<T>
     {
         var n = array.Length;
@@ -2748,7 +2761,7 @@ public static class StructArrayExtensions
 
 public static class RecordBatchExtensions
 {
-    public static StructArray AsStructArry(this RecordBatch batch)
+    public static StructArray AsStructArray(this RecordBatch batch)
     {
         var fields = batch.Schema.FieldsList.ToList();
         var dtype = new StructType(fields);

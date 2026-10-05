@@ -2,6 +2,7 @@ using Apache.Arrow;
 using Apache.Arrow.Types;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
+using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using MZPeak.Writer.Data;
 
@@ -228,6 +229,101 @@ public class PrecursorBuilder : IArrowBuilder<(ulong, ulong?, string?, List<Para
         PrecursorId.Clear();
         IsolationWindow.Clear();
         Activation.Clear();
+    }
+}
+
+public class ProductBuilder : IArrowBuilder<(ulong, ulong?, List<Param>, List<Param>)>
+{
+    UInt64Array.Builder SourceIndex;
+    UInt64Array.Builder ProductIndex;
+    IsolationWindowBuilder IsolationWindow;
+    ParamListBuilder Parameters;
+
+    public List<ColumnMapping> ColumnMappings()
+    {
+        var cols = IsolationWindow.ColumnMappingsFromVisitors();
+        foreach (var col in cols)
+        {
+            col.Path = ["isolation_window", ..col.Path];
+        }
+        return cols;
+    }
+
+    public RecordBatch BuildRecordBatch(IEnumerable<KeyValuePair<string, string>>? metadata = null)
+    {
+        var fields = ArrowType();
+        var arrays = Build();
+        var schema = new Schema(fields, metadata ?? []);
+        return new RecordBatch(schema, arrays, arrays[0].Length);
+    }
+
+    public int Length => SourceIndex.Length;
+
+    public ProductBuilder()
+    {
+        SourceIndex = new();
+        ProductIndex = new();
+        IsolationWindow = new();
+        Parameters = new();
+    }
+
+    public void Append((ulong, ulong?, List<Param>, List<Param>) value)
+    {
+        Append(value.Item1, value.Item2, value.Item3, value.Item4);
+    }
+
+    public void Append(ulong sourceIndex, ulong? productIndex, List<Param> isolationWindowParams, List<Param> parameters)
+    {
+        SourceIndex.Append(sourceIndex);
+        ProductIndex.Append(productIndex);
+        IsolationWindow.Append(isolationWindowParams);
+        Parameters.Append(parameters);
+    }
+
+    public void Append(ProductInfo product)
+    {
+        Append(product.SourceIndex, product.ProductIndex, product.IsolationWindowParameters, product.Parameters);
+    }
+
+    public void AppendNull()
+    {
+        SourceIndex.AppendNull();
+        ProductIndex.AppendNull();
+        IsolationWindow.AppendNull();
+        Parameters.AppendNull();
+    }
+
+    public List<Field> ArrowType()
+    {
+        var fields = new List<Field>()
+        {
+            new Field("source_index", new UInt64Type(), true),
+            new Field("product_index", new UInt64Type(), true),
+        };
+        fields.AddRange(IsolationWindow.ArrowType());
+        fields.AddRange(Parameters.ArrowType());
+        return fields;
+    }
+
+    public List<IArrowArray> Build()
+    {
+        List<IArrowArray> fields =
+        [
+            SourceIndex.Build(),
+            ProductIndex.Build(),
+            .. IsolationWindow.Build(),
+            .. Parameters.Build(),
+        ];
+        Clear();
+        return fields;
+    }
+
+    public void Clear()
+    {
+        SourceIndex.Clear();
+        ProductIndex.Clear();
+        IsolationWindow.Clear();
+        Parameters.Clear();
     }
 }
 
@@ -1074,3 +1170,5 @@ public class WavelengthSpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(
         ParamList.Clear();
     }
 }
+
+

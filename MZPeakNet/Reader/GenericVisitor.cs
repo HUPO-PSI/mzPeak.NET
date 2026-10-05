@@ -3,6 +3,7 @@ using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Types;
 using Microsoft.Extensions.Logging;
+using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Storage;
@@ -221,6 +222,27 @@ public record PrecursorInfo : IHasSourceIndex, IHasPrecursorIndex
     }
 }
 
+public record ProductInfo : IHasSourceIndex, IHasParameters
+{
+    public ulong SourceIndex { get; set; }
+    public ulong? ProductIndex { get; set; }
+    public List<Param> IsolationWindowParameters { get; set; }
+    public List<Param> Parameters { get; set; }
+
+    public ProductInfo(ulong sourceIndex, ulong? productIndex, List<Param>? isolationWindowParameters = null, List<Param>? parameters = null)
+    {
+        SourceIndex = sourceIndex;
+        ProductIndex = productIndex;
+        IsolationWindowParameters = isolationWindowParameters ?? [];
+        Parameters = parameters ?? [];
+    }
+
+    public override string ToString()
+    {
+        return "ProductInfo\n" + JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true });
+    }
+}
+
 public record SelectedIonInfo : HasIonMobility, IHasSourceIndex, IHasParameters, IHasPrecursorIndex
 {
     public ulong SourceIndex { get; set; }
@@ -298,7 +320,7 @@ public record ChromatogramInfo : IHasParameters
             else
             {
                 if (value != null)
-                Parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(value));
+                    Parameters.Add(SpectrumProperties.NumberOfDataPoints.Param(value));
             }
         }
     }
@@ -403,7 +425,7 @@ public record SpectrumDescription : HasArrayIndex
         set => SpectrumInfo.PeakCount = value;
     }
 
-    public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons, ArrayIndex? arrayIndex=null)
+    public SpectrumDescription(SpectrumInfo spectrumInfo, List<ScanInfo> scans, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons, ArrayIndex? arrayIndex = null)
     {
         SpectrumInfo = spectrumInfo;
         Scans = scans;
@@ -418,6 +440,7 @@ public record ChromatogramDescription : HasArrayIndex
     ChromatogramInfo ChromatogramInfo;
     public List<PrecursorInfo> Precursors;
     public List<SelectedIonInfo> SelectedIons;
+    public List<ProductInfo> Products;
 
     public ArrayIndex? ArrayIndex { get; set; }
 
@@ -447,11 +470,15 @@ public record ChromatogramDescription : HasArrayIndex
         set => ChromatogramInfo.AuxiliaryArrays = value;
     }
 
-    public ChromatogramDescription(ChromatogramInfo chromatogramInfo, List<PrecursorInfo> precursors, List<SelectedIonInfo> selectedIons)
+    public ChromatogramDescription(ChromatogramInfo chromatogramInfo,
+                                   List<PrecursorInfo> precursors,
+                                   List<SelectedIonInfo> selectedIons,
+                                   List<ProductInfo>? productInfos = null)
     {
         ChromatogramInfo = chromatogramInfo;
         Precursors = precursors;
         SelectedIons = selectedIons;
+        Products = productInfos ?? [];
     }
 
     public long? DataPointCount
@@ -705,9 +732,9 @@ public interface IPrimitiveTypeVisitor
 public interface IHasParametersVisitorWithOffsets<T> : IVisitorAssemblyWithOffsets<T> where T : IHasParameters
 {
 
-    public List<string> Prefix {get;}
+    public List<string> Prefix { get; }
 
-    public List<ColumnMapping> ColumnMappings {get; set;}
+    public List<ColumnMapping> ColumnMappings { get; set; }
 
     public IEnumerable<(int, long?)> VisitInteger<U>(PrimitiveArray<U> array) where U : struct, INumber<U>
     {
@@ -1031,10 +1058,10 @@ class GenericParamStructVisitor : IVisitorAssemblyWithOffsets<ParamListRecord>, 
 {
     public List<ParamListRecord> Values { get; set; }
     public List<int> Offsets { get; set; }
-    public List<ColumnMapping> ColumnMappings {get; set;}
-    public List<string> Prefix {get; set;}
+    public List<ColumnMapping> ColumnMappings { get; set; }
+    public List<string> Prefix { get; set; }
 
-    public GenericParamStructVisitor(List<int> offsets, List<ColumnMapping>? columnMappings=null, List<string>? prefix=null)
+    public GenericParamStructVisitor(List<int> offsets, List<ColumnMapping>? columnMappings = null, List<string>? prefix = null)
     {
         Values = new();
         Offsets = offsets;
@@ -1367,13 +1394,83 @@ public class SelectedIonVisitor : IVisitorAssemblyWithOffsets<SelectedIonInfo>, 
     }
 }
 
+public class ProductVisitor : IVisitorAssemblyWithOffsets<ProductInfo>, IHasSourceIndexVisitor<ProductInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>, IHasParametersVisitorWithOffsets<ProductInfo>
+{
+    public List<ProductInfo> Values { get; set; }
+    public List<int> Offsets { get; set; }
+    public List<ColumnMapping> ColumnMappings { get; set; }
+    public List<string> Prefix => [];
+
+    public ProductVisitor(List<ColumnMapping>? columnMappings = null)
+    {
+        Values = new();
+        Offsets = new();
+        ColumnMappings = columnMappings ?? [];
+    }
+    public void VisitProductIndex(IArrowArray array)
+    {
+        UInt64Array arr = (UInt64Array)array;
+        for (int j = 0; j < Offsets.Count; j++)
+        {
+            var i = Offsets[j];
+            var chunk = arr.GetValue(i);
+            if (chunk == null) continue;
+            Values[j].ProductIndex = (ulong)chunk;
+        }
+    }
+
+    public void Visit(StructArray array)
+    {
+        Values = new();
+        Offsets.Clear();
+
+        var dtype = (StructType)array.Data.DataType;
+        ((IHasSourceIndexVisitor<ProductInfo>)this).InitializeFromSourceIndex(array);
+
+        foreach (var (f, arr) in dtype.Fields.Zip(array.Fields))
+        {
+            if (f.Name == "product_index") VisitProductIndex(arr);
+            else if (f.Name == "source_index") { }
+            else if (f.Name == "isolation_window") VisitIsolationWindowParameters(arr);
+            else if (f.Name == "parameters") ((IHasParametersVisitorWithOffsets<ProductInfo>)this).VisitParameters(arr);
+            else ((IHasParametersVisitorWithOffsets<ProductInfo>)this).VisitAsParameter(f, arr);
+        }
+    }
+
+    public void Visit(IArrowArray array)
+    {
+        if (array.Data.DataType.TypeId == ArrowTypeId.Struct) Visit((StructArray)array);
+        else throw new InvalidDataException();
+    }
+
+    void VisitIsolationWindowParameters(IArrowArray array)
+    {
+        var visitor = new GenericParamStructVisitor(Offsets, ColumnMappings.Where(e => e.Path.First() == "isolation_window").ToList(), prefix: ["isolation_window"]);
+        visitor.Visit(array);
+        for (var i = 0; i < Values.Count; i++)
+        {
+            Values[i].IsolationWindowParameters.AddRange(visitor.Values[i].Parameters);
+        }
+    }
+
+    public ProductInfo CreateFromIndex(ulong index)
+    {
+        return new ProductInfo(index, null, null, null);
+    }
+
+    public void Visit(RecordBatch array)
+    {
+        Visit(array.AsStructArray());
+    }
+}
+
 public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHasSourceIndexVisitor<PrecursorInfo>, IHasPrecursorIndexVisitor<PrecursorInfo>, IArrowArrayVisitor<StructArray>, IArrowArrayVisitor<RecordBatch>
 {
     public List<PrecursorInfo> Values { get; set; }
     public List<int> Offsets { get; set; }
     public List<ColumnMapping> ColumnMappings { get; set; }
 
-    public PrecursorVisitor(List<ColumnMapping>? columnMappings=null)
+    public PrecursorVisitor(List<ColumnMapping>? columnMappings = null)
     {
         Values = new();
         Offsets = new();
@@ -1454,7 +1551,7 @@ public class PrecursorVisitor : IVisitorAssemblyWithOffsets<PrecursorInfo>, IHas
 
     public PrecursorInfo CreateFromIndex(ulong index)
     {
-        return new PrecursorInfo(index, 0, null, null, null);
+        return new PrecursorInfo(index, null, null, null, null);
     }
 
     public void Visit(RecordBatch array)
@@ -1471,7 +1568,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
     public List<ColumnMapping> ColumnMappings { get; set; }
     public List<string> Prefix { get => []; }
 
-    public SpectrumVisitor(List<ColumnMapping>? columnMappings=null)
+    public SpectrumVisitor(List<ColumnMapping>? columnMappings = null)
     {
         Values = new();
         Offsets = new();

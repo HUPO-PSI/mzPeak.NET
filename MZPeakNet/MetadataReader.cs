@@ -67,7 +67,7 @@ public abstract class MetadataReaderBase<T>
             }
             Logger?.LogDebug("batch {ctr}, {batch.Length} items", batch, ctr);
             ctr++;
-            members.Add(batch.AsStructArry());
+            members.Add(batch.AsStructArray());
         }
         return members.Count > 0 ? new ChunkedArray(members) : null;
     }
@@ -88,7 +88,7 @@ public abstract class MetadataReaderBase<T>
             }
             Logger?.LogDebug("batch {ctr}, {batch.Length} items", batch, ctr);
             ctr++;
-            members.Add(batch.AsStructArry());
+            members.Add(batch.AsStructArray());
         }
         return members.Count > 0 ? new ChunkedArray(members) : null;
     }
@@ -319,7 +319,6 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
             if (lowColIdx == -1)
             {
                 var tmp = lowCol.FindColumnIndexIn(rgMeta.Schema);
-                Console.WriteLine($"Searched for {lowCol}, found {tmp}");
                 if (tmp != null)
                     lowColIdx = (int)tmp;
             }
@@ -707,6 +706,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     ChunkedArray? chromatogramMetadata = null;
     ChunkedArray? precursorMetadata = null;
     ChunkedArray? selectedIonMetadata = null;
+    ChunkedArray? productMetadata = null;
 
     /// <summary>Gets the number of chromatograms.</summary>
     public override long Length
@@ -776,6 +776,20 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         set => selectedIonMetadata = value;
     }
 
+    /// <summary>Gets or sets the product metadata table.</summary>
+    public ChunkedArray? ProductMetadata
+    {
+        get
+        {
+            if (productMetadata == null)
+            {
+                InitializeTablesSync();
+            }
+            return productMetadata;
+        }
+        set => productMetadata = value;
+    }
+
     /// <summary>Loads all chromatogram descriptions.</summary>
     public override List<ChromatogramDescription> BulkLoad()
     {
@@ -809,6 +823,18 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
                 foreach (var rec in vis.Values)
                 {
                     descrs[(int)rec.SourceIndex].SelectedIons.Add(rec);
+                }
+            }
+        }
+        if (ProductMetadata != null)
+        {
+            for (var i = 0; i < ProductMetadata.ArrayCount; i++)
+            {
+                var vis = new ProductVisitor(Namespace.FindEntry(DataKind.Products)?.ColumnMappings);
+                vis.Visit(ProductMetadata.Array(i));
+                foreach (var rec in vis.Values)
+                {
+                    descrs[(int)rec.SourceIndex].Products.Add(rec);
                 }
             }
         }
@@ -873,14 +899,33 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
                 break;
             }
         }
+        List<ProductInfo> productInfos = new();
+        if (ProductMetadata != null)
+        {
+            for (var i = 0; i < ProductMetadata.ArrayCount; i++)
+            {
+                var chunk = (StructArray)ProductMetadata.Array(i);
+                idxArr = (UInt64Array)chunk.Fields[0];
+                if (idxArr.First() > index || idxArr.Last() < index) continue;
+                var found = Compute.Compute.BinarySearchBetween(idxArr, index);
+                if (found == null) continue;
+                var visitor = new ProductVisitor(Namespace.FindEntry(DataKind.Products)?.ColumnMappings);
+                using (var seg = chunk.SliceShared(found.Start, found.Count))
+                {
+                    visitor.Visit(seg);
+                    productInfos.AddRange(visitor.Values);
+                }
+                break;
+            }
+        }
 
-        return new ChromatogramDescription(rec, precursorInfos, selectedIons);
+        return new ChromatogramDescription(rec, precursorInfos, selectedIons, productInfos);
     }
 
     /// <summary>Initializes metadata tables by reading from the Parquet file.</summary>
     public async Task InitializeTables()
     {
-        ChunkedArray? chromatograms = null, precursors = null, selectedIons = null;
+        ChunkedArray? chromatograms = null, precursors = null, selectedIons = null, products = null;
         var fileReader = Namespace.OpenMetadata();
         if (fileReader != null)
             chromatograms = await ReadAllRowsOf(fileReader);
@@ -893,6 +938,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         if (fileReader != null)
             selectedIons = await ReadAllRowsOf(fileReader);
 
+        fileReader = Namespace.OpenProducts();
+        if (fileReader != null)
+            products = await ReadAllRowsOf(fileReader);
+
         if (chromatograms != null && chromatograms.Length > 0)
         {
             ChromatogramMetadata = chromatograms;
@@ -904,6 +953,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         if (selectedIons != null && selectedIons.Length > 0)
         {
             SelectedIonMetadata = selectedIons;
+        }
+        if (products != null && products.Length > 0)
+        {
+            ProductMetadata = products;
         }
 
         // Trigger index building
@@ -916,7 +969,7 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
     /// <summary>Initializes metadata tables by reading from the Parquet file.</summary>
     public void InitializeTablesSync()
     {
-        ChunkedArray? chromatograms = null, precursors = null, selectedIons = null;
+        ChunkedArray? chromatograms = null, precursors = null, selectedIons = null, products = null;
         var fileReader = Namespace.OpenMetadata();
         if (fileReader != null)
             chromatograms = ReadAllRowsOfSync(fileReader);
@@ -929,6 +982,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         if (fileReader != null)
             selectedIons = ReadAllRowsOfSync(fileReader);
 
+        fileReader = Namespace.OpenProducts();
+        if (fileReader != null)
+            products = ReadAllRowsOfSync(fileReader);
+
         if (chromatograms != null && chromatograms.Length > 0)
         {
             ChromatogramMetadata = chromatograms;
@@ -940,6 +997,10 @@ public class ChromatogramMetadataReader : MetadataReaderBase<ChromatogramDescrip
         if (selectedIons != null && selectedIons.Length > 0)
         {
             SelectedIonMetadata = selectedIons;
+        }
+        if (products != null && products.Length > 0)
+        {
+            ProductMetadata = products;
         }
 
         // Trigger index building

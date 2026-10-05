@@ -17,6 +17,7 @@ public record EntryDerivedMetadata(SpacingInterpolationModel<double>? SpacingInt
     public static EntryDerivedMetadata Empty => new(null, []);
 };
 
+
 public abstract class BaseDataLayoutWriter
 {
     public static ILogger? Logger = null;
