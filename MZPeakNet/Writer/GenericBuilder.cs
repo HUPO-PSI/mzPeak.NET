@@ -339,7 +339,11 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
 
     public int Length => Index.Length;
 
-    public List<ColumnMapping> ColumnMappings() => ColumnMappingsFromVisitors();
+    public List<ColumnMapping> ColumnMappings() {
+        var mappings = ColumnMappingsFromVisitors();
+        mappings.Add(new ColumnMapping("coordinate spacing model", ["coordinate_spacing_model"], "MS:1003820", null));
+        return mappings;
+    }
 
     public SpectrumBuilder() : base(new()
     {
@@ -455,7 +459,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         fields.AddRange(ParamList.ArrowType());
         fields.AddRange([
             new Field("data_processing_id", new StringType(), true),
-            new Field("mz_delta_model", new ListType(new DoubleType()), true),
+            new Field("coordinate_spacing_model", new ListType(new DoubleType()), true),
             new Field("number_of_auxiliary_arrays", new UInt32Type(), true),
             new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         ]);

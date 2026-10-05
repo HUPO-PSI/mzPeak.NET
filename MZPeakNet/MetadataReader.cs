@@ -406,11 +406,11 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
 
         var dtype = (StructType)SpectrumMetadata.Array(0).Data.DataType;
         var fieldIdx = dtype.GetFieldIndex("mz_delta_model");
+        if (fieldIdx < 0)
+            fieldIdx = dtype.GetFieldIndex("coordinate_spacing_model");
 
         if (fieldIdx < 0)
-        {
             return new();
-        }
 
         for (var i = 0; i < SpectrumMetadata.ArrayCount; i++)
         {
