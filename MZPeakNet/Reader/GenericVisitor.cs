@@ -1751,7 +1751,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
             else if (col?.Accession == "MS:1000511") VisitMSLevel(arr);
             else if (col?.Accession == "MS:1000525") VisitSpectrumRepresentation(arr);
             else if (f.Name == "data_processing_ref" || f.Name == "data_processing_id") VisitDataProcessingRef(arr);
-            else if (f.Name == "mz_delta_model") VisitMzDeltaModel(arr);
+            else if (f.Name == "mz_delta_model" || f.Name == "coordinate_spacing_model") VisitMzDeltaModel(arr);
             else if (f.Name == "number_of_auxiliary_arrays") VisitNumberOfAuxiliaryArrays(arr);
             else if (f.Name == "auxiliary_arrays") VisitAuxiliarArrays(arr);
             else if (f.Name == "parameters") self.VisitParameters(arr);
