@@ -137,6 +137,12 @@ internal class Program
         };
         cmd.Options.Add(useChunked);
 
+        Option<bool> useChunkedPeaks = new Option<bool>("--use-chunking-for-peaks", "-e")
+        {
+            Description = "Use the chunked layout for the peak data files which can compress dense data effectively."
+        };
+        cmd.Options.Add(useChunkedPeaks);
+
         Option<long> pageSize = new Option<long>("--data-page-size")
         {
             Description = "The data page size in bytes",
@@ -166,10 +172,11 @@ internal class Program
             var outp = parseResult.GetRequiredValue(outPath);
             var nullMark = parseResult.GetValue(nullMarking);
             var chunked = parseResult.GetValue(useChunked);
+            var peakChunked = parseResult.GetValue(useChunkedPeaks);
             var pageSizeVal = parseResult.GetValue(pageSize);
             var rowGroupSizeVal = parseResult.GetValue(rowGroupSize);
             var zstdLevel = parseResult.GetValue(zstdLevelOpt);
-            ThermoTranslate(fp, outp, nullMark, chunked, pageSizeVal, rowGroupSizeVal, zstdLevel);
+            ThermoTranslate(fp, outp, nullMark, chunked, peakChunked, pageSizeVal, rowGroupSizeVal, zstdLevel);
         });
 
         return cmd;
@@ -205,9 +212,9 @@ internal class Program
         await job.Main();
     }
 
-    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 1048576, int zstdLevel = 3)
+    static void ThermoTranslate(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, bool useChunkedPeaks = false, long pageSize = 1048576, long rowGroupSize = 1048576, int zstdLevel = 3)
     {
-        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked, pageSize, rowGroupSize, zstdLevel);
+        var job = new ThermoTranslateTask(sourceFile, destinationFile, useNullMarking, useChunked, useChunkedPeaks, pageSize, rowGroupSize, zstdLevel);
         job.Main();
     }
 
@@ -235,16 +242,18 @@ public class ThermoTranslateTask : CLITask
     FileInfo DestinationFile;
     bool UseNullMarking = false;
     bool UseChunked = false;
+    bool UseChunkedPeaks = false;
     long PageSize = 1048576;
     long RowGroupSize = 4194304;
     int ZstdLevel = 3;
 
-    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, long pageSize = 1048576, long rowGroupSize = 4194304, int zstdLevel=3)
+    public ThermoTranslateTask(FileInfo sourceFile, FileInfo destinationFile, bool useNullMarking = false, bool useChunked = false, bool useChunkedPeaks = false, long pageSize = 1048576, long rowGroupSize = 4194304, int zstdLevel=3)
     {
         SourceFile = sourceFile;
         DestinationFile = destinationFile;
         UseNullMarking = useNullMarking;
         UseChunked = useChunked;
+        UseChunkedPeaks = useChunkedPeaks;
         PageSize = pageSize;
         RowGroupSize = rowGroupSize;
         ZstdLevel = zstdLevel;
@@ -269,7 +278,7 @@ public class ThermoTranslateTask : CLITask
             if (scanNumber % 1000 == 0)
             {
                 Logger?.LogInformation(
-                    $"Writing {scanNumber} with {segments.PositionCount} points ({(float)scanNumber / (float)lastScan * 100.0:0.00}%)"
+                    $"Writing scan {scanNumber} with {segments.PositionCount} points ({(float)scanNumber / (float)lastScan * 100.0:0.00}%)"
                 );
             }
 
@@ -438,6 +447,7 @@ public class ThermoTranslateTask : CLITask
                 spectrumPeakArrayIndex: ThermoMZPeakWriter.PeakArrayIndex(true, true),
                 includeNoise: true,
                 spectrumDataOptions: new SpectrumDataWriterOptions(UseChunked: UseChunked, UseNullMarking: UseNullMarking),
+                spectrumPeakDataOptions: new SpectrumPeakDataWriterOptions(UseChunkedPeaks),
                 chromatogramDataOptions: UseChunked
             );
         if (UseNullMarking)

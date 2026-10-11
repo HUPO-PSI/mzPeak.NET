@@ -152,6 +152,12 @@ public class LinearGrid : GridLike
         return new LinearGrid(intercept, slope, scale);
     }
 
+    public static LinearGrid FitUniform(IReadOnlyList<double> values)
+    {
+        var spacing = NullInterpolation.LocalMedianDelta(values.Select(x => (double?)x));
+        return new LinearGrid(values[0], spacing);
+    }
+
     public double FromIndex(uint index)
     {
         return (Intercept + index * Slope) / Scale;
@@ -251,8 +257,8 @@ public class BrukerTimsTOFTimsLinearGrid2 : GridLike
     public double Intercept;
     public double Slope;
 
-    public const string Name = "Bruker timsTOF TIMS calibration model v2";
-    public const string Accession = "MS:9999001";
+    public const string Name = "rustims-approximated Bruker timsTOF ion mobility grid model 2 parameters";
+    public const string Accession = "MS:1004030";
 
     public string ModelAccession()
     {
@@ -309,8 +315,8 @@ public class BrukerTimsTOFMzGrid2 : GridLike
     public double Slope;
     public double Intercept;
 
-    public const string Name = "Bruker timsTOF m/z calibration model v2";
-    public const string Accession = "MS:9999002";
+    public const string Name = "rustims-approximated Bruker timsTOF m/z grid model 1 and 2 parameters";
+    public const string Accession = "MS:1004031";
 
     public string ModelAccession()
     {

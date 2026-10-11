@@ -515,7 +515,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
     }
 }
 
-public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, ulong?, string?, List<Param>, List<List<Param>>)>
+public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, double?, string?, ulong?, string?, List<Param>, List<List<Param>>)>, IArrowBuilder<ScanInfo>
 {
     UInt64Array.Builder SourceIndex;
     UInt64Array.Builder ScanIndex;
@@ -585,6 +585,17 @@ public class ScanBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, uint?, 
 
         ScanWindowListBuilder.Append(scanWindows ?? new());
         VisitParameters(parameters ?? []);
+    }
+
+    public void Append(ScanInfo rec)
+    {
+        Append(
+            rec.SourceIndex,
+            rec.InstrumentConfigurationRef,
+            rec.IonMobility,
+            rec.IonMobilityTypeCURIE,
+            parameters: rec.Parameters
+        );
     }
 
     public override void AppendNull()
