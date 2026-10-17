@@ -55,7 +55,7 @@ public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
             else if (f.Name == "compression") VisitCompression(arr);
             else if (f.Name == "unit") VisitUnit(arr);
             else if (f.Name == "parameters") VisitParameters(arr);
-            else if (f.Name == "data_processing_ref") VisitDataProcessingRef(arr);
+            else if (f.Name == "data_processing_id") VisitDataProcessingId(arr);
             else
             {
                 MzPeakReader.Logger?.LogWarning($"Unexpected field {f.Name} of type {f.DataType} in AuxiliaryArrayVisitor");
@@ -209,7 +209,7 @@ public class AuxiliaryArrayVisitor : IArrowArrayVisitor<StructArray>
         else throw new InvalidDataException($"{array.Data.DataType.Name} not valid for auxiliary array compression");
     }
 
-    void VisitDataProcessingRef(IArrowArray array)
+    void VisitDataProcessingId(IArrowArray array)
     {
         if (array.Data.DataType.TypeId == ArrowTypeId.String)
         {

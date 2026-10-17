@@ -696,7 +696,7 @@ public class AuxiliaryArray : IHasParameters
     /// <summary>The Apache Arrow type for this array.</summary>
     public ArrowType ArrowType => DataType.ArrowType();
 
-    public string? DataProcessesingRef;
+    public string? DataProcessesingId;
 
     List<Param> IHasParameters.Parameters { get => Parameters; set => Parameters = value; }
 
@@ -707,8 +707,8 @@ public class AuxiliaryArray : IHasParameters
     /// <param name="unit">Optional unit of measurement.</param>
     /// <param name="compression">Compression method applied to the data.</param>
     /// <param name="parameters">Optional additional parameters.</param>
-    /// <param name="dataProcessingRef">The data processing pipeline applied to this array, instead of the default.</param>
-    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression = Compression.NoCompression, List<Param>? parameters = null, string? dataProcessingRef = null)
+    /// <param name="dataProcessingId">The data processing pipeline applied to this array, instead of the default.</param>
+    public AuxiliaryArray(Memory<byte> data, Param name, BinaryDataType dataType, Unit? unit, Compression compression = Compression.NoCompression, List<Param>? parameters = null, string? dataProcessingId = null)
     {
         Data = data;
         Name = name;
@@ -716,7 +716,7 @@ public class AuxiliaryArray : IHasParameters
         Unit = unit;
         Compression = compression;
         Parameters = parameters ?? new();
-        DataProcessesingRef = dataProcessingRef;
+        DataProcessesingId = dataProcessingId;
     }
 
     /// <summary>Returns a typed view of the array data.</summary>

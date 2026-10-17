@@ -1590,10 +1590,7 @@ public static partial class ScanAttributeMethods
             default: throw new InvalidOperationException();
         }
     }
-}
 
-public static partial class ScanAttributeMethods
-{
     public static Param Param(this ScanAttribute term, object? value = null, Unit? unit = null)
     {
         return new Param(term.Name(), term.CURIE(), value, unit?.CURIE());
@@ -1618,6 +1615,10 @@ public static class IsolationWindowPropertiesMethods
         ((IsolationWindowProperties[])Enum.GetValues(typeof(IsolationWindowProperties))).Select((v) => new KeyValuePair<string, IsolationWindowProperties>(v.CURIE(), v))
     );
 
+    public static Param Param(this IsolationWindowProperties prop, object? rawValue = null, Unit? unit = null)
+    {
+        return new Param(prop.Name(), rawValue: rawValue, accession: prop.CURIE(), unit: unit?.CURIE());
+    }
 
     public static string Name(this IsolationWindowProperties term)
     {
@@ -1782,6 +1783,10 @@ public static class IonSelectionPropertiesMethods
         ((IonSelectionProperties[])Enum.GetValues(typeof(IonSelectionProperties))).Select((v) => new KeyValuePair<string, IonSelectionProperties>(v.CURIE(), v))
     );
 
+    public static Param Param(this IonSelectionProperties ionProperty, object? rawValue = null)
+    {
+        return new Param(ionProperty.Name(), rawValue: rawValue, accession: ionProperty.CURIE());
+    }
 
     public static string Name(this IonSelectionProperties term)
     {
@@ -1998,6 +2003,10 @@ public static class SamplePropertiesMethods
         ((SampleProperties[])Enum.GetValues(typeof(SampleProperties))).Select((v) => new KeyValuePair<string, SampleProperties>(v.CURIE(), v))
     );
 
+    public static Param Param(this SampleProperties term, object? value = null, string? unit = null)
+    {
+        return new Param(name: term.Name(), rawValue: value, accession: term.CURIE(), unit: unit);
+    }
 
     public static string Name(this SampleProperties term)
     {

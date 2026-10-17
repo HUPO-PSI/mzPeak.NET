@@ -7,6 +7,7 @@ using MZPeak.Compute;
 using MZPeak.ControlledVocabulary;
 using MZPeak.Metadata;
 using MZPeak.Numpress;
+using MZPeak.Reader.Visitors;
 using MZPeak.Storage;
 using MZPeak.Writer.Data;
 using MZPeak.Writer.Visitors;
@@ -968,6 +969,24 @@ public class MZPeakWriter : IDisposable
         );
     }
 
+    public ulong AddSpectrum(
+        SpectrumDescription description
+    )
+    {
+        return SpectrumMetadata.AppendSpectrum(
+            description.Id,
+            description.Time,
+            description.DataProcessingRef,
+            description.Parameters,
+            new EntryDerivedMetadata(
+                description.CoordinateSpacingModelParameters != null ? new(description.CoordinateSpacingModelParameters) : null,
+                description.AuxiliaryArrays,
+                (int?)description.DataPointCount,
+                (int?)description.PeakCount
+            )
+        );
+    }
+
     /// <summary>Adds a scan entry to a spectrum.</summary>
     /// <param name="sourceIndex">The parent spectrum index.</param>
     /// <param name="instrumentConfigurationRef">Optional instrument configuration reference.</param>
@@ -998,6 +1017,17 @@ public class MZPeakWriter : IDisposable
         );
     }
 
+    public void AddScan(ScanInfo scan, ulong sourceIndex)
+    {
+        AddScan(
+            sourceIndex,
+            scan.InstrumentConfigurationRef,
+            scan.Parameters,
+            scan.IonMobility,
+            scan.IonMobilityTypeCURIE,
+            scan.ScanWindows.Select(v => v.AsParamList()).ToList(), null, null);
+    }
+
     /// <summary>Adds a precursor entry to a spectrum.</summary>
     /// <param name="sourceIndex">The parent spectrum index.</param>
     /// <param name="precursorIndex">The precursor spectrum index.</param>
@@ -1021,6 +1051,16 @@ public class MZPeakWriter : IDisposable
         );
     }
 
+    public void AddPrecursor(PrecursorInfo precursorInfo, ulong sourceIndex, ulong? precursorIndex)
+    {
+        AddPrecursor(
+            sourceIndex,
+            precursorIndex,
+            precursorInfo.PrecursorId,
+            precursorInfo.IsolationWindowParameters,
+            precursorInfo.ActivationParameters);
+    }
+
     /// <summary>Adds a selected ion entry to a precursor.</summary>
     /// <param name="sourceIndex">The parent spectrum index.</param>
     /// <param name="precursorIndex">The precursor index.</param>
@@ -1042,6 +1082,16 @@ public class MZPeakWriter : IDisposable
             ionMobilityType,
             selectedIonParams
         );
+    }
+
+    public void AddSelectedIon(SelectedIonInfo selectedIon, ulong sourceIndex, ulong? precursorIndex)
+    {
+        AddSelectedIon(
+            sourceIndex,
+            precursorIndex,
+            selectedIon.Parameters,
+            selectedIon.IonMobility,
+            selectedIon.IonMobilityTypeCURIE);
     }
 
     /// <summary>Adds a chromatogram entry with metadata.</summary>

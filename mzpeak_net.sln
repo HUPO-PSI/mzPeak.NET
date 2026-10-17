@@ -10,8 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNet.AppTest", "MZPeak
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNet.Thermo", "MZPeakNet.Thermo\MZPeakNet.Thermo.csproj", "{29D893CF-7A00-471A-9F83-9E4078B5F6A3}"
 EndProject
-#Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNet.Shimadzu", "MZPeakNet.Shimadzu\MZPeakNet.Shimadzu.csproj", "{5156235E-0A25-4A19-90B5-6B238AF861E5}"
-#EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MZPeakNet.Shimadzu", "MZPeakNet.Shimadzu\MZPeakNet.Shimadzu.csproj", "{5156235E-0A25-4A19-90B5-6B238AF861E5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

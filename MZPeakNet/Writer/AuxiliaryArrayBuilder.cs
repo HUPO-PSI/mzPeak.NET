@@ -63,7 +63,7 @@ public class AuxiliaryArrayBuilder : IArrowBuilder<AuxiliaryArray>
             new Field("compression", new StringType(), false),
             new Field("unit", new StringType(), true),
             Parameters.ArrowType()[0],
-            new Field("data_processing_ref", new StringType(), true),
+            new Field("data_processing_id", new StringType(), true),
         ]);
         return [new Field("auxiliary_array", dataType, true)];
     }

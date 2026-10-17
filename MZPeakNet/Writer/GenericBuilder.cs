@@ -327,7 +327,7 @@ public class ProductBuilder : IArrowBuilder<(ulong, ulong?, List<Param>, List<Pa
     }
 }
 
-public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<Param>, EntryDerivedMetadata)>
+public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, string, double, string?, List<Param>, EntryDerivedMetadata)>, IArrowBuilder<SpectrumInfo>, IArrowBuilder<SpectrumDescription>
 {
     UInt64Array.Builder Index;
     StringArray.Builder Id;
@@ -512,6 +512,17 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
             vis.Clear();
         }
         ParamList.Clear();
+    }
+
+    public void Append(SpectrumInfo value)
+    {
+        var entryInfo = new EntryDerivedMetadata(value.CoordinateSpacingModelParameters != null ? new(value.CoordinateSpacingModelParameters) : null, value.AuxiliaryArrays, (int?)value.DataPointCount, (int?)value.PeakCount);
+        Append(value.Index, value.Id, value.Time, value.DataProcessingRef, value.Parameters, entryInfo);
+    }
+
+    public void Append(SpectrumDescription value)
+    {
+        Append(value.SpectrumInfo);
     }
 }
 
@@ -807,8 +818,10 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
 {
     UInt64Array.Builder SourceIndex;
     UInt64Array.Builder PrecursorIndex;
+    UInt64Array.Builder SelectedIonIndex;
     DoubleArray.Builder IonMobility;
     StringArray.Builder IonMobilityType;
+    ulong selectedIonIndex = 0;
 
     public int Length => SourceIndex.Length;
 
@@ -829,6 +842,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     {
         SourceIndex = new();
         PrecursorIndex = new();
+        SelectedIonIndex = new();
         IonMobility = new();
         IonMobilityType = new();
     }
@@ -842,6 +856,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     {
         SourceIndex.Append(sourceIndex);
         PrecursorIndex.Append(precursorIndex);
+        SelectedIonIndex.Append(selectedIonIndex++);
         if (ionMobility.HasValue) IonMobility.Append(ionMobility.Value);
         else IonMobility.AppendNull();
         if (ionMobilityType != null) IonMobilityType.Append(ionMobilityType);
@@ -853,6 +868,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     {
         SourceIndex.AppendNull();
         PrecursorIndex.AppendNull();
+        SelectedIonIndex.AppendNull();
         IonMobility.AppendNull();
         IonMobilityType.AppendNull();
         base.AppendNull();
@@ -864,6 +880,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
         {
             new Field("source_index", new UInt64Type(), true),
             new Field("precursor_index", new UInt64Type(), true),
+            new Field("selected_ion_index", new UInt64Type(), true),
             new Field("ion_mobility_value", new DoubleType(), true),
             new Field("ion_mobility_type", new StringType(), true)
         };
@@ -879,7 +896,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     public List<IArrowArray> Build()
     {
         var tp = ArrowType()[0];
-        List<IArrowArray> fields = new() { SourceIndex.Build(), PrecursorIndex.Build(), IonMobility.Build(), IonMobilityType.Build() };
+        List<IArrowArray> fields = new() { SourceIndex.Build(), PrecursorIndex.Build(), SelectedIonIndex.Build(), IonMobility.Build(), IonMobilityType.Build() };
         foreach (var vis in ParamVisitors)
         {
             fields.AddRange(vis.Build());
@@ -892,6 +909,7 @@ public class SelectedIonBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, 
     {
         SourceIndex.Clear();
         PrecursorIndex.Clear();
+        SelectedIonIndex.Clear();
         IonMobility.Clear();
         IonMobilityType.Clear();
         foreach (var vis in ParamVisitors)

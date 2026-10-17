@@ -304,8 +304,32 @@ public abstract class BaseDataLayoutWriter
         return (arrays, deltaModel, auxiliaryArrays);
     }
 
+    /// <summary>
+    /// Remove all <c>GridPolicy</c> instances currently set, if any.
+    ///
+    /// This is called *after* each <c>Add</c> call automatically.
+    /// </summary>
     public virtual void ClearGridPolicies() {}
+
+    /// <summary>
+    /// Set the <c>GridPolicy</c> for a specific array type. If <c>null</c>, the policy for <paramref name="arrayType"/> is removed.
+    ///
+    /// This must be called prior to calling <see cref="Add"/>.
+    ///
+    /// </summary>
+    /// <param name="arrayType"></param>
+    /// <param name="policy"></param>
     public virtual void SetGridPolicy(ArrayType arrayType, GridPolicy? policy) {}
+    /// <summary>
+    /// Shorthand for <code>SetGridPolicy(policy.ArrayType, policy)</code>
+    ///
+    /// <seealso cref="SetGridPolicy"/>
+    /// </summary>
+    /// <param name="policy"></param>
+    public void SetGridPolicy(GridPolicy policy)
+    {
+        SetGridPolicy(policy.ArrayType, policy);
+    }
     public virtual GridPolicy? GetGridPolicy(ArrayType method) => null;
 
     /// <summary>

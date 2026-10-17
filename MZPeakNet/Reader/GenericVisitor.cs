@@ -48,7 +48,7 @@ public record SpectrumInfo : IHasParameters
     public byte MSLevel { get; set; }
     public string? DataProcessingRef { get; set; } = null;
     public int NumberOfAuxiliaryArrays { get; set; }
-    public List<double>? MzDeltaModel { get; set; } = null;
+    public List<double>? CoordinateSpacingModelParameters { get; set; } = null;
     public List<Param> Parameters { get; set; }
     public List<AuxiliaryArray> AuxiliaryArrays { get; set; }
 
@@ -127,7 +127,7 @@ public record SpectrumInfo : IHasParameters
         MSLevel = msLevel;
         DataProcessingRef = dataProcessingRef;
         NumberOfAuxiliaryArrays = numberOfAuxiliaryArrays;
-        MzDeltaModel = mzDeltaModel;
+        CoordinateSpacingModelParameters = mzDeltaModel;
         Parameters = parameters ?? new();
         AuxiliaryArrays = auxiliaryArray ?? new();
     }
@@ -392,10 +392,10 @@ public record SpectrumDescription : HasArrayIndex
         get => SpectrumInfo.Parameters;
         set => SpectrumInfo.Parameters = value;
     }
-    public List<double>? MzDeltaModel
+    public List<double>? CoordinateSpacingModelParameters
     {
-        get => SpectrumInfo.MzDeltaModel;
-        set => SpectrumInfo.MzDeltaModel = value;
+        get => SpectrumInfo.CoordinateSpacingModelParameters;
+        set => SpectrumInfo.CoordinateSpacingModelParameters = value;
     }
     public string? DataProcessingRef
     {
@@ -1668,7 +1668,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
                         if (!arr.IsNull(i))
                         {
                             var p = (DoubleArray)arr.GetSlicedValues(i);
-                            Values[j].MzDeltaModel = p.Where(v => v != null).Select(v => v == null ? default : (double)v).ToList();
+                            Values[j].CoordinateSpacingModelParameters = p.Where(v => v != null).Select(v => v == null ? default : (double)v).ToList();
                         }
                     }
                     break;
@@ -1682,7 +1682,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
                         if (!arr.IsNull(i))
                         {
                             var p = (DoubleArray)arr.GetSlicedValues(i);
-                            Values[j].MzDeltaModel = p.Where(v => v != null).Select(v => v == null ? default : (double)v).ToList();
+                            Values[j].CoordinateSpacingModelParameters = p.Where(v => v != null).Select(v => v == null ? default : (double)v).ToList();
                         }
                     }
                     break;
@@ -1695,7 +1695,7 @@ public class SpectrumVisitor : IVisitorAssemblyWithOffsets<SpectrumInfo>, IHasPa
                         var i = Offsets[j];
                         var p = arr.GetValue(i);
                         if (p != null)
-                            Values[j].MzDeltaModel = new() { (double)p };
+                            Values[j].CoordinateSpacingModelParameters = new() { (double)p };
                     }
                     break;
                 }

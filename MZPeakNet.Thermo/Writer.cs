@@ -1321,7 +1321,7 @@ public class ThermoMZPeakWriter : IDisposable
 
         Run.DefaultDataProcessingId = DataProcessingMethods.Last().Id;
         Run.DefaultSourceFileId = FileDescription.SourceFiles[0].Id;
-        Run.DefaultInstrumentId = (int)InstrumentConfigurations[0].Id;
+        Run.DefaultInstrumentConfigurationId = (int)InstrumentConfigurations[0].Id;
         Run.StartTime = accessor.CreationDate;
     }
 

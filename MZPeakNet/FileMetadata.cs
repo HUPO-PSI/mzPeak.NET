@@ -337,8 +337,8 @@ public record MSRun
     /// <summary>
     /// The default instrument configuration identifier.
     /// </summary>
-    [JsonPropertyName("default_instrument_id")]
-    public int DefaultInstrumentId { get; set; }
+    [JsonPropertyName("default_instrument_configuration_id")]
+    public int DefaultInstrumentConfigurationId { get; set; }
 
     /// <summary>
     /// The default source file the content references.
@@ -369,7 +369,7 @@ public record MSRun
     {
         Id = id;
         DefaultDataProcessingId = defaultDataProcessingId;
-        DefaultInstrumentId = defaultInstrumentId;
+        DefaultInstrumentConfigurationId = defaultInstrumentId;
         DefaultSourceFileId = defaultSourceFileId;
         StartTime = startTime;
         Parameters = parameters ?? new();
@@ -380,7 +380,7 @@ public record MSRun
     {
         Id = "";
         DefaultDataProcessingId = "";
-        DefaultInstrumentId = 0;
+        DefaultInstrumentConfigurationId = 0;
         DefaultSourceFileId = "";
         StartTime = null;
         Parameters = new();
