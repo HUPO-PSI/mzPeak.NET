@@ -341,7 +341,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
 
     public List<ColumnMapping> ColumnMappings() {
         var mappings = ColumnMappingsFromVisitors();
-        mappings.Add(new ColumnMapping("coordinate spacing model", ["coordinate_spacing_model"], "MS:1003820", null));
+        mappings.Add(new ColumnMapping("polynomial delta coordinate interpolation", ["polynomial_delta_coordinate_interpolation"], "MS:1003821", null));
         return mappings;
     }
 
@@ -459,7 +459,7 @@ public class SpectrumBuilder : ParamVisitorCollection, IArrowBuilder<(ulong, str
         fields.AddRange(ParamList.ArrowType());
         fields.AddRange([
             new Field("data_processing_id", new StringType(), true),
-            new Field("coordinate_spacing_model", new ListType(new DoubleType()), true),
+            new Field("polynomial_delta_coordinate_interpolation", new ListType(new DoubleType()), true),
             new Field("number_of_auxiliary_arrays", new UInt32Type(), true),
             new Field("auxiliary_arrays", AuxiliaryArrays.ArrowType()[0].DataType, true)
         ]);

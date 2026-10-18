@@ -429,6 +429,9 @@ public record FileIndexEntry
     [JsonPropertyName("checksum")]
     public string? Checksum { get; set; }
 
+    public ColumnMapping? ColumnMappingForAccession(string accession) => ColumnMappings.Find(c => c.Accession == accession);
+    public ColumnMapping? ColumnMappingForName(string name) => ColumnMappings.Find(c => c.Name == name);
+
     public static FileIndexEntry FromEntityAndData(EntityType entityType, DataKind dataKind, List<Param>? @params = null, List<ColumnMapping>? columnMappings = null, string? checksum = null)
     {
         string entityTypeTag = "";

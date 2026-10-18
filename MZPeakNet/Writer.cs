@@ -909,13 +909,9 @@ public class MZPeakWriter : IDisposable
         }
         if (State == WriterState.SpectrumData && CurrentWriter != null)
         {
-            if (SpectrumData.LayoutName() == "chunk")
-            {
-                CurrentWriter.NewBufferedRowGroup();
-            }
             var batch = SpectrumData.GetRecordBatch();
             Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_data");
-            CurrentWriter.WriteBufferedRecordBatch(batch);
+            CurrentWriter.WriteRecordBatch(batch, DataWriterConfig.RowGroupSize);
 
         }
         else if (SpectrumData.BufferedRows > 0)
@@ -931,13 +927,13 @@ public class MZPeakWriter : IDisposable
         {
             var batch = SpectrumPeakData.GetRecordBatch();
             Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_peaks");
-            CurrentWriter.WriteBufferedRecordBatch(batch);
+            CurrentWriter.WriteRecordBatch(batch, DataWriterConfig.RowGroupSize);
         }
         else if (PeakWriter != null && SpectrumPeakData != null)
         {
             var batch = SpectrumPeakData.GetRecordBatch();
             Logger?.LogDebug($"Flushing {batch.Length} rows to spectra_peaks");
-            PeakWriter.WriteBufferedRecordBatch(batch);
+            PeakWriter.WriteRecordBatch(batch, DataWriterConfig.RowGroupSize);
         }
         else if (SpectrumData.BufferedRows > 0)
         {

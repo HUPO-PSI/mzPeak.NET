@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Apache.Arrow;
 using Apache.Arrow.Memory;
 using Apache.Arrow.Types;
@@ -54,6 +55,11 @@ public class ParamValueBuilder : IArrowBuilder<string>, IArrowBuilder<long>, IAr
         Boolean.Append(value);
     }
 
+    public void Append(List<double> value)
+    {
+        Append(JsonSerializer.Serialize(value));
+    }
+
     public void AppendNull()
     {
         String.AppendNull();
@@ -68,6 +74,7 @@ public class ParamValueBuilder : IArrowBuilder<string>, IArrowBuilder<long>, IAr
         else if (parameter.IsDouble()) Append(parameter.AsDouble());
         else if (parameter.IsLong()) Append(parameter.AsLong());
         else if (parameter.IsString()) Append(parameter.AsString());
+        else if (parameter.IsListDouble()) Append(parameter.AsListDouble());
         else AppendNull();
     }
 
