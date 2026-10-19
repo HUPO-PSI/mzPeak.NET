@@ -405,7 +405,7 @@ public class SpectrumMetadataReader : MetadataReaderBase<SpectrumDescription>
         }
 
         var dtype = (StructType)SpectrumMetadata.Array(0).Data.DataType;
-        var queryName = Namespace.FindEntry(DataKind.Metadata)?.ColumnMappingForAccession("MS:1003821")?.Name ?? "polynomial_delta_coordinate_interpolation";
+        var queryName = Namespace.FindEntry(DataKind.Metadata)?.ColumnMappingForAccession("MS:1003821")?.Path.Last() ?? "polynomial_delta_coordinate_interpolation";
         var fieldIdx = dtype.GetFieldIndex(queryName);
         if (fieldIdx < 0)
             fieldIdx = dtype.GetFieldIndex("coordinate_spacing_model");
