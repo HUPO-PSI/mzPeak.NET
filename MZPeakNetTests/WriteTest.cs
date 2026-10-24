@@ -28,13 +28,15 @@ public class WriteTest
     public void BuildArrayIndexTest()
     {
         var builder = ArrayIndexBuilder.PointBuilder(BufferContext.Spectrum);
-        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 0);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         var index = builder.Build();
-        Assert.Equal("point.mz", index.Entries[0].Path);
+        Assert.Equal("point.spectrum_index", index.Entries[0].Path);
         Assert.Equal(0u, index.Entries[0].SortingRank);
-        Assert.Equal("point.intensity", index.Entries[1].Path);
-        Assert.Null(index.Entries[1].SortingRank);
+        Assert.Equal("point.mz", index.Entries[1].Path);
+        Assert.Equal(1u, index.Entries[1].SortingRank);
+        Assert.Equal("point.intensity", index.Entries[2].Path);
+        Assert.Null(index.Entries[2].SortingRank);
     }
 
     [Fact]

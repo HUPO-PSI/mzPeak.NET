@@ -145,8 +145,8 @@ public class ArchiveTest
         var arrayIndex = JsonSerializer.Deserialize<ArrayIndex>(arrayIndexText);
         Assert.NotNull(arrayIndex);
         Assert.Equal("point", arrayIndex.Prefix);
-        Assert.Equal(BufferFormat.Point, arrayIndex.Entries[0].BufferFormat);
         Assert.Equal(BufferFormat.Point, arrayIndex.Entries[1].BufferFormat);
+        Assert.Equal(BufferFormat.Point, arrayIndex.Entries[2].BufferFormat);
     }
 
     void ExcerciseBasicIntegrity(IMZPeakArchiveStorage archiveStorage)

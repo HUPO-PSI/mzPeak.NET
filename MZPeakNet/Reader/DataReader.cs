@@ -312,13 +312,18 @@ public class DataArraysReader : IAsyncEnumerable<(ulong, StructArray)>, IEnumera
     /// <summary>Gets the buffer format from metadata.</summary>
     public BufferFormat Format => Metadata.Format;
 
+    protected IEnumerable<ArrayIndexEntry> EnumerateArrayIndex()
+    {
+        return ArrayIndex.Entries.Where(e => e.BufferFormat != BufferFormat.Index);
+    }
+
     /// <summary>Creates an empty struct array matching the schema.</summary>
     public StructArray EmptyArrays()
     {
         List<Field> fields = new();
         List<Array> arrays = new();
         HashSet<Field> arrayTypes = new();
-        foreach (var arrType in ArrayIndex.Entries)
+        foreach (var arrType in EnumerateArrayIndex())
         {
             var dtype = arrType.GetArrowType();
             var name = arrType.CreateColumnName();
@@ -589,6 +594,11 @@ public class BaseLayoutReader : IAsyncEnumerable<(ulong, StructArray)>, IEnumera
         if (chunks.Count == 0) throw new InvalidOperationException($"Cannot handle empty row range");
         return new ChunkedArray(chunks);
     }
+
+    protected IEnumerable<ArrayIndexEntry> EnumerateArrayIndex()
+    {
+        return ArrayIndex.Entries.Where(e => e.BufferFormat != BufferFormat.Index);
+    }
 }
 
 
@@ -609,7 +619,7 @@ public class PointLayoutReader : BaseLayoutReader
         var fields = ((StructType)rows.Data.DataType).Fields;
         var columnsAfter = new List<IArrowArray?>(fields.Count);
         Dictionary<int, IArrowArray> converted = new();
-        foreach (var entry in ArrayIndex.Entries)
+        foreach (var entry in EnumerateArrayIndex())
         {
             var name = entry.Path.Split(".").Last();
             IArrowArray? column = null;
@@ -624,9 +634,7 @@ public class PointLayoutReader : BaseLayoutReader
             }
 
             if (column == null)
-            {
                 continue;
-            }
             if (entry.Transform == NullInterpolation.NullInterpolateCURIE && column.NullCount > 0)
             {
                 if (SpacingModels == null || !SpacingModels.ContainsKey(entryIndex))
@@ -758,12 +766,14 @@ public class ChunkLayoutReader : BaseLayoutReader
                             transformMap[key] = [entry];
                         break;
                     }
+                case BufferFormat.Index:
+                    continue;
                 default:
                     throw new NotImplementedException(string.Format("Unsupported buffer format {0} for the chunked layout", entry.BufferFormat));
             }
         }
 
-        foreach (var entry in ArrayIndex.Entries)
+        foreach (var entry in EnumerateArrayIndex())
         {
             if (entry.SchemaIndex == null)
             {

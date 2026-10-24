@@ -18,6 +18,7 @@ using System.Text.RegularExpressions;
 [JsonConverter(typeof(BufferFormatConverter))]
 public enum BufferFormat
 {
+    Index,
     Point,
     ChunkValues,
     ChunkStart,
@@ -46,6 +47,7 @@ public class BufferFormatConverter : JsonConverter<BufferFormat>
             case "secondary_chunk":
             case "chunk_secondary": return BufferFormat.ChunkSecondary;
             case "chunk_transform": return BufferFormat.ChunkTransform;
+            case "index": return BufferFormat.Index;
             default: throw new JsonException($"{s} is not a recognized buffer format");
         }
     }
@@ -87,6 +89,11 @@ public class BufferFormatConverter : JsonConverter<BufferFormat>
             case BufferFormat.ChunkTransform:
                 {
                     writer.WriteStringValue("chunk_transform");
+                    break;
+                }
+            case BufferFormat.Index:
+                {
+                    writer.WriteStringValue("index");
                     break;
                 }
 
@@ -485,11 +492,13 @@ public class ArrayIndex
 
     public BufferFormat? InferBufferFormat()
     {
-        if (Entries[0].BufferFormat == BufferFormat.Point)
+        var e = Entries.FirstOrDefault(e => e.BufferFormat != BufferFormat.Index);
+        if (e == null) return null;
+        if (e.BufferFormat == BufferFormat.Point)
             return BufferFormat.Point;
         else
         {
-            switch (Entries[0].BufferFormat)
+            switch (e.BufferFormat)
             {
                 case BufferFormat.ChunkEncoding:
                 case BufferFormat.ChunkSecondary:
@@ -523,6 +532,23 @@ public class ArrayIndexBuilder
         Entries = new();
         Format = bufferFormat;
         MainAxisTransforms = new();
+        AddIndexEntry();
+    }
+
+    void AddIndexEntry()
+    {
+        Add(new ArrayIndexEntry()
+        {
+            ArrayName = Context.IndexName(),
+            ArrayTypeCURIE = ArrayType.IndexArray.CURIE(),
+            Context = Context,
+            DataTypeCURIE = BinaryDataType.Int64.CURIE(),
+            Path = $"{Prefix}.{Context.IndexName()}",
+            BufferFormat = BufferFormat.Index,
+            BufferPriority = BufferPriority.Primary,
+            DataProcessesingId = null,
+            SortingRank = 0,
+        });
     }
 
     /// <summary>Creates a builder for point-format arrays.</summary>
@@ -657,6 +683,10 @@ public class ArrayIndexBuilder
             else if (entry.Transform != null && entry.Transform != NullInterpolation.NullZeroCURIE)
             {
                 throw new NotImplementedException($"The array transform {entry.Transform} is not supported for secondary arrays in the chunked layout");
+            }
+            else if (entry.BufferFormat == BufferFormat.Index)
+            {
+                // Do not modify the index column
             }
             else
             {

@@ -94,7 +94,7 @@ public abstract class BaseDataLayoutWriter
     protected virtual void InitializeBuilders()
     {
         int i = 1;
-        foreach (var entry in ArrayIndex.Entries)
+        foreach (var entry in EnumerateArrayIndex())
         {
             entry.SchemaIndex = i;
             i++;
@@ -378,7 +378,7 @@ public abstract class BaseDataLayoutWriter
     {
         List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
 
-        foreach (var entry in ArrayIndex.Entries)
+        foreach (var entry in EnumerateArrayIndex())
         {
             var name = entry.CreateColumnName();
             fields.Add(new Field(name, entry.GetArrowType(), true));
@@ -387,6 +387,11 @@ public abstract class BaseDataLayoutWriter
         Dictionary<string, string> meta = new();
         meta[$"{BufferContext.Name()}_array_index"] = JsonSerializer.Serialize(ArrayIndex);
         return new Schema([root], meta);
+    }
+
+    protected IEnumerable<ArrayIndexEntry> EnumerateArrayIndex()
+    {
+        return ArrayIndex.Entries.Where(e => e.BufferFormat != BufferFormat.Index);
     }
 
     protected void AppendNullsTo(IArrowArrayBuilder builder, IArrowType dtype, int k)
@@ -505,7 +510,7 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
             else k = val.Length;
         }
         Index.AppendRange(Enumerable.Repeat(entryIndex, k));
-        foreach (var entry in ArrayIndex.Entries)
+        foreach (var entry in EnumerateArrayIndex())
         {
             if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
             Array? array;
@@ -536,7 +541,7 @@ public class PointLayoutBuilder : BaseDataLayoutWriter
 
     public override EntryDerivedMetadata Add(ulong entryIndex, IEnumerable<Array> arrays, bool isProfile)
     {
-        var kvs = ArrayIndex.Entries.Zip(arrays).ToDictionary();
+        var kvs = EnumerateArrayIndex().Zip(arrays).ToDictionary();
         return Add(entryIndex, kvs, isProfile);
     }
 
@@ -713,7 +718,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
 
     protected override void InitializeBuilders()
     {
-        int i = 1;
+        int i = 0;
         foreach (var entry in ArrayIndex.Entries)
         {
             entry.SchemaIndex = i;
@@ -771,6 +776,8 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                         }
                         break;
                     }
+                case BufferFormat.Index:
+                    continue;
                 default: throw new InvalidDataException($"{entry.BufferFormat} is not supported");
             }
         }
@@ -892,7 +899,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
                         ((DoubleArray.Builder)endValBuilder).Append(endVal);
                         break;
                     }
-                default: throw new NotImplementedException($"{chunk.Data.DataType.Name}");
+                default: throw new NotImplementedException($"{chunk.Data.DataType}");
             }
 
             if (isTracing) Logger?.LogTrace($"{entryIndex} {startVal}-{endVal} has {chunk.Length} items");
@@ -953,8 +960,9 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
             if (linearBuilder != null && CurrentMainAxisEncodingCURIE != MSNumpress.ACC_NUMPRESS_LINEAR)
                 linearBuilder.Append();
 
-            foreach (var entry in ArrayIndex.Entries)
+            foreach (var entry in EnumerateArrayIndex())
             {
+                if (entry.BufferFormat == BufferFormat.Index) continue;
                 if (entry.SchemaIndex == null) throw new InvalidOperationException("Cannot be null");
                 if (visited.Contains((int)entry.SchemaIndex - 1)) continue;
                 Array? array;
@@ -1043,7 +1051,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     {
         List<Field> fields = [new Field(BufferContext.IndexName(), new UInt64Type(), true)];
 
-        foreach (var entry in ArrayIndex.Entries)
+        foreach (var entry in EnumerateArrayIndex())
         {
             var name = entry.Path.Split(".").Last();
             switch (entry.BufferFormat)
@@ -1088,7 +1096,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
             if (c.Length != n) throw new InvalidOperationException($"Not all columns have {n} items");
         }
 
-        foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
+        foreach (var (entry, (dtype, builder)) in EnumerateArrayIndex().Zip(DataTypes.Zip(Arrays)))
         {
             switch (entry.BufferFormat)
             {
@@ -1140,7 +1148,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     public void Clear()
     {
         Index.Clear();
-        foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
+        foreach (var (entry, (dtype, builder)) in EnumerateArrayIndex().Zip(DataTypes.Zip(Arrays)))
         {
             switch (entry.BufferFormat)
             {
@@ -1186,7 +1194,7 @@ public class ChunkLayoutBuilder : BaseDataLayoutWriter
     protected void CheckAllColumnsAligned()
     {
         var n = Index.Length;
-        foreach (var (entry, (dtype, builder)) in ArrayIndex.Entries.Zip(DataTypes.Zip(Arrays)))
+        foreach (var (entry, (dtype, builder)) in EnumerateArrayIndex().Zip(DataTypes.Zip(Arrays)))
         {
             var valid = true;
             switch (entry.BufferFormat) {

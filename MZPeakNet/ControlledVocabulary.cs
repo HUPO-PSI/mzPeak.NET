@@ -40,6 +40,7 @@ public enum ArrayType
     DeconvolutedIonMobilityArray,
     DeconvolutedInverseReducedIonMobilityArray,
     DeconvolutedIonMobilityDriftTimeArray,
+    IndexArray,
 }
 
 public static class ArrayTypeMethods
@@ -182,6 +183,10 @@ public static class ArrayTypeMethods
                 {
                     return "deconvoluted ion mobility drift time array";
                 }
+            case ArrayType.IndexArray:
+                {
+                    return  "index array";
+                }
             default:
                 throw new InvalidOperationException();
         }
@@ -314,6 +319,10 @@ public static class ArrayTypeMethods
             case ArrayType.DeconvolutedIonMobilityDriftTimeArray:
                 {
                     return "MS:1003156";
+                }
+            case ArrayType.IndexArray:
+                {
+                    return "MS:1003870";
                 }
             default:
                 throw new InvalidOperationException();

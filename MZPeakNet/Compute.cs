@@ -919,11 +919,15 @@ public static class Chunking
             case ArrowTypeId.Double:
                 return ChunkEvery((DoubleArray)data, width);
             case ArrowTypeId.Float:
-                return ChunkEvery((FloatArray)data, width);
+                return ChunkEvery((FloatArray)data, (float)width);
             case ArrowTypeId.Int32:
-                return ChunkEvery((Int32Array)data, width);
+                return ChunkEvery((Int32Array)data, (int)width);
             case ArrowTypeId.Int64:
-                return ChunkEvery((Int64Array)data, width);
+                return ChunkEvery((Int64Array)data, (long)width);
+            case ArrowTypeId.UInt32:
+                return ChunkEvery((UInt32Array)data, (uint)width);
+            case ArrowTypeId.UInt64:
+                return ChunkEvery((UInt64Array)data, (ulong)width);
             default: throw new NotImplementedException($"{data.Data.DataType.Name} not supported");
         }
     }

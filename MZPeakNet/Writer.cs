@@ -275,7 +275,7 @@ public class MZPeakWriter : IDisposable
     protected static ArrayIndex DefaultSpectrumArrayIndex(IDataWriterOptions options)
     {
         var builder = options.CreateArrayIndexBuilder(BufferContext.Spectrum);
-        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 0);
+        builder.Add(ArrayType.MZArray, BinaryDataType.Float64, Unit.MZ, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts, transform: options.IntensityTransform());
         return builder.Build();
     }
@@ -283,7 +283,7 @@ public class MZPeakWriter : IDisposable
     protected static ArrayIndex DefaultChromatogramArrayIndex(IDataWriterOptions options)
     {
         var builder = options.CreateArrayIndexBuilder(BufferContext.Chromatogram);
-        builder.Add(ArrayType.TimeArray, BinaryDataType.Float64, Unit.Minute, 0);
+        builder.Add(ArrayType.TimeArray, BinaryDataType.Float64, Unit.Minute, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts, transform: options.IntensityTransform());
         return builder.Build();
     }
@@ -291,7 +291,7 @@ public class MZPeakWriter : IDisposable
     protected static ArrayIndex DefaultWavelengthSpectrumArrayIndex(bool useChunked = false)
     {
         var builder = useChunked ? ArrayIndexBuilder.ChunkBuilder(BufferContext.WavelengthSpectrum) : ArrayIndexBuilder.PointBuilder(BufferContext.WavelengthSpectrum);
-        builder.Add(ArrayType.WavelengthArray, BinaryDataType.Float32, Unit.Nanometer, 0);
+        builder.Add(ArrayType.WavelengthArray, BinaryDataType.Float32, Unit.Nanometer, 1);
         builder.Add(ArrayType.IntensityArray, BinaryDataType.Float32, Unit.NumberOfDetectorCounts);
         return builder.Build();
     }
